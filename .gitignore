@@ -1,0 +1,88 @@
+# ── Environment & Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# ── Virtual Environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.Python
+
+# ── Testing & Coverage ───────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# ── Type Checking ────────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# ── Linting ──────────────────────────────────────────────────────────────────
+.ruff_cache/
+
+# ── IDEs ─────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# ── Poetry ───────────────────────────────────────────────────────────────────
+# Keep poetry.lock committed for reproducible builds
+# poetry.lock
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+*.log
+docker-compose.override.yml
+
+# ── AWS Lambda ───────────────────────────────────────────────────────────────
+.aws-sam/
+samconfig.toml
+lambda.zip
+lambda-pkg/
+.aws/
+
+# ── LocalStack ───────────────────────────────────────────────────────────────
+localstack_data/
+volume/
+
+# ── Temp / OS ────────────────────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig

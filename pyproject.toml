@@ -1,0 +1,56 @@
+[tool.poetry]
+name = "resume-parser"
+version = "1.0.0"
+description = "Enterprise Resume Parsing API"
+authors = ["BlueIQ <oceanbluesolutions@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = { extras = ["standard"], version = "^0.32.0" }
+pydantic = "^2.10.0"
+pydantic-settings = "^2.6.0"
+boto3 = "^1.35.0"
+botocore = "^1.35.0"
+python-multipart = "^0.0.12"
+PyMuPDF = "^1.24.0"
+python-docx = "^1.1.0"
+pytesseract = "^0.3.13"
+Pillow = "^11.0.0"
+openai = "^1.55.0"
+httpx = "^0.28.0"
+structlog = "^24.4.0"
+python-ulid = "^3.0.0"
+pdf2image = "^1.17.0"
+mangum = "^0.19.0"
+email-validator = "^2.2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+pytest-httpx = "^0.35.0"
+moto = { extras = ["dynamodb", "s3"], version = "^5.0.0" }
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+boto3-stubs = { extras = ["dynamodb", "s3", "textract"], version = "^1.35.0" }
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,24 @@
+# Lambda container image — used for BOTH the API Lambda and the Worker Lambda.
+# Set CMD to the appropriate handler in each function's configuration:
+#   API Lambda:    app.handlers.lambda_handler.handler
+#   Worker Lambda: app.handlers.worker_lambda.handler
+
+FROM public.ecr.aws/lambda/python:3.12
+
+# Tesseract OCR + Poppler (pdf2image)
+RUN dnf install -y \
+    tesseract \
+    poppler-utils \
+    && dnf clean all
+
+# Copy and install dependencies
+COPY pyproject.toml poetry.lock* ./
+RUN pip install --no-cache-dir poetry==1.8.4 \
+    && poetry config virtualenvs.create false \
+    && poetry install --no-dev --no-interaction --no-ansi
+
+# Copy application
+COPY app/ ${LAMBDA_TASK_ROOT}/app/
+
+# Default handler — override per function
+CMD ["app.handlers.lambda_handler.handler"]
