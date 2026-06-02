@@ -15,11 +15,11 @@ RUN curl -fsSL https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9 \
 
 # 2. Import key and register EPEL9 repo (metalink mirrors, same as official epel-release RPM)
 RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9 \
-    && printf '[epel]\nname=EPEL 9\nmetalink=https://mirrors.fedoraproject.org/metalink?repo=epel-9&arch=x86_64\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9\n' \
+    && printf '[epel]\nname=EPEL 9\nbaseurl=https://download.fedoraproject.org/pub/epel/9/Everything/x86_64/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9\n' \
         > /etc/yum.repos.d/epel.repo
 
-# 3. Install tesseract and poppler (skip langpack — download tessdata directly below)
-RUN dnf install -y \
+# 3. Confirm EPEL9 is active, then install
+RUN dnf repolist && dnf install -y \
         tesseract \
         poppler-utils \
     && dnf clean all
