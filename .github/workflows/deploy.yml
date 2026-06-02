@@ -16,7 +16,6 @@ env:
   PYTHON_VERSION: "3.12"
 
 permissions:
-  id-token: write   # required for OIDC auth to AWS
   contents: read
 
 jobs:
@@ -74,12 +73,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC — no long-lived keys)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume:    ${{ secrets.AWS_ROLE_ARN }}
-          aws-region:        ${{ env.AWS_REGION }}
-          role-session-name: GitHubActions-${{ github.run_id }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: ecr-login
@@ -119,12 +118,12 @@ jobs:
       url: ${{ steps.get-url.outputs.api_url }}
 
     steps:
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume:    ${{ secrets.AWS_ROLE_ARN }}
-          aws-region:        ${{ env.AWS_REGION }}
-          role-session-name: GitHubActions-Deploy-${{ github.run_id }}
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
 
       - name: Update API Lambda image
         run: |
