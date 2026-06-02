@@ -6,13 +6,14 @@
 FROM public.ecr.aws/lambda/python:3.12
 
 # Tesseract OCR + Poppler (pdf2image)
-# tesseract is not in AL2023 default repos — install EPEL 9 first
-RUN dnf install -y \
-    https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
+# tesseract is not in AL2023 default repos; write the EPEL9 repo file directly
+# (avoids the EPEL RPM install which fails on AL2023)
+RUN printf '[epel]\nname=EPEL 9\nbaseurl=https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/\nenabled=1\ngpgcheck=0\n' \
+        > /etc/yum.repos.d/epel.repo \
     && dnf install -y \
-    tesseract \
-    tesseract-langpack-eng \
-    poppler-utils \
+        tesseract \
+        tesseract-langpack-eng \
+        poppler-utils \
     && dnf clean all
 
 # Copy and install dependencies
