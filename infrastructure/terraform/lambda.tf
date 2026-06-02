@@ -80,6 +80,17 @@ resource "aws_lambda_function_url" "api" {
   }
 }
 
+# Public-invoke permission for the API Function URL.
+# Without this, an AuthType=NONE URL still returns HTTP 403 for unsigned
+# requests — the resource-based policy must explicitly allow lambda:InvokeFunctionUrl.
+resource "aws_lambda_permission" "api_url_public" {
+  statement_id           = "FunctionURLAllowPublicAccess"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.api.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
 # ── Worker Lambda ─────────────────────────────────────────────────────────────
 
 resource "aws_lambda_function" "worker" {

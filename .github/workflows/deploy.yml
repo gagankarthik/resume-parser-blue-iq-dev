@@ -171,6 +171,39 @@ jobs:
             --function-name resume-parser-production-worker \
             --region ${{ env.AWS_REGION }}
 
+      - name: Ensure API Function URL + public-invoke permission exist
+        run: |
+          FN=resume-parser-production-api
+
+          # 1. Ensure the Function URL config exists (AuthType=NONE).
+          if ! aws lambda get-function-url-config \
+                --function-name "$FN" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
+            echo "Function URL missing — creating it"
+            aws lambda create-function-url-config \
+              --function-name "$FN" \
+              --auth-type NONE \
+              --region ${{ env.AWS_REGION }}
+          fi
+
+          # 2. Ensure the resource-based permission allowing public invoke exists.
+          #    Without this an AuthType=NONE URL returns HTTP 403. add-permission is
+          #    idempotent here: a pre-existing statement throws ResourceConflictException,
+          #    which we treat as success.
+          if aws lambda add-permission \
+                --function-name "$FN" \
+                --statement-id FunctionURLAllowPublicAccess \
+                --action lambda:InvokeFunctionUrl \
+                --principal '*' \
+                --function-url-auth-type NONE \
+                --region ${{ env.AWS_REGION }} 2>err.txt; then
+            echo "Public-invoke permission created"
+          elif grep -q ResourceConflictException err.txt; then
+            echo "Public-invoke permission already present — ok"
+          else
+            cat err.txt
+            exit 1
+          fi
+
       - name: Smoke test — health check
         id: smoke
         run: |
@@ -178,7 +211,15 @@ jobs:
             --function-name resume-parser-production-api \
             --query FunctionUrl --output text --region ${{ env.AWS_REGION }})
           echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${API_URL}api/v1/health")
+
+          # Retry briefly — URL/permission changes can take a few seconds to propagate.
+          STATUS=000
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${API_URL}api/v1/health")
+            [ "$STATUS" = "200" ] && break
+            echo "Attempt $i: HTTP $STATUS — retrying in 5s"
+            sleep 5
+          done
           if [ "$STATUS" != "200" ]; then
             echo "Health check failed: HTTP $STATUS"
             exit 1
