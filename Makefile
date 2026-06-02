@@ -73,6 +73,40 @@ deploy-lambda: push-lambda
 	  --region $(AWS_REGION)
 	@echo "Deployed $(ECR_URI):$(IMAGE_TAG) to resume-parser-api and resume-parser-worker"
 
+# ─── Terraform ───────────────────────────────────────────────────────────────
+
+TF_DIR = infrastructure/terraform
+
+tf-init:
+	cd $(TF_DIR) && terraform init
+
+tf-plan:
+	cd $(TF_DIR) && terraform plan -var-file=terraform.tfvars
+
+tf-apply:
+	cd $(TF_DIR) && terraform apply -var-file=terraform.tfvars
+
+tf-destroy:
+	@echo "WARNING: this will destroy all infrastructure. Confirm manually."
+	cd $(TF_DIR) && terraform destroy -var-file=terraform.tfvars
+
+tf-output:
+	cd $(TF_DIR) && terraform output
+
+# Bootstrap: create S3 state bucket + DynamoDB lock table (run once manually)
+tf-bootstrap:
+	aws s3 mb s3://resume-parser-tfstate --region $(AWS_REGION) || true
+	aws s3api put-bucket-versioning \
+	  --bucket resume-parser-tfstate \
+	  --versioning-configuration Status=Enabled
+	aws dynamodb create-table \
+	  --table-name resume-parser-tflock \
+	  --attribute-definitions AttributeName=LockID,AttributeType=S \
+	  --key-schema AttributeName=LockID,KeyType=HASH \
+	  --billing-mode PAY_PER_REQUEST \
+	  --region $(AWS_REGION) || true
+	@echo "Bootstrap complete. Now run: make tf-init"
+
 # ─── Utilities ───────────────────────────────────────────────────────────────
 
 # Generate a new API key and print the hash for seeding into DynamoDB

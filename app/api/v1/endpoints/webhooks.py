@@ -1,26 +1,28 @@
 """
 Webhook management endpoints.
 
-POST   /webhooks          — register a new webhook
-GET    /webhooks          — list registered webhooks
-DELETE /webhooks/{id}     — remove a webhook
+POST   /webhooks      — register a new webhook (returns HMAC secret once)
+GET    /webhooks      — list registered webhooks (secret not returned)
+DELETE /webhooks/{id} — remove a webhook
 
 Webhooks are scoped to the company derived from the API key.
-The HMAC secret is only returned on creation; it cannot be retrieved later.
 """
+
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from python_ulid import ULID
 
 from app.api.dependencies import enforce_rate_limit
-from app.core.exceptions import http_404
+from app.core.config import get_settings
+from app.core.errors import ErrorCode, api_error
 from app.core.security import generate_webhook_secret
 from app.db import dynamodb as db
 from app.models.schemas import WebhookCreateRequest, WebhookResponse
 
 router = APIRouter()
 
-_VALID_EVENTS = {"parse.completed", "parse.failed"}
+_VALID_EVENTS = {"parse.completed", "parse.failed", "batch.completed"}
 
 
 @router.post(
@@ -35,21 +37,13 @@ async def create_webhook(
     record: dict = Depends(enforce_rate_limit),
 ) -> WebhookResponse:
     company_id: str = record["company_id"]
+    settings = get_settings()
 
-    # Validate events
-    invalid = set(payload.events) - _VALID_EVENTS
-    if invalid:
-        from app.core.exceptions import http_422
-        raise http_422(f"Invalid events: {invalid}. Valid events: {_VALID_EVENTS}")
-
-    # Require HTTPS in production
-    from app.core.config import get_settings
-    if get_settings().is_production and not payload.url.startswith("https://"):
-        from app.core.exceptions import http_422
-        raise http_422("Webhook URL must use HTTPS in production")
+    if settings.is_production and not payload.url.startswith("https://"):
+        raise api_error(422, ErrorCode.INVALID_REQUEST, "Webhook URL must use HTTPS in production")
 
     webhook_id = str(ULID())
-    secret = generate_webhook_secret()
+    secret     = generate_webhook_secret()
 
     db.create_webhook(
         webhook_id=webhook_id,
@@ -63,9 +57,9 @@ async def create_webhook(
         webhook_id=webhook_id,
         url=payload.url,
         events=payload.events,
-        hmac_secret=secret,  # only time the secret is shown
+        hmac_secret=secret,
         status="active",
-        created_at=__import__("datetime").datetime.utcnow().isoformat(),
+        created_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -75,11 +69,8 @@ async def create_webhook(
     summary="List webhooks",
     tags=["Webhooks"],
 )
-async def list_webhooks(
-    record: dict = Depends(enforce_rate_limit),
-) -> list[WebhookResponse]:
-    company_id: str = record["company_id"]
-    hooks = db.list_webhooks(company_id)
+async def list_webhooks(record: dict = Depends(enforce_rate_limit)) -> list[WebhookResponse]:
+    hooks = db.list_webhooks(record["company_id"])
     return [
         WebhookResponse(
             webhook_id=h["webhook_id"],
@@ -105,5 +96,5 @@ async def delete_webhook(
     company_id: str = record["company_id"]
     hook = db.get_webhook(company_id, webhook_id)
     if not hook:
-        raise http_404("Webhook not found")
+        raise api_error(404, ErrorCode.WEBHOOK_NOT_FOUND, "Webhook not found")
     db.delete_webhook(company_id, webhook_id)

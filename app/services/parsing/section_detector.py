@@ -1,9 +1,20 @@
 """
-Detect and segment resume sections using header keyword matching.
+Resume section detector — header keyword matching.
 
-Returns a dict of {section_name: section_text} which is passed to the
-AI parser so it processes sections independently — reduces hallucinations
-and lowers token count vs passing the whole resume as one blob.
+Segments resume text into labeled sections for the AI parser.
+Sending section-segmented text rather than one blob:
+  • Reduces hallucination (AI knows what context it's reading)
+  • Reduces token count (AI skips irrelevant prose in each section)
+  • Allows partial fallback if one section fails
+
+Duplicate-section handling:
+  If a resume has two "Experience" headers (common in travel-nurse CVs
+  that list assignment blocks separately), content is APPENDED to the
+  existing section rather than overwriting it.
+
+Fallback:
+  If fewer than 2 sections are detected, the full text is returned
+  under "full_text" so the AI still receives all content.
 """
 
 import re
@@ -14,49 +25,52 @@ _SECTION_KEYWORDS: dict[str, list[str]] = {
         "summary", "profile", "objective", "about me", "professional summary",
         "executive summary", "career objective", "personal statement",
         "clinical summary", "nursing summary", "professional profile",
+        "about", "overview",
     ],
     "experience": [
         "experience", "work experience", "employment", "work history",
         "career history", "professional experience", "employment history",
         "positions held", "clinical experience", "nursing experience",
         "work assignments", "travel assignments", "agency assignments",
-        "hospital experience", "clinical background",
+        "hospital experience", "clinical background", "assignments",
+        "work assignments", "professional background",
     ],
     "education": [
         "education", "academic background", "academic history",
         "qualifications", "academic qualifications", "degrees",
-        "nursing education", "academic training",
+        "nursing education", "academic training", "schooling",
     ],
     "skills": [
         "skills", "technical skills", "core competencies", "competencies",
         "technologies", "tools", "expertise", "key skills", "proficiencies",
-        "stack", "clinical skills", "specialties", "specialty areas",
+        "clinical skills", "specialties", "specialty areas",
         "clinical specialties", "areas of expertise", "nursing skills",
         "clinical competencies", "unit experience", "floors",
+        "clinical background", "proficiency", "capabilities",
     ],
     "certifications": [
         "certifications", "certificates", "licenses", "credentials",
         "accreditations", "professional development", "licensure",
         "nursing licenses", "clinical certifications", "active certifications",
-        "bls", "acls", "pals", "certifications and licenses",
+        "certifications and licenses", "license", "certification",
     ],
     "projects": [
-        "projects", "personal projects", "side projects",
-        "open source", "portfolio", "key projects",
+        "projects", "personal projects", "side projects", "open source",
+        "portfolio", "key projects", "notable projects",
     ],
     "achievements": [
         "achievements", "awards", "honors", "accomplishments",
-        "recognition", "publications", "patents",
+        "recognition", "publications", "patents", "honors and awards",
     ],
     "languages": [
         "languages", "language skills", "spoken languages",
+        "language proficiency",
     ],
     "references": [
-        "references", "referees",
+        "references", "referees", "professional references",
     ],
 }
 
-# Pre-compiled per section: line is a header if it matches a keyword (whole word, case-insensitive)
 _HEADER_PATTERNS: dict[str, re.Pattern] = {
     section: re.compile(
         r"^\s*(?:" + "|".join(re.escape(k) for k in keywords) + r")\s*[:\-]?\s*$",
@@ -65,39 +79,45 @@ _HEADER_PATTERNS: dict[str, re.Pattern] = {
     for section, keywords in _SECTION_KEYWORDS.items()
 }
 
-# Matches lines that look like headers: short, possibly ALL CAPS, no sentence punctuation
-_GENERIC_HEADER = re.compile(r"^[A-Z][A-Za-z\s&/]{2,40}$")
-
 
 def detect(text: str) -> dict[str, str]:
     """
-    Split resume text into labeled sections.
-    Falls back to passing the full text under 'full_text' if no sections found.
+    Split resume into labeled sections.
+    Returns {section_name: section_text}.
+    Falls back to {"full_text": text} when fewer than 2 sections found.
     """
-    lines = text.splitlines()
-    sections: OrderedDict[str, list[str]] = OrderedDict()
-    current_section = "header"  # content before first detected section
-    sections[current_section] = []
+    lines   = text.splitlines()
+    # OrderedDict preserves insertion order; values are lists of lines
+    buckets: OrderedDict[str, list[str]] = OrderedDict()
+    buckets["header"] = []   # content before first detected section
+    current = "header"
 
     for line in lines:
-        detected = _detect_section_header(line)
+        detected = _match_section_header(line)
         if detected:
-            current_section = detected
-            if current_section not in sections:
-                sections[current_section] = []
+            current = detected
+            if current not in buckets:
+                buckets[current] = []
+            # Don't reset — content from duplicate headers is appended below
         else:
-            sections[current_section].append(line)
+            buckets[current].append(line)
 
-    result = {k: "\n".join(v).strip() for k, v in sections.items() if "\n".join(v).strip()}
+    # Build result dict, dropping empty sections
+    result: dict[str, str] = {}
+    for key, lines_list in buckets.items():
+        block = "\n".join(lines_list).strip()
+        if block:
+            result[key] = block
 
-    if len(result) <= 1:
-        # No sections detected — return full text for the AI to handle
+    # Fallback: fewer than 2 named sections detected → return full text
+    named = {k: v for k, v in result.items() if k != "header"}
+    if len(named) < 2:
         return {"full_text": text}
 
     return result
 
 
-def _detect_section_header(line: str) -> str | None:
+def _match_section_header(line: str) -> str | None:
     stripped = line.strip()
     if not stripped or len(stripped) > 60:
         return None

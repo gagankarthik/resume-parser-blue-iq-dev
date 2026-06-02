@@ -69,6 +69,14 @@ Thumbs.db
 *.log
 docker-compose.override.yml
 
+# ── Terraform ────────────────────────────────────────────────────────────────
+infrastructure/terraform/.terraform/
+infrastructure/terraform/.terraform.lock.hcl
+infrastructure/terraform/terraform.tfvars
+infrastructure/terraform/terraform.tfstate
+infrastructure/terraform/terraform.tfstate.backup
+infrastructure/terraform/*.tfplan
+
 # ── AWS Lambda ───────────────────────────────────────────────────────────────
 .aws-sam/
 samconfig.toml

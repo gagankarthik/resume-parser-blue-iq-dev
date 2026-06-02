@@ -2,14 +2,16 @@
 Resume parsing endpoints.
 
 POST /api/v1/resume/parse
-  - Validates file type (extension + magic bytes) and size
-  - Digital PDF / DOCX  → synchronous pipeline → result returned immediately
-  - Scanned PDF / Image → stored in S3 → async processing:
-      production  : Worker Lambda invoked asynchronously (InvocationType=Event)
-      development : FastAPI BackgroundTasks
+  Single file parse. Digital PDF/DOCX → synchronous (returns result immediately).
+  Scanned PDF/image → asynchronous (returns job_id; use webhook or polling).
 
 GET /api/v1/resume/job/{job_id}
-  - Polls async job status from DynamoDB
+  Poll async job status.
+
+POST /api/v1/resume/{job_id}/retry
+  Re-parse a resume when the original result was unsatisfactory.
+  Client re-uploads the file; a new job_id is created linked to the original.
+  Up to MAX_RETRY_COUNT retries per original job.
 """
 
 import json
@@ -20,12 +22,9 @@ from python_ulid import ULID
 
 from app.api.dependencies import enforce_rate_limit
 from app.core.config import get_settings
-from app.core.exceptions import (
-    UnsupportedFileTypeError,
-    http_404,
-    http_413,
-    http_415,
-)
+from app.core.errors import ErrorCode, api_error
+from app.core.exceptions import UnsupportedFileTypeError
+from app.core.file_validator import validate_file
 from app.core.logging import get_logger
 from app.db import dynamodb as db
 from app.models.schemas import (
@@ -33,6 +32,7 @@ from app.models.schemas import (
     JobStatusResponse,
     ParsedResumeAI,
     ParseResponse,
+    RetryResponse,
 )
 from app.services.extraction.classifier import ExtractionStrategy, classify
 from app.services.pipeline import PipelineInput, run as run_pipeline
@@ -44,25 +44,61 @@ log = get_logger(__name__)
 
 
 def _invoke_worker_lambda(settings, payload: dict) -> None:
-    """Fire-and-forget Lambda invocation for the OCR worker."""
     client = boto3.client("lambda", region_name=settings.aws_region)
-    client.invoke(
-        FunctionName=settings.worker_lambda_function_name,
-        InvocationType="Event",
-        Payload=json.dumps(payload).encode(),
-    )
-    log.info("worker_lambda_invoked", job_id=payload["job_id"])
+    try:
+        resp = client.invoke(
+            FunctionName=settings.worker_lambda_function_name,
+            InvocationType="Event",
+            Payload=json.dumps(payload).encode(),
+        )
+        if resp.get("FunctionError"):
+            log.error("lambda_invoke_error", job_id=payload.get("job_id"),
+                      function_error=resp["FunctionError"])
+    except Exception as exc:
+        log.error("lambda_invoke_failed", job_id=payload.get("job_id"), error=str(exc))
 
+
+async def _dispatch_async(
+    settings,
+    background_tasks: BackgroundTasks,
+    payload: dict,
+) -> None:
+    if settings.use_lambda_worker:
+        _invoke_worker_lambda(settings, payload)
+    else:
+        background_tasks.add_task(process_resume_async, **payload)
+
+
+async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
+    """Read, size-check, and magic-byte validate the uploaded file."""
+    content  = await file.read()
+    filename = file.filename or "upload"
+
+    if len(content) > settings.max_file_size_bytes:
+        raise api_error(
+            413, ErrorCode.FILE_TOO_LARGE,
+            f"File size {len(content) // 1024} KB exceeds the {settings.max_file_size_mb} MB limit",
+        )
+    try:
+        validate_file(filename, content)
+    except UnsupportedFileTypeError as exc:
+        raise api_error(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
+
+    return content, filename
+
+
+# ── Single-file parse ─────────────────────────────────────────────────────────
 
 @router.post(
     "/resume/parse",
     response_model=ParseResponse,
     summary="Parse a resume",
     description=(
-        "Upload a resume (PDF, DOCX, or image). "
-        "Digital PDFs and DOCX files are processed synchronously and return the result immediately. "
-        "Scanned PDFs and images are processed asynchronously — a `job_id` is returned "
-        "and results are delivered via webhook and/or the polling endpoint."
+        "Upload a single resume (PDF, DOCX, PNG, JPG, TIFF). "
+        "Digital PDFs and DOCX files are processed **synchronously** and the parsed JSON "
+        "is returned immediately. "
+        "Scanned PDFs and images require OCR and are processed **asynchronously** — "
+        "a `job_id` is returned and results are delivered via webhook and the polling endpoint."
     ),
     tags=["Resume"],
 )
@@ -71,95 +107,50 @@ async def parse_resume(
     file: UploadFile = File(..., description="Resume file: PDF, DOCX, PNG, JPG, or TIFF"),
     record: dict = Depends(enforce_rate_limit),
 ) -> ParseResponse:
-    settings = get_settings()
-    company_id: str = record["company_id"]
-    job_id = str(ULID())
+    settings   = get_settings()
+    company_id = record["company_id"]
+    job_id     = str(ULID())
 
-    content = await file.read()
+    content, filename = await _validate_file(file, settings)
+    strategy, needs_async = classify(filename, content)
 
-    if len(content) > settings.max_file_size_bytes:
-        raise http_413(
-            f"File size {len(content) // 1024} KB exceeds the {settings.max_file_size_mb} MB limit"
-        )
-
-    filename = file.filename or "upload"
-    try:
-        strategy, needs_async = classify(filename, content)
-    except UnsupportedFileTypeError as exc:
-        raise http_415(str(exc))
-
-    log.info(
-        "parse_request",
-        job_id=job_id,
-        company_id=company_id,
-        strategy=strategy,
-        needs_async=needs_async,
-        size_bytes=len(content),
-        filename=filename,
-    )
+    log.info("parse_request", job_id=job_id, company_id=company_id,
+             strategy=strategy, needs_async=needs_async, size_bytes=len(content))
 
     if not needs_async:
-        # ── Synchronous path: digital PDF / DOCX ──────────────────────────────
-        result = await run_pipeline(
-            PipelineInput(
-                job_id=job_id,
-                filename=filename,
-                content=content,
-                company_id=company_id,
-            )
-        )
-
+        result = await run_pipeline(PipelineInput(
+            job_id=job_id, filename=filename, content=content, company_id=company_id,
+        ))
         db.write_audit_log(
-            job_id=job_id,
-            company_id=company_id,
-            file_type=result.file_type,
-            file_size_bytes=len(content),
-            status="completed",
-            duration_ms=result.duration_ms,
-            ocr_used=result.ocr_used,
-            ai_tokens_used=result.ai_tokens_used,
+            job_id=job_id, company_id=company_id,
+            file_type=result.file_type, file_size_bytes=len(content),
+            status="completed", duration_ms=result.duration_ms,
+            ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
         )
+        return ParseResponse(job_id=job_id, status="completed",
+                             data=result.parsed, confidence=result.confidence)
 
-        return ParseResponse(
-            job_id=job_id,
-            status="completed",
-            data=result.parsed,
-            confidence=result.confidence,
-        )
-
-    # ── Async path: scanned PDF / image ───────────────────────────────────────
     s3_key = s3_client.upload_temp_file(job_id, filename, content)
     db.create_job(job_id, company_id)
+    await _dispatch_async(settings, background_tasks, {
+        "job_id": job_id, "company_id": company_id, "s3_key": s3_key,
+        "filename": filename, "file_size_bytes": len(content),
+    })
+    return ParseResponse(job_id=job_id, status="processing",
+                         poll_url=f"/api/v1/resume/job/{job_id}")
 
-    worker_payload = {
-        "job_id": job_id,
-        "company_id": company_id,
-        "s3_key": s3_key,
-        "filename": filename,
-        "file_size_bytes": len(content),
-    }
 
-    if settings.use_lambda_worker:
-        _invoke_worker_lambda(settings, worker_payload)
-    else:
-        background_tasks.add_task(process_resume_async, **worker_payload)
-
-    return ParseResponse(
-        job_id=job_id,
-        status="processing",
-        poll_url=f"/api/v1/resume/job/{job_id}",
-    )
-
+# ── Job status polling ────────────────────────────────────────────────────────
 
 @router.get(
     "/resume/job/{job_id}",
     response_model=JobStatusResponse,
     summary="Poll async job status",
     description=(
-        "Check the status of an asynchronous parsing job. "
-        "Returns `processing` until complete, then `completed` with parsed data, "
+        "Check the status of an asynchronous parse job. "
+        "Returns `processing` until done, then `completed` with parsed data "
         "or `failed` with an error description. "
-        "Results are available for 1 hour after completion."
+        "Results are retained for 1 hour after completion."
     ),
     tags=["Resume"],
 )
@@ -167,26 +158,100 @@ async def get_job_status(
     job_id: str,
     record: dict = Depends(enforce_rate_limit),
 ) -> JobStatusResponse:
-    company_id: str = record["company_id"]
-    job = db.get_job(job_id)
+    company_id = record["company_id"]
+    job        = db.get_job(job_id)
 
     if not job or job.get("company_id") != company_id:
-        raise http_404("Job not found or does not belong to this account")
+        raise api_error(404, ErrorCode.JOB_NOT_FOUND, "Job not found")
 
-    status = job["status"]
+    status     = job["status"]
     raw_result = job.get("result")
-
-    parsed_data: ParsedResumeAI | None = None
-    confidence: ConfidenceScores | None = None
+    parsed_data: ParsedResumeAI | None   = None
+    confidence:  ConfidenceScores | None = None
 
     if raw_result and status == "completed":
         parsed_data = ParsedResumeAI.model_validate(raw_result.get("data", {}))
-        confidence = ConfidenceScores.model_validate(raw_result.get("confidence", {}))
+        confidence  = ConfidenceScores.model_validate(raw_result.get("confidence", {}))
 
     return JobStatusResponse(
-        job_id=job_id,
-        status=status,
-        data=parsed_data,
-        confidence=confidence,
-        error=job.get("error"),
+        job_id=job_id, status=status, data=parsed_data,
+        confidence=confidence, error=job.get("error"),
+    )
+
+
+# ── Retry ─────────────────────────────────────────────────────────────────────
+
+@router.post(
+    "/resume/{job_id}/retry",
+    response_model=RetryResponse,
+    summary="Retry parsing a resume",
+    description=(
+        "Re-parse a resume when the original result was unsatisfactory. "
+        "Re-upload the same file — the parser will re-run the full extraction "
+        "and AI pipeline. A new `job_id` is created and linked to the original. "
+        f"Maximum retries per job: `MAX_RETRY_COUNT` (default 3). "
+        "Retries count against your rate limit."
+    ),
+    tags=["Resume"],
+)
+async def retry_parse(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(..., description="The same resume file to re-parse"),
+    record: dict = Depends(enforce_rate_limit),
+) -> RetryResponse:
+    settings   = get_settings()
+    company_id = record["company_id"]
+
+    # Verify original job belongs to this company
+    original = db.get_job(job_id)
+    if not original or original.get("company_id") != company_id:
+        raise api_error(404, ErrorCode.JOB_NOT_FOUND,
+                        "Original job not found or does not belong to this account")
+
+    # Enforce retry limit
+    retry_count = int(original.get("retry_count", 0)) + 1
+    if retry_count > settings.max_retry_count:
+        raise api_error(
+            422, ErrorCode.RETRY_LIMIT_REACHED,
+            f"Maximum {settings.max_retry_count} retries allowed per job",
+        )
+
+    content, filename = await _validate_file(file, settings)
+    strategy, needs_async = classify(filename, content)
+    new_job_id = str(ULID())
+
+    log.info("retry_request", original_job_id=job_id, new_job_id=new_job_id,
+             company_id=company_id, retry_count=retry_count)
+
+    # Create retry job linked to original
+    db.create_job(new_job_id, company_id, retried_from=job_id, retry_count=retry_count)
+
+    if not needs_async:
+        result = await run_pipeline(PipelineInput(
+            job_id=new_job_id, filename=filename, content=content, company_id=company_id,
+        ))
+        db.write_audit_log(
+            job_id=new_job_id, company_id=company_id,
+            file_type=result.file_type, file_size_bytes=len(content),
+            status="completed", duration_ms=result.duration_ms,
+            ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
+        )
+        db.update_job_completed(new_job_id, {
+            "data": result.parsed.model_dump(),
+            "confidence": result.confidence.model_dump(),
+        })
+        return RetryResponse(
+            job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
+            status="completed", data=result.parsed, confidence=result.confidence,
+        )
+
+    s3_key = s3_client.upload_temp_file(new_job_id, filename, content)
+    await _dispatch_async(settings, background_tasks, {
+        "job_id": new_job_id, "company_id": company_id, "s3_key": s3_key,
+        "filename": filename, "file_size_bytes": len(content),
+    })
+    return RetryResponse(
+        job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
+        status="processing", poll_url=f"/api/v1/resume/job/{new_job_id}",
     )

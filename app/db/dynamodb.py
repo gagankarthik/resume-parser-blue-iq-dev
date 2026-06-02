@@ -5,12 +5,14 @@ Tables:
   api_keys      — pk: key_hash
   rate_limits   — pk: window_key   (managed by rate_limiter.py)
   jobs          — pk: job_id       (async job tracking, TTL 1h)
+  batches       — pk: batch_id     (batch tracking, TTL 24h)
   webhooks      — pk: company_id, sk: webhook_id
   audit_logs    — pk: job_id, sk: timestamp
 """
 
 import time
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Any
 
 import boto3
@@ -23,13 +25,18 @@ from app.core.logging import get_logger
 log = get_logger(__name__)
 
 
-def _get_dynamodb(settings=None):
+@lru_cache(maxsize=4)
+def _get_dynamodb_resource(region: str, endpoint_url: str) -> Any:
+    kwargs: dict[str, Any] = {"region_name": region}
+    if endpoint_url:
+        kwargs["endpoint_url"] = endpoint_url
+    return boto3.resource("dynamodb", **kwargs)
+
+
+def _get_dynamodb(settings=None) -> Any:
     if settings is None:
         settings = get_settings()
-    kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-    if settings.dynamodb_endpoint_url:
-        kwargs["endpoint_url"] = settings.dynamodb_endpoint_url
-    return boto3.resource("dynamodb", **kwargs)
+    return _get_dynamodb_resource(settings.aws_region, settings.dynamodb_endpoint_url)
 
 
 # ── API Keys ──────────────────────────────────────────────────────────────────
@@ -76,18 +83,28 @@ def revoke_api_key(key_hash: str) -> None:
 
 # ── Jobs ──────────────────────────────────────────────────────────────────────
 
-def create_job(job_id: str, company_id: str) -> None:
+def create_job(
+    job_id: str,
+    company_id: str,
+    batch_id: str | None = None,
+    retried_from: str | None = None,
+    retry_count: int = 0,
+) -> None:
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
-    table.put_item(
-        Item={
-            "job_id": job_id,
-            "company_id": company_id,
-            "status": "pending",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "ttl": int(time.time()) + settings.job_result_ttl_seconds,
-        }
-    )
+    item: dict[str, Any] = {
+        "job_id": job_id,
+        "company_id": company_id,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "ttl": int(time.time()) + settings.job_result_ttl_seconds,
+        "retry_count": retry_count,
+    }
+    if batch_id:
+        item["batch_id"] = batch_id
+    if retried_from:
+        item["retried_from"] = retried_from
+    table.put_item(Item=item)
 
 
 def update_job_processing(job_id: str) -> None:
@@ -230,3 +247,87 @@ def write_audit_log(
         )
     except ClientError as exc:
         log.error("audit_log_write_failed", job_id=job_id, error=str(exc))
+
+
+# ── Batches ───────────────────────────────────────────────────────────────────
+
+def _batch_table(settings=None):
+    if settings is None:
+        settings = get_settings()
+    return _get_dynamodb(settings).Table(settings.dynamodb_table_batches)
+
+
+def create_batch(
+    batch_id: str,
+    company_id: str,
+    job_ids: list[str],
+    total: int,
+) -> None:
+    table = _batch_table()
+    table.put_item(
+        Item={
+            "batch_id": batch_id,
+            "company_id": company_id,
+            "job_ids": job_ids,
+            "total": total,
+            "completed": 0,
+            "failed": 0,
+            "status": "processing",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            # 24-hour TTL — batches don't need to live as long as job results
+            "ttl": int(time.time()) + 86400,
+        }
+    )
+
+
+def get_batch(batch_id: str) -> dict | None:
+    table = _batch_table()
+    resp = table.get_item(Key={"batch_id": batch_id})
+    return resp.get("Item")
+
+
+def increment_batch_counter(batch_id: str, field: str) -> bool:
+    """
+    Atomically increment 'completed' or 'failed' counter.
+    Returns True when all files in the batch are done (completed + failed == total),
+    which signals the caller to fire the batch.completed webhook.
+    """
+    table = _batch_table()
+    try:
+        resp = table.update_item(
+            Key={"batch_id": batch_id},
+            UpdateExpression="ADD #f :one",
+            ExpressionAttributeNames={"#f": field},
+            ExpressionAttributeValues={":one": 1},
+            ReturnValues="ALL_NEW",
+        )
+        item = resp.get("Attributes", {})
+        total = int(item.get("total", 0))
+        completed = int(item.get("completed", 0))
+        failed = int(item.get("failed", 0))
+        done = completed + failed
+
+        if done >= total and total > 0:
+            # Finalize status
+            if failed == 0:
+                final_status = "completed"
+            elif completed == 0:
+                final_status = "failed"
+            else:
+                final_status = "partial"
+
+            table.update_item(
+                Key={"batch_id": batch_id},
+                UpdateExpression="SET #s = :s, completed_at = :t",
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={
+                    ":s": final_status,
+                    ":t": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            return True  # batch is finished
+        return False
+
+    except ClientError as exc:
+        log.error("batch_counter_update_failed", batch_id=batch_id, error=str(exc))
+        return False

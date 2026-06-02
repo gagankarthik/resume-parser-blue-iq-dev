@@ -1,0 +1,183 @@
+name: Build, Test & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true   # cancel stale PR builds
+
+env:
+  AWS_REGION:    us-east-2
+  ECR_REPO_NAME: resume-parser-production-lambda
+  PYTHON_VERSION: "3.12"
+
+permissions:
+  id-token: write   # required for OIDC auth to AWS
+  contents: read
+
+jobs:
+  # ── 1. Unit tests — fast, no AWS needed ──────────────────────────────────────
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Tesseract (for OCR extractor tests)
+        run: sudo apt-get install -y tesseract-ocr
+
+      - name: Install Python dependencies
+        run: |
+          pip install poetry==1.8.4
+          poetry config virtualenvs.create false
+          poetry install
+
+      - name: Lint
+        run: poetry run ruff check app/ tests/
+
+      - name: Type check
+        run: poetry run mypy app/ --ignore-missing-imports
+
+      - name: Run unit tests
+        run: poetry run pytest tests/unit/ -v --tb=short
+
+      - name: Run integration tests
+        run: poetry run pytest tests/integration/ -v --tb=short
+        env:
+          # Use dummy values — integration tests mock DynamoDB
+          AWS_ACCESS_KEY_ID:     test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_REGION:            us-east-1
+          OPENAI_API_KEY:        sk-test-key
+
+  # ── 2. Build & push container image — runs only on main push ─────────────────
+  build-and-push:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    outputs:
+      image_uri: ${{ steps.image.outputs.uri }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC — no long-lived keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_ROLE_ARN }}
+          aws-region:        ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-${{ github.run_id }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: image
+        run: |
+          REGISTRY="${{ steps.ecr-login.outputs.registry }}"
+          TAG="${{ github.sha }}"
+          URI="${REGISTRY}/${{ env.ECR_REPO_NAME }}:${TAG}"
+          echo "uri=${URI}" >> $GITHUB_OUTPUT
+          echo "Building image: ${URI}"
+
+      - name: Build Lambda container image
+        run: |
+          docker build \
+            -f Dockerfile.lambda \
+            -t ${{ steps.image.outputs.uri }} \
+            -t ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO_NAME }}:latest \
+            .
+
+      - name: Push to ECR
+        run: |
+          docker push ${{ steps.image.outputs.uri }}
+          docker push ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO_NAME }}:latest
+
+  # ── 3. Deploy to Lambda — runs only after successful image push ───────────────
+  deploy:
+    name: Deploy to Lambda
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    environment:
+      name: production
+      url: ${{ steps.get-url.outputs.api_url }}
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume:    ${{ secrets.AWS_ROLE_ARN }}
+          aws-region:        ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Deploy-${{ github.run_id }}
+
+      - name: Update API Lambda image
+        run: |
+          aws lambda update-function-code \
+            --function-name resume-parser-production-api \
+            --image-uri ${{ needs.build-and-push.outputs.image_uri }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Wait for API Lambda update
+        run: |
+          aws lambda wait function-updated \
+            --function-name resume-parser-production-api \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Update Worker Lambda image
+        run: |
+          aws lambda update-function-code \
+            --function-name resume-parser-production-worker \
+            --image-uri ${{ needs.build-and-push.outputs.image_uri }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Wait for Worker Lambda update
+        run: |
+          aws lambda wait function-updated \
+            --function-name resume-parser-production-worker \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Smoke test — health check
+        id: smoke
+        run: |
+          API_URL=$(aws lambda get-function-url-config \
+            --function-name resume-parser-production-api \
+            --query FunctionUrl --output text --region ${{ env.AWS_REGION }})
+          echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${API_URL}api/v1/health")
+          if [ "$STATUS" != "200" ]; then
+            echo "Health check failed: HTTP $STATUS"
+            exit 1
+          fi
+          echo "Health check passed: HTTP $STATUS"
+
+      - name: Get API URL
+        id: get-url
+        run: |
+          API_URL=$(aws lambda get-function-url-config \
+            --function-name resume-parser-production-api \
+            --query FunctionUrl --output text --region ${{ env.AWS_REGION }})
+          echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+
+      - name: Summary
+        run: |
+          echo "### Deployment Complete 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ needs.build-and-push.outputs.image_uri }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**API URL:** ${{ steps.get-url.outputs.api_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

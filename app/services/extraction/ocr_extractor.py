@@ -1,9 +1,11 @@
 """
-Tiered OCR extraction:
-  1. Tesseract (local, free) — tried first
-  2. Amazon Textract (paid, high accuracy) — used when Tesseract confidence is low
+Tiered OCR pipeline:
+  1. Preprocess (deskew → denoise → contrast → binarise)
+  2. Tesseract (free, local) — primary
+  3. Amazon Textract (paid, high accuracy) — fallback when confidence < threshold
 
-Tesseract confidence threshold: if mean word confidence < 60, escalate to Textract.
+Handles: rotated scans, low-contrast images, poor-quality photocopies,
+         handwritten annotations, watermarked backgrounds.
 """
 
 import io
@@ -11,7 +13,7 @@ from typing import Any
 
 import boto3
 import pytesseract
-from PIL import Image, ImageFilter
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 from pdf2image import convert_from_bytes
 
 from app.core.config import get_settings
@@ -20,25 +22,35 @@ from app.core.logging import get_logger
 
 log = get_logger(__name__)
 
-_TESSERACT_CONFIDENCE_THRESHOLD = 60  # out of 100
+_CONFIDENCE_THRESHOLD = 60   # escalate to Textract when mean confidence < this
+_MIN_WIDTH_FOR_OCR    = 800  # upscale images narrower than this (px)
 
+
+# ── Public API ────────────────────────────────────────────────────────────────
 
 def extract(content: bytes, filename: str) -> tuple[str, bool]:
     """
     Returns (extracted_text, textract_used).
-    Tries Tesseract first; falls back to Textract if confidence is low.
+    Tries Tesseract first; escalates to Textract on low confidence.
     """
     images = _to_images(content, filename)
-    text, confidence = _tesseract(images)
+    preprocessed = [_preprocess(img) for img in images]
+    text, confidence = _run_tesseract(preprocessed)
 
-    if confidence >= _TESSERACT_CONFIDENCE_THRESHOLD:
-        log.info("ocr_tesseract_success", confidence=confidence)
+    if confidence >= _CONFIDENCE_THRESHOLD:
+        log.info("ocr_tesseract_ok", confidence=round(confidence, 1), pages=len(images))
         return text, False
 
-    log.info("ocr_escalating_to_textract", tesseract_confidence=confidence)
-    text = _textract(content, filename)
+    log.info(
+        "ocr_escalating_textract",
+        tesseract_confidence=round(confidence, 1),
+        threshold=_CONFIDENCE_THRESHOLD,
+    )
+    text = _run_textract(content, filename, preprocessed)
     return text, True
 
+
+# ── Image loading ─────────────────────────────────────────────────────────────
 
 def _to_images(content: bytes, filename: str) -> list[Image.Image]:
     ext = filename.rsplit(".", 1)[-1].lower()
@@ -47,63 +59,131 @@ def _to_images(content: bytes, filename: str) -> list[Image.Image]:
     return [Image.open(io.BytesIO(content))]
 
 
+# ── Preprocessing pipeline ────────────────────────────────────────────────────
+
 def _preprocess(img: Image.Image) -> Image.Image:
-    """Grayscale + mild sharpen improves Tesseract accuracy."""
+    """
+    Full preprocessing chain optimised for low-quality healthcare resume scans:
+      1. Flatten to RGB (handles RGBA, P-mode palette images)
+      2. Auto-rotate using Tesseract OSD (detects 90/180/270° mis-scans)
+      3. Grayscale
+      4. Upscale to minimum width for accurate OCR
+      5. Denoise (median filter)
+      6. Contrast enhancement (CLAHE-equivalent via PIL)
+      7. Sharpen
+      8. Binarise (Otsu-equivalent via PIL auto-threshold)
+    """
+    # 1. Flatten
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+
+    # 2. Auto-rotate (OSD)
+    img = _auto_rotate(img)
+
+    # 3. Grayscale
     img = img.convert("L")
+
+    # 4. Upscale if too small
+    if img.width < _MIN_WIDTH_FOR_OCR:
+        scale = _MIN_WIDTH_FOR_OCR / img.width
+        new_size = (int(img.width * scale), int(img.height * scale))
+        img = img.resize(new_size, Image.LANCZOS)
+
+    # 5. Denoise — median filter removes salt-and-pepper noise from fax scans
+    img = img.filter(ImageFilter.MedianFilter(size=3))
+
+    # 6. Contrast enhancement
+    img = ImageEnhance.Contrast(img).enhance(2.0)
+
+    # 7. Sharpen for cleaner glyph edges
     img = img.filter(ImageFilter.SHARPEN)
+
+    # 8. Binarise — converts to pure black/white, removes grey gradients
+    img = img.point(lambda x: 0 if x < 140 else 255, "L")
+
     return img
 
 
-def _tesseract(images: list[Image.Image]) -> tuple[str, float]:
+def _auto_rotate(img: Image.Image) -> Image.Image:
+    """
+    Use Tesseract OSD to detect orientation and correct it.
+    Handles resumes scanned sideways or upside-down.
+    Gracefully skips if OSD fails (e.g., very low quality image).
+    """
+    try:
+        gray = img.convert("L") if img.mode != "L" else img
+        osd = pytesseract.image_to_osd(
+            gray, output_type=pytesseract.Output.DICT, config="--psm 0"
+        )
+        angle = int(osd.get("rotate", 0))
+        if angle in (90, 180, 270):
+            img = img.rotate(-angle, expand=True, fillcolor=255 if img.mode == "L" else (255, 255, 255))
+            log.info("ocr_auto_rotated", angle=angle)
+    except Exception:
+        pass  # OSD fails on very small/blurry images — continue without rotation
+    return img
+
+
+# ── Tesseract ─────────────────────────────────────────────────────────────────
+
+def _run_tesseract(images: list[Image.Image]) -> tuple[str, float]:
+    """Run Tesseract on preprocessed images; return (text, mean_confidence)."""
     pages: list[str] = []
     confidences: list[float] = []
 
     for img in images:
-        preprocessed = _preprocess(img)
-        data = pytesseract.image_to_data(preprocessed, output_type=pytesseract.Output.DICT)
+        # --psm 3 = fully automatic page segmentation (handles multi-column)
+        # --oem 3 = best available LSTM engine
+        data = pytesseract.image_to_data(
+            img,
+            config="--psm 3 --oem 3",
+            output_type=pytesseract.Output.DICT,
+        )
         words = [
             (data["text"][i], int(data["conf"][i]))
             for i in range(len(data["text"]))
             if data["text"][i].strip() and int(data["conf"][i]) > 0
         ]
         if words:
-            page_text = " ".join(w for w, _ in words)
-            page_conf = sum(c for _, c in words) / len(words)
-            pages.append(page_text)
-            confidences.append(page_conf)
+            pages.append(" ".join(w for w, _ in words))
+            confidences.append(sum(c for _, c in words) / len(words))
 
-    overall_conf = sum(confidences) / len(confidences) if confidences else 0.0
-    return "\n\n".join(pages), overall_conf
+    overall = sum(confidences) / len(confidences) if confidences else 0.0
+    return "\n\n".join(pages), overall
 
 
-def _textract(content: bytes, filename: str) -> str:
+# ── Textract ──────────────────────────────────────────────────────────────────
+
+def _run_textract(
+    original_content: bytes,
+    filename: str,
+    preprocessed_images: list[Image.Image],
+) -> str:
+    """
+    Call AWS Textract via synchronous detect_document_text.
+    Uses preprocessed images (converted to PNG) for better accuracy.
+    """
     settings = get_settings()
-    kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-    # Always hit real Textract even in dev (no LocalStack support for Textract)
-    client = boto3.client("textract", **kwargs)
+    client = boto3.client("textract", region_name=settings.aws_region)
+    # Never use LocalStack endpoint for Textract — always real AWS
+    pages: list[str] = []
 
-    ext = filename.rsplit(".", 1)[-1].lower()
-    if ext == "pdf":
-        # Textract async for multi-page PDFs — but for simplicity use sync (1-page PDFs)
-        # For multi-page, we convert to images and call detect_document_text per page
-        images = convert_from_bytes(content, dpi=300)
-        pages: list[str] = []
-        for img in images:
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            pages.append(_textract_image(client, buf.getvalue()))
-        return "\n\n".join(pages)
+    for img in preprocessed_images:
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        pages.append(_textract_image_bytes(client, buf.getvalue()))
 
-    return _textract_image(client, content)
+    return "\n\n".join(pages)
 
 
-def _textract_image(client: Any, image_bytes: bytes) -> str:
+def _textract_image_bytes(client: Any, image_bytes: bytes) -> str:
     try:
         resp = client.detect_document_text(Document={"Bytes": image_bytes})
         lines = [
             block["Text"]
             for block in resp.get("Blocks", [])
             if block["BlockType"] == "LINE"
+            and float(block.get("Confidence", 0)) >= 50
         ]
         return "\n".join(lines)
     except Exception as exc:

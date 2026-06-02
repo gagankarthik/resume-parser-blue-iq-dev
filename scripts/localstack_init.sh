@@ -45,6 +45,19 @@ awslocal dynamodb update-time-to-live \
   --time-to-live-specification Enabled=true,AttributeName=ttl \
   --region $REGION || true
 
+# batches (TTL 24h)
+awslocal dynamodb create-table \
+  --table-name resume-parser-batches \
+  --attribute-definitions AttributeName=batch_id,AttributeType=S \
+  --key-schema AttributeName=batch_id,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --region $REGION || true
+
+awslocal dynamodb update-time-to-live \
+  --table-name resume-parser-batches \
+  --time-to-live-specification Enabled=true,AttributeName=ttl \
+  --region $REGION || true
+
 # webhooks (company_id pk + webhook_id sk)
 awslocal dynamodb create-table \
   --table-name resume-parser-webhooks \

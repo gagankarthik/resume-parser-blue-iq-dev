@@ -426,7 +426,7 @@ class WebhookCreateRequest(BaseModel):
     events: list[str]  = Field(
         ...,
         description="Events to subscribe to",
-        examples=[["parse.completed", "parse.failed"]],
+        examples=[["parse.completed", "parse.failed", "batch.completed"]],
         min_length=1,
     )
 
@@ -443,7 +443,7 @@ class WebhookCreateRequest(BaseModel):
     @field_validator("events")
     @classmethod
     def validate_events(cls, v: list[str]) -> list[str]:
-        valid = {"parse.completed", "parse.failed"}
+        valid = {"parse.completed", "parse.failed", "batch.completed"}
         invalid = set(v) - valid
         if invalid:
             raise ValueError(f"Invalid events: {sorted(invalid)}. Valid: {sorted(valid)}")
@@ -468,20 +468,115 @@ class ErrorDetail(BaseModel):
         json_schema_extra={
             "example": {
                 "error": {
-                    "status_code": 401,
-                    "error_code": "INVALID_API_KEY",
-                    "detail": "Missing X-API-Key header",
+                    "status_code": 413,
+                    "error_code":  "FILE_TOO_LARGE",
+                    "detail":      "File size 12288 KB exceeds the 10 MB limit",
+                    "hint":        "Please reduce the file size or split the document and try again.",
+                    "request_id":  "8f3a-b212-4c7e-9d1f-a8b3c0e1d2f4",
                 }
             }
         }
     )
 
     status_code:  int = Field(..., description="HTTP status code")
-    error_code:   str = Field(..., description="Machine-readable error identifier")
-    detail:       str = Field(..., description="Human-readable error description")
+    error_code:   str = Field(..., description="Machine-readable error identifier (e.g. FILE_TOO_LARGE)")
+    detail:       str = Field(..., description="Developer-readable error description")
+    hint:         str = Field(..., description="User-facing actionable message — display this to your end user")
+    request_id:   str = Field(..., description="Request ID — include in support tickets")
 
 
 class HealthResponse(BaseModel):
-    status:       str = Field(..., description="'ok' when the service is healthy")
-    version:      str = Field(..., description="API version")
-    environment:  str = Field(..., description="Runtime environment (development | production)")
+    status:        str            = Field(..., description="'ok' or 'degraded'")
+    version:       str            = Field(..., description="API version")
+    environment:   str            = Field(..., description="development | production")
+    latency_ms:    Optional[int]  = Field(None, description="Dependency probe round-trip time in ms")
+    dependencies:  Optional[dict] = Field(None, description="Per-dependency status: ok | unreachable")
+
+
+class RetryResponse(BaseModel):
+    """Response for POST /api/v1/resume/{job_id}/retry"""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "job_id": "01J3K5M3N5P7Q9R1S3T5U7V9W1",
+                "original_job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
+                "retry_count": 1,
+                "status": "completed",
+                "data": None,
+                "confidence": None,
+                "poll_url": None,
+            }
+        }
+    )
+
+    job_id:          str                        = Field(..., description="New job ID for this retry attempt")
+    original_job_id: str                        = Field(..., description="The job ID that was retried")
+    retry_count:     int                        = Field(..., description="How many times this job has been retried (1 = first retry)")
+    status:          str                        = Field(..., description="completed | processing")
+    data:            Optional[ParsedResumeAI]   = Field(None, description="Parsed data — set when status is completed")
+    confidence:      Optional[ConfidenceScores] = Field(None, description="Confidence scores — set when status is completed")
+    poll_url:        Optional[str]              = Field(None, description="Polling URL — set for async retries")
+
+
+# ── Batch schemas ─────────────────────────────────────────────────────────────
+
+class BatchSkipped(BaseModel):
+    filename:  str = Field(..., description="Original filename")
+    reason:    str = Field(..., description="Why this file was rejected")
+
+
+class BatchSubmitResponse(BaseModel):
+    """Response for POST /api/v1/resume/batch"""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "batch_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
+                "total": 148,
+                "skipped": 2,
+                "skipped_files": [
+                    {"filename": "notes.txt", "reason": "Unsupported file extension '.txt'"},
+                ],
+                "job_ids": ["01J3K5M2...", "01J3K5M3..."],
+                "status": "processing",
+                "poll_url": "/api/v1/resume/batch/01J3K5M2N4P6Q8R0S2T4U6V8W0",
+            }
+        }
+    )
+
+    batch_id:       str               = Field(..., description="Batch identifier")
+    total:          int               = Field(..., description="Number of files accepted for processing")
+    skipped:        int               = Field(..., description="Number of files rejected at upload time")
+    skipped_files:  list[BatchSkipped] = Field(default_factory=list, description="Details of rejected files")
+    job_ids:        list[str]         = Field(..., description="Job IDs for accepted files, in submission order")
+    status:         str               = Field(..., description="Always 'processing' — results arrive via webhook or polling")
+    poll_url:       str               = Field(..., description="URL to poll for overall batch status")
+
+
+class BatchStatusResponse(BaseModel):
+    """Response for GET /api/v1/resume/batch/{batch_id}"""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "batch_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
+                "status": "partial",
+                "total": 150,
+                "completed": 145,
+                "failed": 5,
+                "processing": 0,
+                "created_at": "2026-06-01T10:00:00+00:00",
+                "completed_at": "2026-06-01T10:08:42+00:00",
+            }
+        }
+    )
+
+    batch_id:       str           = Field(..., description="Batch identifier")
+    status:         str           = Field(..., description="processing | completed | partial | failed")
+    total:          int           = Field(..., description="Total files in batch")
+    completed:      int           = Field(..., description="Successfully parsed files")
+    failed:         int           = Field(..., description="Files that failed parsing")
+    processing:     int           = Field(..., description="Files still in progress (total - completed - failed)")
+    created_at:     str           = Field(..., description="ISO 8601 timestamp when batch was submitted")
+    completed_at:   Optional[str] = Field(None, description="ISO 8601 timestamp when all files finished")

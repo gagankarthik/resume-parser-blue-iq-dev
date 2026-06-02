@@ -1,0 +1,48 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint-and-test:
+    name: Lint + Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Tesseract
+        run: sudo apt-get install -y tesseract-ocr
+
+      - name: Install dependencies
+        run: |
+          pip install poetry==1.8.4
+          poetry config virtualenvs.create false
+          poetry install
+
+      - name: Ruff lint
+        run: poetry run ruff check app/ tests/
+
+      - name: Mypy
+        run: poetry run mypy app/ --ignore-missing-imports
+
+      - name: Unit tests with coverage
+        run: |
+          poetry run pytest tests/unit/ -v \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-fail-under=70
+        env:
+          AWS_ACCESS_KEY_ID:     test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_REGION:            us-east-1
+          OPENAI_API_KEY:        sk-test-key

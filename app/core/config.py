@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     dynamodb_table_api_keys: str = "resume-parser-api-keys"
     dynamodb_table_rate_limits: str = "resume-parser-rate-limits"
     dynamodb_table_jobs: str = "resume-parser-jobs"
+    dynamodb_table_batches: str = "resume-parser-batches"
     dynamodb_table_webhooks: str = "resume-parser-webhooks"
     dynamodb_table_audit_logs: str = "resume-parser-audit-logs"
 
@@ -45,6 +46,12 @@ class Settings(BaseSettings):
     # Webhooks
     webhook_timeout_seconds: int = 10
     webhook_max_retries: int = 3
+
+    # Batch processing
+    max_batch_size: int = 200           # maximum files per batch request
+    max_concurrent_jobs: int = 5        # concurrent pipeline runs (local dev semaphore)
+    max_retry_count: int = 3            # maximum retry attempts per job
+                                        # on Lambda, control via reserved concurrency
 
     # Lambda (async worker)
     # Set to the Lambda function name in production; leave empty to use BackgroundTasks in dev
