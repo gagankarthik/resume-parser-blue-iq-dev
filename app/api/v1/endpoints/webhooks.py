@@ -11,7 +11,7 @@ Webhooks are scoped to the company derived from the API key.
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
-from python_ulid import ULID
+from ulid import ULID
 
 from app.api.dependencies import enforce_rate_limit
 from app.core.config import get_settings

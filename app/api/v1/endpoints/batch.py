@@ -16,7 +16,7 @@ import json
 
 import boto3
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
-from python_ulid import ULID
+from ulid import ULID
 
 from app.api.dependencies import enforce_rate_limit
 from app.core.config import get_settings
