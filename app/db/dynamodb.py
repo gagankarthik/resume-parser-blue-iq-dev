@@ -16,6 +16,7 @@ from functools import lru_cache
 from typing import Any
 
 import boto3
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 from app.core.config import get_settings
@@ -186,7 +187,7 @@ def list_webhooks(company_id: str) -> list[dict]:
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_webhooks)
     resp = table.query(
-        KeyConditionExpression=boto3.dynamodb.conditions.Key("company_id").eq(company_id)
+        KeyConditionExpression=Key("company_id").eq(company_id)
     )
     return resp.get("Items", [])
 

@@ -62,7 +62,7 @@ def _sanitize_str(v: str | None) -> str | None:
     return v if v else None
 
 
-def _coerce_list(v) -> list:  # type: ignore[no-untyped-def]
+def _coerce_list(v) -> list:
     """Ensure list fields are always lists — guards against LLM returning null."""
     if v is None:
         return []

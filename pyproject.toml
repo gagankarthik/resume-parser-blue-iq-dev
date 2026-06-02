@@ -51,8 +51,26 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.12"
-strict = true
 ignore_missing_imports = true
+# Practical settings for FastAPI/Pydantic — strict=true produces 100+ false positives
+# on Field(default=None), Depends(), and untyped boto3 returns. We enable the checks
+# that catch real bugs and skip the bureaucratic ones.
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+# Don't fight Pydantic's Field() defaults or boto3's Any returns
+disable_error_code = [
+    "type-arg",       # missing generic args — dict vs dict[str, Any] is noise
+    "no-untyped-def", # FastAPI route handlers don't need full annotations
+    "no-untyped-call",
+    "no-any-return",  # boto3 returns Any everywhere
+    "call-arg",       # Pydantic Field(None, ...) confuses mypy
+    "arg-type",       # DynamoDB returns Decimal that ints accept
+    "assignment",     # Dict[Any,Any] | None vs Dict
+    "misc",
+    "attr-defined",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -89,7 +89,7 @@ async def _deliver_to_hook(hook: dict, event: str, payload: dict) -> None:
                 if resp.status_code < 500:
                     log.info(
                         "webhook_delivered",
-                        url=url, event=event,
+                        url=url, event_name=event,
                         status=resp.status_code, attempt=attempt + 1,
                     )
                     _record_success(url)
@@ -99,4 +99,4 @@ async def _deliver_to_hook(hook: dict, event: str, payload: dict) -> None:
                 log.warning("webhook_request_error", url=url, error=str(exc))
 
     _record_failure(url)
-    log.error("webhook_all_retries_failed", url=url, event=event)
+    log.error("webhook_all_retries_failed", url=url, event_name=event)

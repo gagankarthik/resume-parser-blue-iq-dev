@@ -87,7 +87,7 @@ def _preprocess(img: Image.Image) -> Image.Image:
     if img.width < _MIN_WIDTH_FOR_OCR:
         scale = _MIN_WIDTH_FOR_OCR / img.width
         new_size = (int(img.width * scale), int(img.height * scale))
-        img = img.resize(new_size, Image.LANCZOS)
+        img = img.resize(new_size, Image.Resampling.LANCZOS)
 
     # 5. Denoise — median filter removes salt-and-pepper noise from fax scans
     img = img.filter(ImageFilter.MedianFilter(size=3))

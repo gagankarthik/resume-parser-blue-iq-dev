@@ -146,9 +146,9 @@ async def _safe_deliver(company_id: str, event: str, payload: dict) -> None:
             timeout=_WEBHOOK_TIMEOUT,
         )
     except TimeoutError:
-        log.warning("webhook_delivery_timeout", event=event, company_id=company_id)
+        log.warning("webhook_delivery_timeout", event_name=event, company_id=company_id)
     except Exception as exc:
-        log.warning("webhook_delivery_error", event=event, error=str(exc))
+        log.warning("webhook_delivery_error", event_name=event, error=str(exc))
 
 
 def _s3_delete(s3_key: str) -> None:

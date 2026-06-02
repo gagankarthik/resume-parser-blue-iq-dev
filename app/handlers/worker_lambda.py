@@ -16,18 +16,18 @@ Expected event payload:
 """
 
 import asyncio
-import logging
+from typing import Any
 
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, get_logger
 from app.workers.background import process_resume_async
 
 configure_logging()
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 _REQUIRED_FIELDS = {"job_id", "company_id", "s3_key", "filename", "file_size_bytes"}
 
 
-def handler(event: dict, context) -> dict:
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Lambda handler for async resume OCR processing.
     Returns {"status": "ok"} on success, {"status": "error", "message": ...} on failure.

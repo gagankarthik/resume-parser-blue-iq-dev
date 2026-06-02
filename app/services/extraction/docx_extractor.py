@@ -34,11 +34,11 @@ def extract(content: bytes) -> str:
         raise ExtractionError(f"DOCX extraction failed: {exc}") from exc
 
 
-def _para_text(para_element) -> str:  # type: ignore[no-untyped-def]
+def _para_text(para_element) -> str:
     return "".join(r.text for r in para_element.iter(qn("w:t")))
 
 
-def _table_text(tbl_element) -> str:  # type: ignore[no-untyped-def]
+def _table_text(tbl_element) -> str:
     rows: list[str] = []
     for row in tbl_element.iter(qn("w:tr")):
         cells = [
