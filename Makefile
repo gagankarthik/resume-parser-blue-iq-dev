@@ -33,6 +33,17 @@ lint:
 lint-fix:
 	poetry run ruff check --fix app/ tests/
 
+# Run this before every commit — auto-fixes all lint issues
+precommit:
+	poetry run ruff check --fix app/ tests/
+	poetry run mypy app/ --ignore-missing-imports
+
+# Install the pre-commit hook (one-time)
+hooks-install:
+	pip install pre-commit
+	pre-commit install
+	@echo "Pre-commit hook installed. Lint will now auto-fix on every commit."
+
 typecheck:
 	poetry run mypy app/
 

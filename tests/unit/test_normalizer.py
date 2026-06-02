@@ -9,7 +9,6 @@ test_healthcare_normalizer.py for that coverage.
 
 from app.services.normalization.normalizer import _normalize_date, _normalize_skills
 
-
 # ── Date normalization ────────────────────────────────────────────────────────
 
 def test_date_iso_passthrough():
