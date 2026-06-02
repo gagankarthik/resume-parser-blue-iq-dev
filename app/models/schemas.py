@@ -216,7 +216,7 @@ class EducationItem(BaseModel):
     @field_validator("start_year", "graduation_year", mode="before")
     @classmethod
     def sanitize_year(cls, v: object) -> int | None:
-        if isinstance(v, (int, float)):
+        if isinstance(v, int | float):
             return _sanitize_year(int(v))
         if isinstance(v, str) and v.strip().isdigit():
             return _sanitize_year(int(v.strip()))
