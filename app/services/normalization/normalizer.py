@@ -10,13 +10,13 @@ Covers:
 """
 
 import re
-from app.models.schemas import ParsedResumeAI, ExperienceItem, EducationItem
+
+from app.models.schemas import EducationItem, ExperienceItem, ParsedResumeAI
 from app.services.normalization.healthcare_taxonomy import (
-    SPECIALTY_ABBREVIATIONS,
-    PROFESSION_ABBREVIATIONS,
     ALL_SPECIALTIES,
+    PROFESSION_ABBREVIATIONS,
+    SPECIALTY_ABBREVIATIONS,
     normalize_specialty,
-    expand_profession,
 )
 
 # ── Degree aliases ────────────────────────────────────────────────────────────

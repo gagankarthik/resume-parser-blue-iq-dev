@@ -5,7 +5,6 @@ Files are uploaded for processing and deleted immediately after.
 We never retain raw resume files.
 """
 
-import io
 from typing import Any
 
 import boto3

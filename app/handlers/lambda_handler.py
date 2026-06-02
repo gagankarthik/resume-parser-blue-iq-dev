@@ -17,7 +17,8 @@ from app.core.logging import configure_logging
 configure_logging()
 
 from mangum import Mangum  # noqa: E402
-from app.main import app   # noqa: E402
+
+from app.main import app  # noqa: E402
 
 # lifespan="off" — Lambda has no persistent process, skip startup/shutdown events
 handler = Mangum(app, lifespan="off")

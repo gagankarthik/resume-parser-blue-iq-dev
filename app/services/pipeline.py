@@ -17,19 +17,17 @@ Nothing is stored — raw content is never written to disk or database.
 
 import asyncio
 import re
+import time
 from dataclasses import dataclass
 
-from app.core.exceptions import ExtractionError, AIParsingError
-from app.core.errors import ErrorCode
+from app.core.exceptions import AIParsingError, ExtractionError
 from app.core.logging import get_logger
 from app.models.schemas import ConfidenceScores, ParsedResumeAI
-from app.services.extraction import classifier, pdf_extractor, docx_extractor, ocr_extractor
+from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
 from app.services.normalization.normalizer import normalize
 from app.services.parsing import ai_parser, rule_parser, section_detector
 from app.services.scoring.confidence_scorer import score
-
-import time
 
 log = get_logger(__name__)
 
@@ -87,7 +85,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
             )
             raw_text, ocr_used = result
 
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         timeout = _TIMEOUT_OCR if strategy == ExtractionStrategy.OCR else _TIMEOUT_EXTRACTION
         raise ExtractionError(
             f"Text extraction timed out after {timeout}s"
@@ -108,7 +106,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
             ai_parser.parse(sections, anchors),
             timeout=_TIMEOUT_AI_PARSE,
         )
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise AIParsingError(
             f"AI parsing timed out after {_TIMEOUT_AI_PARSE}s"
         ) from exc

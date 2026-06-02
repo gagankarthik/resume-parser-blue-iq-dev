@@ -3,6 +3,7 @@ Auth rejection tests — no DynamoDB needed (key is rejected before lookup).
 """
 
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 client = TestClient(app)

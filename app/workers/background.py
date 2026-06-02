@@ -18,7 +18,8 @@ from botocore.exceptions import ClientError
 
 from app.core.logging import get_logger
 from app.db import dynamodb as db
-from app.services.pipeline import PipelineInput, PipelineResult, run as run_pipeline
+from app.services.pipeline import PipelineInput, PipelineResult
+from app.services.pipeline import run as run_pipeline
 from app.storage import s3_client
 from app.workers.webhook_sender import deliver_event
 
@@ -144,7 +145,7 @@ async def _safe_deliver(company_id: str, event: str, payload: dict) -> None:
             deliver_event(company_id, event, payload),
             timeout=_WEBHOOK_TIMEOUT,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         log.warning("webhook_delivery_timeout", event=event, company_id=company_id)
     except Exception as exc:
         log.warning("webhook_delivery_error", event=event, error=str(exc))

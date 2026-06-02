@@ -8,7 +8,7 @@ DELETE /webhooks/{id} — remove a webhook
 Webhooks are scoped to the company derived from the API key.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from python_ulid import ULID
@@ -59,7 +59,7 @@ async def create_webhook(
         events=payload.events,
         hmac_secret=secret,
         status="active",
-        created_at=datetime.now(timezone.utc).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
     )
 
 

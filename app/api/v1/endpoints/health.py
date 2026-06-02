@@ -12,7 +12,6 @@ import time
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
 from fastapi import APIRouter
 
 from app.core.config import get_settings

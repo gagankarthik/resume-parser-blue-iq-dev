@@ -20,6 +20,7 @@ Response envelope (serialised by app/main.py):
 """
 
 from enum import StrEnum
+
 from fastapi import HTTPException
 
 

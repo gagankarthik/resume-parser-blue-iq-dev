@@ -13,8 +13,8 @@ from typing import Any
 
 import boto3
 import pytesseract
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 from pdf2image import convert_from_bytes
+from PIL import Image, ImageEnhance, ImageFilter
 
 from app.core.config import get_settings
 from app.core.exceptions import OCRError

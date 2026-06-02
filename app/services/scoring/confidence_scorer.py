@@ -8,7 +8,8 @@ Score range: 0.0 – 1.0
 """
 
 import re
-from app.models.schemas import ParsedResumeAI, ConfidenceScores
+
+from app.models.schemas import ConfidenceScores, ParsedResumeAI
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PHONE_RE = re.compile(r"[\d]{7,}")

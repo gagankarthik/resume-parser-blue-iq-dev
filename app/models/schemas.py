@@ -12,10 +12,8 @@ Design principles:
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
 
 # ── Shared validators ─────────────────────────────────────────────────────────
 
@@ -91,14 +89,14 @@ class PersonalInfo(BaseModel):
         }
     )
 
-    full_name:      Optional[str] = Field(None, description="Full name of the candidate, including credentials if listed (e.g. 'Jane Smith, RN')")
-    email:          Optional[str] = Field(None, description="Primary email address")
-    phone:          Optional[str] = Field(None, description="Primary phone number in original format")
-    location:       Optional[str] = Field(None, description="City, state and/or country")
-    linkedin_url:   Optional[str] = Field(None, description="LinkedIn profile URL")
-    github_url:     Optional[str] = Field(None, description="GitHub profile URL")
-    portfolio_url:  Optional[str] = Field(None, description="Personal website or portfolio URL")
-    summary:        Optional[str] = Field(None, description="Professional summary or objective statement")
+    full_name:      str | None = Field(None, description="Full name of the candidate, including credentials if listed (e.g. 'Jane Smith, RN')")
+    email:          str | None = Field(None, description="Primary email address")
+    phone:          str | None = Field(None, description="Primary phone number in original format")
+    location:       str | None = Field(None, description="City, state and/or country")
+    linkedin_url:   str | None = Field(None, description="LinkedIn profile URL")
+    github_url:     str | None = Field(None, description="GitHub profile URL")
+    portfolio_url:  str | None = Field(None, description="Personal website or portfolio URL")
+    summary:        str | None = Field(None, description="Professional summary or objective statement")
 
     @field_validator("full_name", "location", "summary", mode="before")
     @classmethod
@@ -145,11 +143,11 @@ class ExperienceItem(BaseModel):
 
     company:       str           = Field(..., description="Employer or facility name")
     role:          str           = Field(..., description="Job title or role, including credential if present (e.g. 'RN - MICU')")
-    start_date:    Optional[str] = Field(None, description="Start date in YYYY-MM format")
-    end_date:      Optional[str] = Field(None, description="End date in YYYY-MM format, or 'Present' for current role")
+    start_date:    str | None = Field(None, description="Start date in YYYY-MM format")
+    end_date:      str | None = Field(None, description="End date in YYYY-MM format, or 'Present' for current role")
     is_current:    bool          = Field(False, description="True if this is the candidate's current position")
-    location:      Optional[str] = Field(None, description="City and state of the workplace")
-    description:   Optional[str] = Field(None, description="Role description and responsibilities")
+    location:      str | None = Field(None, description="City and state of the workplace")
+    description:   str | None = Field(None, description="Role description and responsibilities")
     achievements:  list[str]     = Field(default_factory=list, description="Notable accomplishments in this role")
 
     @field_validator("company", "role", mode="before")
@@ -176,7 +174,7 @@ class ExperienceItem(BaseModel):
         return [i for i in items if isinstance(i, str) and i.strip()]
 
     @model_validator(mode="after")
-    def sync_is_current(self) -> "ExperienceItem":
+    def sync_is_current(self) -> ExperienceItem:
         if self.end_date and self.end_date.lower() == "present":
             self.is_current = True
         return self
@@ -197,11 +195,11 @@ class EducationItem(BaseModel):
     )
 
     institution:      str           = Field(..., description="Name of the school or university")
-    degree:           Optional[str] = Field(None, description="Degree earned (e.g. 'Bachelor of Science in Nursing')")
-    field_of_study:   Optional[str] = Field(None, description="Major or field of study")
-    start_year:       Optional[int] = Field(None, description="Year started (1900–2035)", ge=1900, le=2035)
-    graduation_year:  Optional[int] = Field(None, description="Graduation year (1900–2035)", ge=1900, le=2035)
-    gpa:              Optional[str] = Field(None, description="GPA if stated")
+    degree:           str | None = Field(None, description="Degree earned (e.g. 'Bachelor of Science in Nursing')")
+    field_of_study:   str | None = Field(None, description="Major or field of study")
+    start_year:       int | None = Field(None, description="Year started (1900–2035)", ge=1900, le=2035)
+    graduation_year:  int | None = Field(None, description="Graduation year (1900–2035)", ge=1900, le=2035)
+    gpa:              str | None = Field(None, description="GPA if stated")
 
     @field_validator("institution", mode="before")
     @classmethod
@@ -239,10 +237,10 @@ class CertificationItem(BaseModel):
     )
 
     name:           str           = Field(..., description="Certification name (e.g. 'ACLS', 'BLS', 'CCRN')")
-    issuer:         Optional[str] = Field(None, description="Issuing organisation")
-    issued_date:    Optional[str] = Field(None, description="Issue date in YYYY-MM format")
-    expiry_date:    Optional[str] = Field(None, description="Expiry date in YYYY-MM format")
-    credential_id:  Optional[str] = Field(None, description="Credential ID or certificate number")
+    issuer:         str | None = Field(None, description="Issuing organisation")
+    issued_date:    str | None = Field(None, description="Issue date in YYYY-MM format")
+    expiry_date:    str | None = Field(None, description="Expiry date in YYYY-MM format")
+    credential_id:  str | None = Field(None, description="Credential ID or certificate number")
 
     @field_validator("name", mode="before")
     @classmethod
@@ -264,9 +262,9 @@ class CertificationItem(BaseModel):
 
 class ProjectItem(BaseModel):
     name:          str           = Field(..., description="Project name")
-    description:   Optional[str] = Field(None, description="Brief description of the project")
+    description:   str | None = Field(None, description="Brief description of the project")
     technologies:  list[str]     = Field(default_factory=list, description="Technologies used")
-    url:           Optional[str] = Field(None, description="Project URL")
+    url:           str | None = Field(None, description="Project URL")
 
     @field_validator("name", mode="before")
     @classmethod
@@ -388,9 +386,9 @@ class ParseResponse(BaseModel):
 
     job_id:      str                        = Field(..., description="Unique job identifier (ULID)")
     status:      str                        = Field(..., description="'completed' for sync jobs, 'processing' for async (OCR) jobs")
-    data:        Optional[ParsedResumeAI]   = Field(None, description="Parsed resume data — present when status is 'completed'")
-    confidence:  Optional[ConfidenceScores] = Field(None, description="Per-section confidence scores — present when status is 'completed'")
-    poll_url:    Optional[str]              = Field(None, description="Polling URL — present when status is 'processing'")
+    data:        ParsedResumeAI | None   = Field(None, description="Parsed resume data — present when status is 'completed'")
+    confidence:  ConfidenceScores | None = Field(None, description="Per-section confidence scores — present when status is 'completed'")
+    poll_url:    str | None              = Field(None, description="Polling URL — present when status is 'processing'")
 
 
 class JobStatusResponse(BaseModel):
@@ -410,9 +408,9 @@ class JobStatusResponse(BaseModel):
 
     job_id:      str                        = Field(..., description="Job identifier")
     status:      str                        = Field(..., description="pending | processing | completed | failed")
-    data:        Optional[ParsedResumeAI]   = Field(None, description="Parsed data — set when status is 'completed'")
-    confidence:  Optional[ConfidenceScores] = Field(None, description="Confidence scores — set when status is 'completed'")
-    error:       Optional[str]              = Field(None, description="Error description — set when status is 'failed'")
+    data:        ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is 'completed'")
+    confidence:  ConfidenceScores | None = Field(None, description="Confidence scores — set when status is 'completed'")
+    error:       str | None              = Field(None, description="Error description — set when status is 'failed'")
 
 
 class WebhookCreateRequest(BaseModel):
@@ -456,7 +454,7 @@ class WebhookResponse(BaseModel):
     webhook_id:   str           = Field(..., description="Webhook identifier")
     url:          str           = Field(..., description="Delivery URL")
     events:       list[str]     = Field(..., description="Subscribed events")
-    hmac_secret:  Optional[str] = Field(None, description="HMAC signing secret — only returned on creation")
+    hmac_secret:  str | None = Field(None, description="HMAC signing secret — only returned on creation")
     status:       str           = Field(..., description="active | disabled")
     created_at:   str           = Field(..., description="ISO 8601 creation timestamp")
 
@@ -489,8 +487,8 @@ class HealthResponse(BaseModel):
     status:        str            = Field(..., description="'ok' or 'degraded'")
     version:       str            = Field(..., description="API version")
     environment:   str            = Field(..., description="development | production")
-    latency_ms:    Optional[int]  = Field(None, description="Dependency probe round-trip time in ms")
-    dependencies:  Optional[dict] = Field(None, description="Per-dependency status: ok | unreachable")
+    latency_ms:    int | None  = Field(None, description="Dependency probe round-trip time in ms")
+    dependencies:  dict | None = Field(None, description="Per-dependency status: ok | unreachable")
 
 
 class RetryResponse(BaseModel):
@@ -514,9 +512,9 @@ class RetryResponse(BaseModel):
     original_job_id: str                        = Field(..., description="The job ID that was retried")
     retry_count:     int                        = Field(..., description="How many times this job has been retried (1 = first retry)")
     status:          str                        = Field(..., description="completed | processing")
-    data:            Optional[ParsedResumeAI]   = Field(None, description="Parsed data — set when status is completed")
-    confidence:      Optional[ConfidenceScores] = Field(None, description="Confidence scores — set when status is completed")
-    poll_url:        Optional[str]              = Field(None, description="Polling URL — set for async retries")
+    data:            ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is completed")
+    confidence:      ConfidenceScores | None = Field(None, description="Confidence scores — set when status is completed")
+    poll_url:        str | None              = Field(None, description="Polling URL — set for async retries")
 
 
 # ── Batch schemas ─────────────────────────────────────────────────────────────
@@ -579,4 +577,4 @@ class BatchStatusResponse(BaseModel):
     failed:         int           = Field(..., description="Files that failed parsing")
     processing:     int           = Field(..., description="Files still in progress (total - completed - failed)")
     created_at:     str           = Field(..., description="ISO 8601 timestamp when batch was submitted")
-    completed_at:   Optional[str] = Field(None, description="ISO 8601 timestamp when all files finished")
+    completed_at:   str | None = Field(None, description="ISO 8601 timestamp when all files finished")

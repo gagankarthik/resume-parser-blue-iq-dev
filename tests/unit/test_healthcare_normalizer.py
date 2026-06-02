@@ -3,9 +3,8 @@ Tests for healthcare taxonomy normalization.
 Covers specialty abbreviation expansion, profession credentials, and role title expansion.
 """
 
-from app.services.normalization.normalizer import _normalize_skills, _expand_role_credentials
-from app.services.normalization.healthcare_taxonomy import normalize_specialty, expand_profession
-
+from app.services.normalization.healthcare_taxonomy import expand_profession
+from app.services.normalization.normalizer import _expand_role_credentials, _normalize_skills
 
 # ── Specialty abbreviation expansion ──────────────────────────────────────────
 

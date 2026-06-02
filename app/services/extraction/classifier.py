@@ -17,7 +17,6 @@ from enum import Enum
 
 import fitz  # PyMuPDF
 
-from app.core.exceptions import UnsupportedFileTypeError
 from app.core.file_validator import validate_file
 
 # Minimum extractable text chars to classify a PDF as digital (not scanned)

@@ -48,7 +48,7 @@ def _invoke_worker_lambda(settings, payload: dict) -> None:
     status_code=202,
     summary="Batch parse resumes",
     description=(
-        f"Upload up to `MAX_BATCH_SIZE` resume files in one request. "
+        "Upload up to `MAX_BATCH_SIZE` resume files in one request. "
         "Each file is validated immediately; invalid files are listed in `skipped_files`. "
         "Valid files are queued for async processing and results are delivered "
         "per-file via the `parse.completed` webhook and the single-job polling endpoint. "

@@ -1,6 +1,7 @@
 import pytest
-from app.services.extraction.classifier import ExtractionStrategy, classify
+
 from app.core.exceptions import UnsupportedFileTypeError
+from app.services.extraction.classifier import ExtractionStrategy, classify
 
 
 def test_docx_classified_as_docx():

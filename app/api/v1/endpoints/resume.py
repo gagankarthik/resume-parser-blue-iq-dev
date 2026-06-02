@@ -34,8 +34,9 @@ from app.models.schemas import (
     ParseResponse,
     RetryResponse,
 )
-from app.services.extraction.classifier import ExtractionStrategy, classify
-from app.services.pipeline import PipelineInput, run as run_pipeline
+from app.services.extraction.classifier import classify
+from app.services.pipeline import PipelineInput
+from app.services.pipeline import run as run_pipeline
 from app.storage import s3_client
 from app.workers.background import process_resume_async
 
@@ -189,7 +190,7 @@ async def get_job_status(
         "Re-parse a resume when the original result was unsatisfactory. "
         "Re-upload the same file — the parser will re-run the full extraction "
         "and AI pipeline. A new `job_id` is created and linked to the original. "
-        f"Maximum retries per job: `MAX_RETRY_COUNT` (default 3). "
+        "Maximum retries per job: `MAX_RETRY_COUNT` (default 3). "
         "Retries count against your rate limit."
     ),
     tags=["Resume"],

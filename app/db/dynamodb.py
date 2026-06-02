@@ -11,12 +11,11 @@ Tables:
 """
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 
 import boto3
-from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 from app.core.config import get_settings
@@ -65,7 +64,7 @@ def create_api_key(
             "status": "active",
             "rate_limit_per_minute": rate_limit_per_minute,
             "rate_limit_per_day": rate_limit_per_day,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
     )
 
@@ -96,7 +95,7 @@ def create_job(
         "job_id": job_id,
         "company_id": company_id,
         "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "ttl": int(time.time()) + settings.job_result_ttl_seconds,
         "retry_count": retry_count,
     }
@@ -116,7 +115,7 @@ def update_job_processing(job_id: str) -> None:
         ExpressionAttributeNames={"#s": "status"},
         ExpressionAttributeValues={
             ":s": "processing",
-            ":t": datetime.now(timezone.utc).isoformat(),
+            ":t": datetime.now(UTC).isoformat(),
         },
     )
 
@@ -130,7 +129,7 @@ def update_job_completed(job_id: str, result: dict) -> None:
         ExpressionAttributeNames={"#s": "status", "#r": "result"},
         ExpressionAttributeValues={
             ":s": "completed",
-            ":t": datetime.now(timezone.utc).isoformat(),
+            ":t": datetime.now(UTC).isoformat(),
             ":r": result,
         },
     )
@@ -145,7 +144,7 @@ def update_job_failed(job_id: str, error: str, error_code: str) -> None:
         ExpressionAttributeNames={"#s": "status", "#e": "error"},
         ExpressionAttributeValues={
             ":s": "failed",
-            ":t": datetime.now(timezone.utc).isoformat(),
+            ":t": datetime.now(UTC).isoformat(),
             ":e": error,
             ":ec": error_code,
         },
@@ -178,7 +177,7 @@ def create_webhook(
             "hmac_secret": hmac_secret,
             "events": events,
             "status": "active",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
     )
 
@@ -234,7 +233,7 @@ def write_audit_log(
         table.put_item(
             Item={
                 "job_id": job_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "company_id": company_id,
                 "file_type": file_type,
                 "file_size_bytes": file_size_bytes,
@@ -273,7 +272,7 @@ def create_batch(
             "completed": 0,
             "failed": 0,
             "status": "processing",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             # 24-hour TTL — batches don't need to live as long as job results
             "ttl": int(time.time()) + 86400,
         }
@@ -322,7 +321,7 @@ def increment_batch_counter(batch_id: str, field: str) -> bool:
                 ExpressionAttributeNames={"#s": "status"},
                 ExpressionAttributeValues={
                     ":s": final_status,
-                    ":t": datetime.now(timezone.utc).isoformat(),
+                    ":t": datetime.now(UTC).isoformat(),
                 },
             )
             return True  # batch is finished

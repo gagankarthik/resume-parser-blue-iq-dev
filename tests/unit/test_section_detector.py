@@ -1,6 +1,5 @@
 from app.services.parsing.section_detector import detect
 
-
 SAMPLE_RESUME = """
 John Doe
 john@example.com

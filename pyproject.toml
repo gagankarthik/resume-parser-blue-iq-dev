@@ -37,10 +37,17 @@ boto3-stubs = { extras = ["dynamodb", "s3", "textract"], version = "^1.35.0" }
 
 [tool.ruff]
 target-version = "py312"
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+ignore = [
+    "E501",   # line too long — long prompt strings and Field descriptions are intentional
+    "UP042",  # StrEnum from typing — we use enum.StrEnum which IS the preferred Py3.11+ form
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["E402"]   # tests sometimes need module-level setup before imports
 
 [tool.mypy]
 python_version = "3.12"

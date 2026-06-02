@@ -15,7 +15,7 @@ DynamoDB TTL auto-expires counters; no manual cleanup.
 """
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import boto3
@@ -28,7 +28,7 @@ log = get_logger(__name__)
 
 
 def _window_keys(key_hash: str) -> tuple[str, str, int, int]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     min_key = f"{key_hash}#min#{now.strftime('%Y-%m-%dT%H:%M')}"
     day_key = f"{key_hash}#day#{now.strftime('%Y-%m-%d')}"
     ttl_min = int(time.time()) + 120

@@ -1,4 +1,4 @@
-from app.models.schemas import ParsedResumeAI, PersonalInfo, ExperienceItem
+from app.models.schemas import ExperienceItem, ParsedResumeAI, PersonalInfo
 from app.services.scoring.confidence_scorer import score
 
 
