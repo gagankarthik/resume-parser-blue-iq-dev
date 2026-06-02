@@ -19,7 +19,7 @@ RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9 \
         > /etc/yum.repos.d/epel.repo
 
 # 3. Install tesseract and poppler (skip langpack — download tessdata directly below)
-RUN dnf install -y --allowerasing \
+RUN dnf install -y \
         tesseract \
         poppler-utils \
     && dnf clean all
