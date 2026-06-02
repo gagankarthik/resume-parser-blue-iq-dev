@@ -18,13 +18,18 @@ RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9 \
     && printf '[epel]\nname=EPEL 9\nmetalink=https://mirrors.fedoraproject.org/metalink?repo=epel-9&arch=x86_64\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9\n' \
         > /etc/yum.repos.d/epel.repo
 
-# 3. Install packages (leptonica listed explicitly to pull matching version from EPEL9)
+# 3. Install tesseract and poppler (skip langpack — download tessdata directly below)
 RUN dnf install -y --allowerasing \
-        leptonica \
         tesseract \
-        tesseract-langpack-eng \
         poppler-utils \
     && dnf clean all
+
+# 4. Download English tessdata directly (avoids tesseract-langpack-eng dependency conflicts)
+ENV TESSDATA_PREFIX=/usr/share/tessdata
+RUN mkdir -p /usr/share/tessdata \
+    && curl -fsSL \
+        https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata \
+        -o /usr/share/tessdata/eng.traineddata
 
 # Copy and install dependencies
 COPY pyproject.toml poetry.lock* ./
