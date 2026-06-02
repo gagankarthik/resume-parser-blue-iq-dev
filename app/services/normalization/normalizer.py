@@ -121,14 +121,22 @@ def _normalize_experience(exp: ExperienceItem) -> None:
 def _expand_role_credentials(role: str) -> str:
     """
     Expand credential abbreviations found at the start of role titles.
-    e.g. "RN - ICU" → "Registered Nurse - Intensive Care Unit"
-         "CRT NICU"  → "Certified Respiratory Therapist – NICU"
+    e.g. "RN - ICU"  → "Registered Nurse - Intensive Care Unit"
+         "CRT NICU"  → "Certified Respiratory Therapist – Neonatal Intensive Care Unit"
+         "RN MICU"   → "Registered Nurse – Medical Intensive Care Unit"
     Leaves roles that don't start with a known abbreviation untouched.
     """
-    # Split on common separators: " - ", " – ", ", ", " / "
+    # First try delimiter-based split: " - ", " – ", "/", ","
     parts = re.split(r"\s*[-–/,]\s*", role, maxsplit=1)
     credential = parts[0].strip()
     suffix = parts[1].strip() if len(parts) > 1 else ""
+
+    # If no delimiter found, fall back to whitespace split when first token
+    # is a recognised credential (e.g. "CRT NICU", "RN MICU")
+    if not suffix and " " in credential:
+        first, _, rest = credential.partition(" ")
+        if first.lower() in PROFESSION_ABBREVIATIONS:
+            credential, suffix = first, rest.strip()
 
     expanded_credential = PROFESSION_ABBREVIATIONS.get(credential.lower(), credential)
     expanded_suffix = normalize_specialty(suffix) if suffix else ""
