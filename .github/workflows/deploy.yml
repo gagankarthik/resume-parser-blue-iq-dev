@@ -84,6 +84,14 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr create-repository \
+            --repository-name ${{ env.ECR_REPO_NAME }} \
+            --region ${{ env.AWS_REGION }} \
+            --image-scanning-configuration scanOnPush=true \
+            --image-tag-mutability MUTABLE 2>/dev/null || true
+
       - name: Set image metadata
         id: image
         run: |
