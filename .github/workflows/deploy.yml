@@ -146,6 +146,18 @@ jobs:
             --function-name resume-parser-production-api \
             --region ${{ env.AWS_REGION }}
 
+      - name: Check if API Lambda update succeeded
+        run: |
+          if [ $? -ne 0 ]; then
+            echo "Update failed, but function might already have this image"
+            # Try with --publish flag as fallback
+            aws lambda update-function-code \
+              --function-name resume-parser-production-api \
+              --image-uri ${{ needs.build-and-push.outputs.image_uri }} \
+              --region ${{ env.AWS_REGION }} \
+              --publish
+          fi
+
       - name: Update Worker Lambda image
         run: |
           aws lambda update-function-code \
