@@ -215,16 +215,53 @@ jobs:
           # Retry briefly — URL/permission changes can take a few seconds to propagate.
           STATUS=000
           for i in 1 2 3 4 5; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${API_URL}api/v1/health")
+            STATUS=$(curl -s -o body.txt -w "%{http_code}" "${API_URL}api/v1/health")
             [ "$STATUS" = "200" ] && break
             echo "Attempt $i: HTTP $STATUS — retrying in 5s"
             sleep 5
           done
           if [ "$STATUS" != "200" ]; then
             echo "Health check failed: HTTP $STATUS"
+            echo "--- response body ---"
+            cat body.txt || true
+            echo ""
             exit 1
           fi
           echo "Health check passed: HTTP $STATUS"
+
+      - name: Diagnose on failure — dump Lambda logs + config
+        if: failure()
+        run: |
+          FN=resume-parser-production-api
+          echo "::group::Lambda configuration"
+          aws lambda get-function-configuration \
+            --function-name "$FN" --region ${{ env.AWS_REGION }} \
+            --query '{Handler:Handler,ImageConfig:ImageConfigResponse,State:State,LastUpdateStatus:LastUpdateStatus,LastUpdateStatusReason:LastUpdateStatusReason}' \
+            || true
+          echo "::endgroup::"
+
+          echo "::group::Recent CloudWatch logs (last 15m)"
+          # The cold-start traceback behind a 502 lands here (Runtime.ImportModuleError, etc.)
+          aws logs tail "/aws/lambda/$FN" \
+            --since 15m --format short --region ${{ env.AWS_REGION }} \
+            || echo "No log group access / no recent events"
+          echo "::endgroup::"
+
+          echo "::group::Direct invoke (captures init/import errors in the payload)"
+          # Minimal API Gateway HTTP-API v2.0 event for GET /api/v1/health.
+          # Only needs lambda:InvokeFunction. On an import error the response
+          # payload contains errorMessage + stackTrace.
+          printf '%s' '{"version":"2.0","routeKey":"$default","rawPath":"/api/v1/health","rawQueryString":"","headers":{"host":"diag.local"},"requestContext":{"http":{"method":"GET","path":"/api/v1/health","protocol":"HTTP/1.1","sourceIp":"127.0.0.1"}},"isBase64Encoded":false}' > event.json
+          aws lambda invoke \
+            --function-name "$FN" \
+            --payload fileb://event.json \
+            --region ${{ env.AWS_REGION }} \
+            invoke-response.json \
+            || echo "invoke call failed"
+          echo "--- invoke response payload ---"
+          cat invoke-response.json || true
+          echo ""
+          echo "::endgroup::"
 
       - name: Get API URL
         id: get-url
