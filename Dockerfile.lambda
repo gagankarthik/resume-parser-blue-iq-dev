@@ -6,25 +6,22 @@
 FROM public.ecr.aws/lambda/python:3.12
 
 # Tesseract OCR + Poppler (pdf2image)
-# Split into separate steps so CI logs show exactly which step fails.
-# tesseract is not in AL2023 default repos — pull from EPEL9.
+# tesseract is in RHEL9 AppStream, NOT in EPEL9.
+# AlmaLinux 9 mirrors AppStream and is binary-compatible with AL2023.
 
-# 1. Download EPEL9 GPG key (curl is more reliable than rpm --import <url> on AL2023)
-RUN curl -fsSL https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9 \
-        -o /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9
+# 1. Import AlmaLinux 9 GPG key and register AppStream + BaseOS repos
+RUN curl -fsSL https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-9 \
+        -o /etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9 \
+    && rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9 \
+    && printf '[al9-appstream]\nname=AlmaLinux 9 AppStream\nbaseurl=https://repo.almalinux.org/almalinux/9/AppStream/x86_64/os/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9\n\n[al9-baseos]\nname=AlmaLinux 9 BaseOS\nbaseurl=https://repo.almalinux.org/almalinux/9/BaseOS/x86_64/os/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-AlmaLinux-9\n' \
+        > /etc/yum.repos.d/almalinux9.repo
 
-# 2. Import key and register EPEL9 repo (metalink mirrors, same as official epel-release RPM)
-RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9 \
-    && printf '[epel]\nname=EPEL 9\nbaseurl=https://download.fedoraproject.org/pub/epel/9/Everything/x86_64/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9\n' \
-        > /etc/yum.repos.d/epel.repo
+# 2. Install tesseract and poppler, then clean up the temporary repo
+RUN dnf install -y tesseract poppler-utils \
+    && dnf clean all \
+    && rm /etc/yum.repos.d/almalinux9.repo
 
-# 3. Confirm EPEL9 is active, then install
-RUN dnf repolist && dnf install -y \
-        tesseract \
-        poppler-utils \
-    && dnf clean all
-
-# 4. Download English tessdata directly (avoids tesseract-langpack-eng dependency conflicts)
+# 3. Download English tessdata directly from tessdata_fast
 ENV TESSDATA_PREFIX=/usr/share/tessdata
 RUN mkdir -p /usr/share/tessdata \
     && curl -fsSL \
