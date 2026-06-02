@@ -6,12 +6,20 @@
 FROM public.ecr.aws/lambda/python:3.12
 
 # Tesseract OCR + Poppler (pdf2image)
-# tesseract is not in AL2023 default repos; write the EPEL9 repo file directly
-# (avoids the EPEL RPM install which fails on AL2023)
-RUN rpm --import https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9 \
+# Split into separate steps so CI logs show exactly which step fails.
+# tesseract is not in AL2023 default repos — pull from EPEL9.
+
+# 1. Download EPEL9 GPG key (curl is more reliable than rpm --import <url> on AL2023)
+RUN curl -fsSL https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9 \
+        -o /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9
+
+# 2. Import key and register EPEL9 repo
+RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9 \
     && printf '[epel]\nname=EPEL 9\nbaseurl=https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9\n' \
-        > /etc/yum.repos.d/epel.repo \
-    && dnf install -y \
+        > /etc/yum.repos.d/epel.repo
+
+# 3. Install packages
+RUN dnf install -y --allowerasing \
         tesseract \
         tesseract-langpack-eng \
         poppler-utils \
