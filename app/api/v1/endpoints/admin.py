@@ -74,6 +74,15 @@ async def list_companies() -> list[dict]:
     return db.list_companies()
 
 
+# Declared before /companies/{company_id} so "lookup" isn't captured as an id.
+@router.get("/companies/lookup", summary="Find a company by email")
+async def lookup_company(email: str) -> dict:
+    company = db.get_company_by_email(email)
+    if not company:
+        raise api_error(404, ErrorCode.INVALID_REQUEST, "Company not found")
+    return company
+
+
 @router.get("/companies/{company_id}", summary="Get a company")
 async def get_company(company_id: str) -> dict:
     company = db.get_company(company_id)
