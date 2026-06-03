@@ -140,11 +140,21 @@ def create_app() -> FastAPI:
     # Middleware — outermost first.
     # CORS is handled here (single source of truth); the Lambda Function URL does
     # NOT also set CORS, which would double the Access-Control-* headers.
+    #
+    # Default posture: deny cross-origin in production unless explicitly allow-listed
+    # via CORS_ALLOWED_ORIGINS; development falls back to "*" for convenience.
+    if settings.cors_origins_list:
+        cors_origins = settings.cors_origins_list
+    elif not settings.is_production:
+        cors_origins = ["*"]
+    else:
+        cors_origins = []
+
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins_list,
+        allow_origins=cors_origins,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["X-API-Key", "X-Request-ID", "Content-Type"],
         expose_headers=["X-Request-ID", "X-RateLimit-Limit-Minute",

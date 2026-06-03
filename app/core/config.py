@@ -44,9 +44,12 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 4
     job_result_ttl_seconds: int = 3600  # 1 hour
 
-    # CORS — comma-separated origins. "*" is safe here because auth is via the
-    # X-API-Key header (not cookies), so cross-site credential theft is not a risk.
-    cors_allowed_origins: str = "*"
+    # CORS — comma-separated allowed origins. Empty by default so production
+    # denies cross-origin browser access unless an operator opts in via
+    # CORS_ALLOWED_ORIGINS. Development falls back to "*" for convenience
+    # (see app/main.py). Note: the test UI talks to the API through its own
+    # server-side proxy, so it does not rely on CORS at all.
+    cors_allowed_origins: str = ""
 
     # Rate limiting
     default_rate_limit_per_minute: int = 30
