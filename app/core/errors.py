@@ -87,7 +87,7 @@ _HINTS: dict[str, str] = {
         "X-RateLimit-Remaining-Day response headers to see when you can retry."
     ),
     ErrorCode.FILE_TOO_LARGE: (
-        "The uploaded file is too large. Maximum size is 10 MB. "
+        "The uploaded file is too large. Maximum size is 4 MB. "
         "Try compressing the PDF or splitting the document into smaller files."
     ),
     ErrorCode.UNSUPPORTED_FILE_TYPE: (
