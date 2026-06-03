@@ -30,8 +30,10 @@ from app.models.schemas import (
     ParsedResumeAI,
     ParseResponse,
     RetryResponse,
+    SkillsValidation,
 )
 from app.services.extraction.classifier import classify
+from app.services.normalization.skills_validator import validate_skills
 from app.services.pipeline import PipelineInput
 from app.services.pipeline import run as run_pipeline
 from app.storage import s3_client
@@ -112,7 +114,8 @@ async def parse_resume(
             ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
         )
         return ParseResponse(job_id=job_id, status="completed",
-                             data=result.parsed, confidence=result.confidence)
+                             data=result.parsed, confidence=result.confidence,
+                             skills_validation=validate_skills(result.parsed))
 
     s3_key = s3_client.upload_temp_file(job_id, filename, content)
     db.create_job(job_id, company_id)
@@ -152,14 +155,17 @@ async def get_job_status(
     raw_result = job.get("result")
     parsed_data: ParsedResumeAI | None   = None
     confidence:  ConfidenceScores | None = None
+    skills_validation: SkillsValidation | None = None
 
     if raw_result and status == "completed":
         parsed_data = ParsedResumeAI.model_validate(raw_result.get("data", {}))
         confidence  = ConfidenceScores.model_validate(raw_result.get("confidence", {}))
+        skills_validation = validate_skills(parsed_data)
 
     return JobStatusResponse(
         job_id=job_id, status=status, data=parsed_data,
-        confidence=confidence, error=job.get("error"),
+        confidence=confidence, skills_validation=skills_validation,
+        error=job.get("error"),
     )
 
 
@@ -228,6 +234,7 @@ async def retry_parse(
         return RetryResponse(
             job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
             status="completed", data=result.parsed, confidence=result.confidence,
+            skills_validation=validate_skills(result.parsed),
         )
 
     s3_key = s3_client.upload_temp_file(new_job_id, filename, content)

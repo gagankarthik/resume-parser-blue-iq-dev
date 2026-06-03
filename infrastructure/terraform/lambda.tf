@@ -21,6 +21,7 @@ locals {
     WORKER_LAMBDA_FUNCTION_NAME = "${local.name_prefix}-api"
     OPENAI_API_KEY              = var.openai_api_key
     ADMIN_API_TOKEN             = var.admin_api_token
+    AUTH_SECRET                 = var.auth_secret
   }
 }
 

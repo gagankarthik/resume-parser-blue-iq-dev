@@ -5,8 +5,15 @@ environment  = "production"
 github_owner = "your-github-username"   # personal username OR org name
 github_repo  = "resume-parser-blue-iq-dev"
 
-# Passed via CI env var or secrets manager — do NOT put real key here
+# Passed via CI env var (TF_VAR_openai_api_key) or secrets manager — do NOT put real key here
 openai_api_key = "sk-proj-..."
+
+# Bearer token gating /api/v1/admin/* (product platform). Generate: openssl rand -hex 32
+admin_api_token = ""
+
+# HMAC secret for self-serve account session tokens. REQUIRED in production.
+# Generate: openssl rand -hex 32  (or: python -c "import secrets; print(secrets.token_hex(32))")
+auth_secret = "replace-me-with-a-32-byte-random-hex-string"
 
 # Set after first docker push (chicken-and-egg: ECR repo must exist first)
 ecr_image_uri = "123456789012.dkr.ecr.us-east-2.amazonaws.com/resume-parser-production-lambda:latest"

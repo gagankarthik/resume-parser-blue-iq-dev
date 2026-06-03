@@ -763,7 +763,20 @@ pytest -v
         "url": "github.com/janesmith/opensearch-dashboard"
       }
     ],
-    "languages": ["English", "Spanish"]
+    "languages": ["English", "Spanish"],
+    "references": [
+      {
+        "name": "Dr. Maria Alvarez",
+        "relationship": "ICU Nurse Manager",
+        "company": "Memorial Hermann Hospital",
+        "email": "m.alvarez@example.com",
+        "phone": "+1 555 010 2233"
+      }
+    ],
+    "awards": ["DAISY Award (2023)", "Employee of the Year (2021)"],
+    "publications": [
+      "Smith J. (2022). Reducing CLABSI rates in the MICU. J Nursing Care, 14(2)."
+    ]
   },
   "confidence": {
     "overall": 0.91,
@@ -771,11 +784,27 @@ pytest -v
     "experience": 0.88,
     "education": 0.90,
     "skills": 1.0
+  },
+  "skills_validation": {
+    "total": 5,
+    "recognized_count": 4,
+    "unrecognized_count": 1,
+    "recognized_ratio": 0.8,
+    "recognized": ["Intensive Care Unit", "Neonatal Intensive Care Unit", "Registered Nurse", "ACLS"],
+    "unrecognized": ["Patient Advocacy"],
+    "groups": {
+      "Intensive Care Unit": "ICU",
+      "Neonatal Intensive Care Unit": "Nursery"
+    }
   }
 }
 ```
 
 All fields are nullable — missing information is `null`, not omitted.
+
+`skills_validation` checks each parsed skill against the healthcare taxonomy: `recognized`
+skills map to a canonical specialty, profession/credential, or known certification (with their
+`groups`); `unrecognized` skills are free-form. Use `recognized_ratio` to flag records for review.
 
 ---
 

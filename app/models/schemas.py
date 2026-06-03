@@ -278,6 +278,49 @@ class ProjectItem(BaseModel):
         return [i for i in items if isinstance(i, str) and i.strip()]
 
 
+class ReferenceItem(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Dr. Maria Alvarez",
+                "relationship": "ICU Nurse Manager",
+                "company": "Memorial Hermann Hospital",
+                "email": "m.alvarez@example.com",
+                "phone": "+1 555 010 2233",
+            }
+        }
+    )
+
+    name:          str        = Field(..., description="Reference's full name")
+    relationship:  str | None = Field(None, description="Relationship or title (e.g. 'Charge Nurse', 'Former Manager')")
+    company:       str | None = Field(None, description="Organisation where you worked together")
+    email:         str | None = Field(None, description="Reference email address")
+    phone:         str | None = Field(None, description="Reference phone number")
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def required_name(cls, v: object) -> str:
+        return str(v).strip() if isinstance(v, str) and str(v).strip() else "Unknown Reference"
+
+    @field_validator("relationship", "company", mode="before")
+    @classmethod
+    def sanitize_optional(cls, v: object) -> str | None:
+        return _sanitize_str(str(v)) if isinstance(v, str) else None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def sanitize_email(cls, v: object) -> str | None:
+        return _sanitize_email(str(v)) if isinstance(v, str) else None
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def sanitize_phone(cls, v: object) -> str | None:
+        if not isinstance(v, str):
+            return None
+        v = v.strip()
+        return v if _PHONE_DIGITS_RE.search(v) else None
+
+
 class ParsedResumeAI(BaseModel):
     """
     Structured output schema enforced on the OpenAI response.
@@ -321,6 +364,19 @@ class ParsedResumeAI(BaseModel):
                 ],
                 "projects": [],
                 "languages": ["English", "Spanish"],
+                "references": [
+                    {
+                        "name": "Dr. Maria Alvarez",
+                        "relationship": "ICU Nurse Manager",
+                        "company": "Memorial Hermann Hospital",
+                        "email": "m.alvarez@example.com",
+                        "phone": "+1 555 010 2233",
+                    }
+                ],
+                "awards": ["DAISY Award (2023)", "Employee of the Year (2021)"],
+                "publications": [
+                    "Smith J. (2022). Reducing CLABSI rates in the MICU. J Nursing Care, 14(2).",
+                ],
             }
         }
     )
@@ -332,13 +388,16 @@ class ParsedResumeAI(BaseModel):
     certifications:  list[CertificationItem] = Field(default_factory=list, description="Professional certifications and licenses")
     projects:        list[ProjectItem]     = Field(default_factory=list, description="Notable projects")
     languages:       list[str]             = Field(default_factory=list, description="Spoken/written languages")
+    references:      list[ReferenceItem]   = Field(default_factory=list, description="Professional references, if explicitly listed (not 'available upon request')")
+    awards:          list[str]             = Field(default_factory=list, description="Awards, honors, and recognitions (e.g. 'DAISY Award 2023', 'Employee of the Year')")
+    publications:    list[str]             = Field(default_factory=list, description="Publications, posters, or research contributions, each as a single citation string")
 
-    @field_validator("experience", "education", "certifications", "projects", mode="before")
+    @field_validator("experience", "education", "certifications", "projects", "references", mode="before")
     @classmethod
     def coerce_lists(cls, v: object) -> list:
         return _coerce_list(v)
 
-    @field_validator("skills", "languages", mode="before")
+    @field_validator("skills", "languages", "awards", "publications", mode="before")
     @classmethod
     def coerce_string_lists(cls, v: object) -> list[str]:
         items = _coerce_list(v)
@@ -367,6 +426,49 @@ class ConfidenceScores(BaseModel):
     )
 
 
+# ── Skills validation ─────────────────────────────────────────────────────────
+
+class SkillsValidation(BaseModel):
+    """
+    Validation of the parsed `skills` against the healthcare taxonomy.
+
+    Each skill is classified as either *recognized* (it maps to a canonical
+    specialty, profession/credential, or known clinical certification) or
+    *unrecognized* (free-form, out-of-taxonomy). Use `recognized_ratio` to flag
+    records whose skills could not be grounded and may need human review.
+    """
+
+    total:              int            = Field(..., ge=0, description="Total distinct skills validated")
+    recognized_count:   int            = Field(..., ge=0, description="Skills matched to the healthcare taxonomy")
+    unrecognized_count: int            = Field(..., ge=0, description="Free-form skills with no taxonomy match")
+    recognized_ratio:   float          = Field(..., ge=0.0, le=1.0, description="recognized_count / total (0.0–1.0)")
+    recognized:         list[str]      = Field(default_factory=list, description="Canonical names of recognized skills")
+    unrecognized:       list[str]      = Field(default_factory=list, description="Skills not found in the taxonomy")
+    groups:             dict[str, str] = Field(default_factory=dict, description="Recognized specialty → group label (e.g. 'Intensive Care Unit' → 'ICU')")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "total": 5,
+                "recognized_count": 4,
+                "unrecognized_count": 1,
+                "recognized_ratio": 0.8,
+                "recognized": [
+                    "Intensive Care Unit",
+                    "Neonatal Intensive Care Unit",
+                    "Registered Nurse",
+                    "ACLS",
+                ],
+                "unrecognized": ["Patient Advocacy"],
+                "groups": {
+                    "Intensive Care Unit": "ICU",
+                    "Neonatal Intensive Care Unit": "Nursery",
+                },
+            }
+        }
+    )
+
+
 # ── API request / response schemas ───────────────────────────────────────────
 
 class ParseResponse(BaseModel):
@@ -384,11 +486,12 @@ class ParseResponse(BaseModel):
         }
     )
 
-    job_id:      str                        = Field(..., description="Unique job identifier (ULID)")
-    status:      str                        = Field(..., description="'completed' for sync jobs, 'processing' for async (OCR) jobs")
-    data:        ParsedResumeAI | None   = Field(None, description="Parsed resume data — present when status is 'completed'")
-    confidence:  ConfidenceScores | None = Field(None, description="Per-section confidence scores — present when status is 'completed'")
-    poll_url:    str | None              = Field(None, description="Polling URL — present when status is 'processing'")
+    job_id:            str                        = Field(..., description="Unique job identifier (ULID)")
+    status:            str                        = Field(..., description="'completed' for sync jobs, 'processing' for async (OCR) jobs")
+    data:              ParsedResumeAI | None   = Field(None, description="Parsed resume data — present when status is 'completed'")
+    confidence:        ConfidenceScores | None = Field(None, description="Per-section confidence scores — present when status is 'completed'")
+    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — present when status is 'completed'")
+    poll_url:          str | None              = Field(None, description="Polling URL — present when status is 'processing'")
 
 
 class JobStatusResponse(BaseModel):
@@ -406,11 +509,12 @@ class JobStatusResponse(BaseModel):
         }
     )
 
-    job_id:      str                        = Field(..., description="Job identifier")
-    status:      str                        = Field(..., description="pending | processing | completed | failed")
-    data:        ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is 'completed'")
-    confidence:  ConfidenceScores | None = Field(None, description="Confidence scores — set when status is 'completed'")
-    error:       str | None              = Field(None, description="Error description — set when status is 'failed'")
+    job_id:            str                        = Field(..., description="Job identifier")
+    status:            str                        = Field(..., description="pending | processing | completed | failed")
+    data:              ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is 'completed'")
+    confidence:        ConfidenceScores | None = Field(None, description="Confidence scores — set when status is 'completed'")
+    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — set when status is 'completed'")
+    error:             str | None              = Field(None, description="Error description — set when status is 'failed'")
 
 
 class WebhookCreateRequest(BaseModel):
@@ -508,13 +612,14 @@ class RetryResponse(BaseModel):
         }
     )
 
-    job_id:          str                        = Field(..., description="New job ID for this retry attempt")
-    original_job_id: str                        = Field(..., description="The job ID that was retried")
-    retry_count:     int                        = Field(..., description="How many times this job has been retried (1 = first retry)")
-    status:          str                        = Field(..., description="completed | processing")
-    data:            ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is completed")
-    confidence:      ConfidenceScores | None = Field(None, description="Confidence scores — set when status is completed")
-    poll_url:        str | None              = Field(None, description="Polling URL — set for async retries")
+    job_id:            str                        = Field(..., description="New job ID for this retry attempt")
+    original_job_id:   str                        = Field(..., description="The job ID that was retried")
+    retry_count:       int                        = Field(..., description="How many times this job has been retried (1 = first retry)")
+    status:            str                        = Field(..., description="completed | processing")
+    data:              ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is completed")
+    confidence:        ConfidenceScores | None = Field(None, description="Confidence scores — set when status is completed")
+    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — set when status is completed")
+    poll_url:          str | None              = Field(None, description="Polling URL — set for async retries")
 
 
 # ── Batch schemas ─────────────────────────────────────────────────────────────

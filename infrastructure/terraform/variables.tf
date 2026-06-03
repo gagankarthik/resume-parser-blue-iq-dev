@@ -34,6 +34,18 @@ variable "admin_api_token" {
   default     = ""
 }
 
+variable "auth_secret" {
+  description = "HMAC secret for signing self-serve account session tokens. Required — generate with: openssl rand -hex 32"
+  type        = string
+  sensitive   = true
+
+  validation {
+    # Block deploys that ship the insecure in-code development default.
+    condition     = length(var.auth_secret) >= 32 && var.auth_secret != "dev-insecure-auth-secret-change-me"
+    error_message = "auth_secret must be a strong value (>= 32 chars) and not the development default. Generate one with: openssl rand -hex 32"
+  }
+}
+
 variable "ecr_image_uri" {
   description = "Full ECR image URI including tag (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/resume-parser-lambda:abc1234)"
   type        = string

@@ -79,6 +79,9 @@ EXTRACTION RULES:
 - Certifications (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN…) → certifications[] not skills[].
 - Preserve credential abbreviations exactly (RN, LPN, CRT, RRT, OT, PT, SLP…). Do NOT expand them.
 - Float pool / per-diem / agency assignments: list each separately in experience[].
+- References: extract any listed referees into references[] (name, relationship/title, company, email, phone). If the resume only says "References available upon request", leave references[] empty.
+- Awards/honors: extract each award, honor, or recognition into awards[] as a short string (include the year in parentheses if stated). Do NOT put awards in skills[] or experience[].
+- Publications: extract each publication, poster, or research contribution into publications[] as a single citation string. Do NOT put publications in experience[] or projects[].
 - Multi-column resumes: text may be extracted left-column-first; treat it as sequential.
 
 HEALTHCARE CREDENTIAL ABBREVIATIONS — preserve as-is in output:

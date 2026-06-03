@@ -94,3 +94,6 @@ temp/
 *.tmp
 *.bak
 *.orig
+
+# ── Local AWS IAM policy scratch files (account-specific ARNs) ────────────────
+rp-s3-policy.json

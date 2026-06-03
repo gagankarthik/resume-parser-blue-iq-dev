@@ -146,63 +146,12 @@ jobs:
             --function-name resume-parser-production-api \
             --region ${{ env.AWS_REGION }}
 
-      # Apply runtime config from GitHub secrets (secrets never live in the repo).
-      # jq builds the JSON so values with special characters are escaped safely;
-      # the secret values are masked in the Actions log.
-      - name: Configure Lambda environment & sizing
-        env:
-          OPENAI_API_KEY:  ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL:    ${{ secrets.OPENAI_MODEL }}
-          ENVIRONMENT:     ${{ secrets.ENVIRONMENT }}
-          S3_BUCKET_NAME:  ${{ secrets.S3_BUCKET_NAME }}
-          ADMIN_API_TOKEN: ${{ secrets.ADMIN_API_TOKEN }}
-          AUTH_SECRET:     ${{ secrets.AUTH_SECRET }}
-        run: |
-          ENV_JSON=$(jq -n \
-            --arg env   "${ENVIRONMENT:-production}" \
-            --arg region "${{ env.AWS_REGION }}" \
-            --arg okey  "$OPENAI_API_KEY" \
-            --arg omodel "${OPENAI_MODEL:-gpt-4.1-mini}" \
-            --arg bucket "${S3_BUCKET_NAME:-resume-parser-blue-iq-temp}" \
-            --arg admin "$ADMIN_API_TOKEN" \
-            --arg authsecret "$AUTH_SECRET" \
-            '{Variables: {
-              ENVIRONMENT: $env,
-              AWS_REGION_NAME: $region,
-              OPENAI_API_KEY: $okey,
-              OPENAI_MODEL: $omodel,
-              OPENAI_MAX_TOKENS: "4096",
-              S3_BUCKET_NAME: $bucket,
-              MAX_FILE_SIZE_MB: "10",
-              JOB_RESULT_TTL_SECONDS: "3600",
-              WORKER_LAMBDA_FUNCTION_NAME: "resume-parser-production-api",
-              ADMIN_API_TOKEN: $admin,
-              AUTH_SECRET: $authsecret,
-              DYNAMODB_TABLE_API_KEYS: "resume-parser-api-keys",
-              DYNAMODB_TABLE_JOBS: "resume-parser-jobs",
-              DYNAMODB_TABLE_BATCHES: "resume-parser-batches",
-              DYNAMODB_TABLE_WEBHOOKS: "resume-parser-webhooks",
-              DYNAMODB_TABLE_AUDIT_LOGS: "resume-parser-audit-logs",
-              DYNAMODB_TABLE_COMPANIES: "resume-parser-companies"
-            }}')
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "::error::OPENAI_API_KEY secret is empty — set it in repo Settings → Secrets."
-            exit 1
-          fi
-          if [ -z "$ADMIN_API_TOKEN" ]; then
-            echo "::error::ADMIN_API_TOKEN secret is empty — the dashboard/admin API will be disabled. Set it in repo Settings → Secrets."
-            exit 1
-          fi
-          aws lambda update-function-configuration \
-            --function-name resume-parser-production-api \
-            --region ${{ env.AWS_REGION }} \
-            --memory-size 2048 \
-            --timeout 300 \
-            --environment "$ENV_JSON" >/dev/null
-          aws lambda wait function-updated \
-            --function-name resume-parser-production-api \
-            --region ${{ env.AWS_REGION }}
-          echo "Lambda environment & sizing applied."
+      # NOTE: Lambda environment variables and sizing (memory/timeout) are owned by
+      # Terraform (infrastructure/terraform — see lambda.tf `local.lambda_env` and the
+      # api_lambda_* variables). This workflow only ships new code, so it never resets
+      # the env. Provide secrets to Terraform via TF_VAR_* (openai_api_key,
+      # admin_api_token, auth_secret) when running `terraform apply`. To change runtime
+      # config or secrets, update Terraform and apply — not this workflow.
 
       - name: Smoke test — health check
         id: smoke
