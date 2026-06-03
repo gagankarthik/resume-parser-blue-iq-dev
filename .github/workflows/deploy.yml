@@ -133,9 +133,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
-      # Sizing, env vars, Function URL, and the public-invoke permission are all
-      # owned by Terraform (run `terraform apply` when infra changes). CI only
-      # ships new code to the single function.
       - name: Update Lambda image
         run: |
           aws lambda update-function-code \
@@ -148,6 +145,54 @@ jobs:
           aws lambda wait function-updated \
             --function-name resume-parser-production-api \
             --region ${{ env.AWS_REGION }}
+
+      # Apply runtime config from GitHub secrets (secrets never live in the repo).
+      # jq builds the JSON so values with special characters are escaped safely;
+      # the secret values are masked in the Actions log.
+      - name: Configure Lambda environment & sizing
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL:   ${{ secrets.OPENAI_MODEL }}
+          ENVIRONMENT:    ${{ secrets.ENVIRONMENT }}
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+        run: |
+          ENV_JSON=$(jq -n \
+            --arg env   "${ENVIRONMENT:-production}" \
+            --arg region "${{ env.AWS_REGION }}" \
+            --arg okey  "$OPENAI_API_KEY" \
+            --arg omodel "${OPENAI_MODEL:-gpt-4.1-mini}" \
+            --arg bucket "${S3_BUCKET_NAME:-resume-parser-blue-iq-temp}" \
+            '{Variables: {
+              ENVIRONMENT: $env,
+              AWS_REGION_NAME: $region,
+              OPENAI_API_KEY: $okey,
+              OPENAI_MODEL: $omodel,
+              OPENAI_MAX_TOKENS: "4096",
+              S3_BUCKET_NAME: $bucket,
+              MAX_FILE_SIZE_MB: "10",
+              JOB_RESULT_TTL_SECONDS: "3600",
+              WORKER_LAMBDA_FUNCTION_NAME: "resume-parser-production-api",
+              DYNAMODB_TABLE_API_KEYS: "resume-parser-api-keys",
+              DYNAMODB_TABLE_JOBS: "resume-parser-jobs",
+              DYNAMODB_TABLE_BATCHES: "resume-parser-batches",
+              DYNAMODB_TABLE_WEBHOOKS: "resume-parser-webhooks",
+              DYNAMODB_TABLE_AUDIT_LOGS: "resume-parser-audit-logs",
+              DYNAMODB_TABLE_COMPANIES: "resume-parser-companies"
+            }}')
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::OPENAI_API_KEY secret is empty — set it in repo Settings → Secrets."
+            exit 1
+          fi
+          aws lambda update-function-configuration \
+            --function-name resume-parser-production-api \
+            --region ${{ env.AWS_REGION }} \
+            --memory-size 2048 \
+            --timeout 300 \
+            --environment "$ENV_JSON" >/dev/null
+          aws lambda wait function-updated \
+            --function-name resume-parser-production-api \
+            --region ${{ env.AWS_REGION }}
+          echo "Lambda environment & sizing applied."
 
       - name: Smoke test — health check
         id: smoke
