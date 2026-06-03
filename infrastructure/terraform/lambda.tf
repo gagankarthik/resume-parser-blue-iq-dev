@@ -10,6 +10,7 @@ locals {
     DYNAMODB_TABLE_BATCHES        = aws_dynamodb_table.batches.name
     DYNAMODB_TABLE_WEBHOOKS       = aws_dynamodb_table.webhooks.name
     DYNAMODB_TABLE_AUDIT_LOGS     = aws_dynamodb_table.audit_logs.name
+    DYNAMODB_TABLE_COMPANIES      = aws_dynamodb_table.companies.name
     S3_BUCKET_NAME                = aws_s3_bucket.temp.bucket
     OPENAI_MODEL                  = var.openai_model
     OPENAI_MAX_TOKENS             = "4096"

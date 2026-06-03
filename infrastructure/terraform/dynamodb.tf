@@ -107,10 +107,52 @@ resource "aws_dynamodb_table" "audit_logs" {
     type = "S"
   }
 
+  attribute {
+    name = "company_id"
+    type = "S"
+  }
+
+  # Usage/stats queries: fetch a company's audit records over a time range
+  # (sum ai_tokens_used, count by status, etc.) without scanning the table.
+  global_secondary_index {
+    name            = "company-timestamp-index"
+    hash_key        = "company_id"
+    range_key       = "timestamp"
+    projection_type = "ALL"
+  }
+
   # Audit logs retained 90 days
   ttl {
     attribute_name = "ttl"
     enabled        = true
+  }
+
+  point_in_time_recovery { enabled = true }
+  tags = local.common_tags
+}
+
+# Company / account records — powers onboarding and the product dashboard.
+# company_id is the same identifier used on api_keys and audit_logs.
+resource "aws_dynamodb_table" "companies" {
+  name         = "resume-parser-companies"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "company_id"
+
+  attribute {
+    name = "company_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "email"
+    type = "S"
+  }
+
+  # Look up an account by email during onboarding / sign-in.
+  global_secondary_index {
+    name            = "email-index"
+    hash_key        = "email"
+    projection_type = "ALL"
   }
 
   point_in_time_recovery { enabled = true }

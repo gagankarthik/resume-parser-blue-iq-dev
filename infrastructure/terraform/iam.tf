@@ -42,6 +42,9 @@ data "aws_iam_policy_document" "lambda_app" {
       aws_dynamodb_table.webhooks.arn,
       "${aws_dynamodb_table.webhooks.arn}/index/*",
       aws_dynamodb_table.audit_logs.arn,
+      "${aws_dynamodb_table.audit_logs.arn}/index/*",
+      aws_dynamodb_table.companies.arn,
+      "${aws_dynamodb_table.companies.arn}/index/*",
     ]
   }
 

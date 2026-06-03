@@ -70,15 +70,40 @@ awslocal dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --region $REGION || true
 
-# audit_logs (job_id pk + timestamp sk)
+# audit_logs (job_id pk + timestamp sk) + company-timestamp GSI for usage/stats
 awslocal dynamodb create-table \
   --table-name resume-parser-audit-logs \
   --attribute-definitions \
     AttributeName=job_id,AttributeType=S \
     AttributeName=timestamp,AttributeType=S \
+    AttributeName=company_id,AttributeType=S \
   --key-schema \
     AttributeName=job_id,KeyType=HASH \
     AttributeName=timestamp,KeyType=RANGE \
+  --global-secondary-indexes '[{
+    "IndexName": "company-timestamp-index",
+    "KeySchema": [
+      {"AttributeName": "company_id", "KeyType": "HASH"},
+      {"AttributeName": "timestamp", "KeyType": "RANGE"}
+    ],
+    "Projection": {"ProjectionType": "ALL"}
+  }]' \
+  --billing-mode PAY_PER_REQUEST \
+  --region $REGION || true
+
+# companies (company_id pk) + email GSI for onboarding/sign-in
+awslocal dynamodb create-table \
+  --table-name resume-parser-companies \
+  --attribute-definitions \
+    AttributeName=company_id,AttributeType=S \
+    AttributeName=email,AttributeType=S \
+  --key-schema \
+    AttributeName=company_id,KeyType=HASH \
+  --global-secondary-indexes '[{
+    "IndexName": "email-index",
+    "KeySchema": [{"AttributeName": "email", "KeyType": "HASH"}],
+    "Projection": {"ProjectionType": "ALL"}
+  }]' \
   --billing-mode PAY_PER_REQUEST \
   --region $REGION || true
 

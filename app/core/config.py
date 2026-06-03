@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     dynamodb_table_batches: str = "resume-parser-batches"
     dynamodb_table_webhooks: str = "resume-parser-webhooks"
     dynamodb_table_audit_logs: str = "resume-parser-audit-logs"
+    dynamodb_table_companies: str = "resume-parser-companies"
+
+    # GSI names (used by usage/stats and onboarding queries)
+    audit_logs_company_index: str = "company-timestamp-index"
+    companies_email_index: str = "email-index"
 
     # S3
     s3_bucket_name: str = "resume-parser-temp"
