@@ -45,6 +45,14 @@ def _slug(name: str) -> str:
     return (s or "company")[:40]
 
 
+# Whitelist serializer — NEVER leak password_hash (or other internal fields).
+_PUBLIC_FIELDS = ("company_id", "name", "email", "plan", "status", "created_at", "active_key_count")
+
+
+def _public(company: dict) -> dict:
+    return {k: company[k] for k in _PUBLIC_FIELDS if k in company}
+
+
 # ── Companies ─────────────────────────────────────────────────────────────────
 
 @router.post("/companies", status_code=201, summary="Create a company (onboarding)")
@@ -71,7 +79,7 @@ async def create_company(payload: CompanyCreate) -> dict:
 
 @router.get("/companies", summary="List companies")
 async def list_companies() -> list[dict]:
-    return db.list_companies()
+    return [_public(c) for c in db.list_companies()]
 
 
 # Declared before /companies/{company_id} so "lookup" isn't captured as an id.
@@ -80,7 +88,7 @@ async def lookup_company(email: str) -> dict:
     company = db.get_company_by_email(email)
     if not company:
         raise api_error(404, ErrorCode.INVALID_REQUEST, "Company not found")
-    return company
+    return _public(company)
 
 
 @router.get("/companies/{company_id}", summary="Get a company")
@@ -90,7 +98,7 @@ async def get_company(company_id: str) -> dict:
         raise api_error(404, ErrorCode.INVALID_REQUEST, "Company not found")
     keys = db.list_api_keys_for_company(company_id)
     company["active_key_count"] = sum(1 for k in keys if k.get("status") == "active")
-    return company
+    return _public(company)
 
 
 # ── API keys ──────────────────────────────────────────────────────────────────
