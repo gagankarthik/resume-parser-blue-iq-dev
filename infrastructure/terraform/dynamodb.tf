@@ -12,6 +12,18 @@ resource "aws_dynamodb_table" "api_keys" {
     type = "S"
   }
 
+  attribute {
+    name = "company_id"
+    type = "S"
+  }
+
+  # List all keys belonging to a company (admin dashboard).
+  global_secondary_index {
+    name            = "company-index"
+    hash_key        = "company_id"
+    projection_type = "ALL"
+  }
+
   point_in_time_recovery { enabled = true }
   tags = local.common_tags
 }

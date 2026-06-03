@@ -14,11 +14,13 @@ Rate limit headers returned on every authenticated response:
   X-RateLimit-Remaining-Day
 """
 
+import hmac
 import time
 
 from fastapi import Depends, Response
 from fastapi.security import APIKeyHeader
 
+from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
 from app.core.logging import get_logger
 from app.core.rate_limiter import check_and_increment
@@ -28,6 +30,7 @@ from app.db import dynamodb as db
 log = get_logger(__name__)
 
 _api_key_scheme = APIKeyHeader(name="X-API-Key", auto_error=False)
+_admin_token_scheme = APIKeyHeader(name="X-Admin-Token", auto_error=False)
 
 # ── In-memory API key cache ───────────────────────────────────────────────────
 _KEY_CACHE: dict[str, tuple[dict, float]] = {}
@@ -85,6 +88,20 @@ def get_api_key_record(api_key: str = Depends(_api_key_scheme)) -> dict:
 
     record["key_hash"] = key_hash
     return record
+
+
+def require_admin(token: str = Depends(_admin_token_scheme)) -> None:
+    """
+    Gate the /api/v1/admin/* endpoints with a static admin bearer token
+    (X-Admin-Token). Used by the product platform's server, never the browser.
+    """
+    expected = get_settings().admin_api_token
+    if not expected:
+        # No token configured → admin surface is disabled.
+        raise api_error(403, ErrorCode.REVOKED_API_KEY, "Admin API is not enabled")
+    if not token or not hmac.compare_digest(token, expected):
+        log.warning("admin_auth_failed")
+        raise api_error(401, ErrorCode.INVALID_API_KEY, "Invalid admin token")
 
 
 def enforce_rate_limit(

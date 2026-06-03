@@ -36,6 +36,7 @@ data "aws_iam_policy_document" "lambda_app" {
     ]
     resources = [
       aws_dynamodb_table.api_keys.arn,
+      "${aws_dynamodb_table.api_keys.arn}/index/*",
       aws_dynamodb_table.rate_limits.arn,
       aws_dynamodb_table.jobs.arn,
       aws_dynamodb_table.batches.arn,

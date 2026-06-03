@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # GSI names (used by usage/stats and onboarding queries)
     audit_logs_company_index: str = "company-timestamp-index"
     companies_email_index: str = "email-index"
+    api_keys_company_index: str = "company-index"
+
+    # Admin API — token that gates the /api/v1/admin/* endpoints used by the
+    # product platform (company onboarding, key management, usage stats).
+    # Set a strong value in production; empty disables the admin endpoints.
+    admin_api_token: str = ""
 
     # S3
     s3_bucket_name: str = "resume-parser-temp"

@@ -27,6 +27,13 @@ variable "openai_model" {
   default     = "gpt-4o"
 }
 
+variable "admin_api_token" {
+  description = "Bearer token gating the /api/v1/admin/* endpoints (product platform)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "ecr_image_uri" {
   description = "Full ECR image URI including tag (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/resume-parser-lambda:abc1234)"
   type        = string

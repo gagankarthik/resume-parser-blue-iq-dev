@@ -81,6 +81,88 @@ def revoke_api_key(key_hash: str) -> None:
     )
 
 
+def list_api_keys_for_company(company_id: str) -> list[dict]:
+    """All keys belonging to a company (via the company-index GSI)."""
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_api_keys)
+    resp = table.query(
+        IndexName=settings.api_keys_company_index,
+        KeyConditionExpression=Key("company_id").eq(company_id),
+    )
+    return resp.get("Items", [])
+
+
+# ── Companies / accounts ──────────────────────────────────────────────────────
+
+def create_company(
+    company_id: str,
+    name: str,
+    email: str,
+    plan: str = "free",
+) -> None:
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_companies)
+    table.put_item(
+        Item={
+            "company_id": company_id,
+            "name": name,
+            "email": email,
+            "plan": plan,
+            "status": "active",
+            "created_at": datetime.now(UTC).isoformat(),
+        },
+        ConditionExpression="attribute_not_exists(company_id)",
+    )
+
+
+def get_company(company_id: str) -> dict | None:
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_companies)
+    return table.get_item(Key={"company_id": company_id}).get("Item")
+
+
+def get_company_by_email(email: str) -> dict | None:
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_companies)
+    resp = table.query(
+        IndexName=settings.companies_email_index,
+        KeyConditionExpression=Key("email").eq(email),
+    )
+    items = resp.get("Items", [])
+    return items[0] if items else None
+
+
+def list_companies() -> list[dict]:
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_companies)
+    return table.scan().get("Items", [])
+
+
+# ── Usage / stats (from audit logs) ───────────────────────────────────────────
+
+def get_audit_logs_for_company(company_id: str, since_iso: str) -> list[dict]:
+    """
+    Audit records for a company since an ISO timestamp, via the
+    company-timestamp-index GSI. Each record carries file_type, status,
+    duration_ms, ocr_used, ai_tokens_used — enough for usage/token rollups.
+    """
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_audit_logs)
+    items: list[dict] = []
+    kwargs: dict[str, Any] = {
+        "IndexName": settings.audit_logs_company_index,
+        "KeyConditionExpression": Key("company_id").eq(company_id)
+        & Key("timestamp").gte(since_iso),
+    }
+    while True:
+        resp = table.query(**kwargs)
+        items.extend(resp.get("Items", []))
+        if "LastEvaluatedKey" not in resp:
+            break
+        kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+    return items
+
+
 # ── Jobs ──────────────────────────────────────────────────────────────────────
 
 def create_job(

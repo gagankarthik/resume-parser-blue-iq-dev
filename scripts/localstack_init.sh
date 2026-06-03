@@ -11,11 +11,18 @@ awslocal s3 mb s3://resume-parser-temp --region $REGION || true
 
 echo "==> Creating DynamoDB tables..."
 
-# api_keys
+# api_keys (+ company-index GSI to list a company's keys)
 awslocal dynamodb create-table \
   --table-name resume-parser-api-keys \
-  --attribute-definitions AttributeName=key_hash,AttributeType=S \
+  --attribute-definitions \
+    AttributeName=key_hash,AttributeType=S \
+    AttributeName=company_id,AttributeType=S \
   --key-schema AttributeName=key_hash,KeyType=HASH \
+  --global-secondary-indexes '[{
+    "IndexName": "company-index",
+    "KeySchema": [{"AttributeName": "company_id", "KeyType": "HASH"}],
+    "Projection": {"ProjectionType": "ALL"}
+  }]' \
   --billing-mode PAY_PER_REQUEST \
   --region $REGION || true
 
