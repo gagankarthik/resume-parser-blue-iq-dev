@@ -9,11 +9,8 @@ github_repo  = "resume-parser-blue-iq-dev"
 openai_api_key = "sk-proj-..."
 
 # Set after first docker push (chicken-and-egg: ECR repo must exist first)
-ecr_image_uri = "123456789012.dkr.ecr.us-east-1.amazonaws.com/resume-parser-production-lambda:latest"
+ecr_image_uri = "123456789012.dkr.ecr.us-east-2.amazonaws.com/resume-parser-production-lambda:latest"
 
-# Tune per load requirements
-worker_reserved_concurrency   = 10
-api_lambda_memory_mb          = 1024
-worker_lambda_memory_mb       = 2048
-api_lambda_timeout_seconds    = 29
-worker_lambda_timeout_seconds = 300
+# Single function serves both the HTTP API and the async OCR path — size for OCR.
+api_lambda_memory_mb       = 2048
+api_lambda_timeout_seconds = 300

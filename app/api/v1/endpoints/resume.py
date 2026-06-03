@@ -14,9 +14,6 @@ POST /api/v1/resume/{job_id}/retry
   Up to MAX_RETRY_COUNT retries per original job.
 """
 
-import json
-
-import boto3
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from ulid import ULID
 
@@ -39,24 +36,10 @@ from app.services.pipeline import PipelineInput
 from app.services.pipeline import run as run_pipeline
 from app.storage import s3_client
 from app.workers.background import process_resume_async
+from app.workers.dispatch import invoke_worker
 
 router = APIRouter()
 log = get_logger(__name__)
-
-
-def _invoke_worker_lambda(settings, payload: dict) -> None:
-    client = boto3.client("lambda", region_name=settings.aws_region)
-    try:
-        resp = client.invoke(
-            FunctionName=settings.worker_lambda_function_name,
-            InvocationType="Event",
-            Payload=json.dumps(payload).encode(),
-        )
-        if resp.get("FunctionError"):
-            log.error("lambda_invoke_error", job_id=payload.get("job_id"),
-                      function_error=resp["FunctionError"])
-    except Exception as exc:
-        log.error("lambda_invoke_failed", job_id=payload.get("job_id"), error=str(exc))
 
 
 async def _dispatch_async(
@@ -65,7 +48,7 @@ async def _dispatch_async(
     payload: dict,
 ) -> None:
     if settings.use_lambda_worker:
-        _invoke_worker_lambda(settings, payload)
+        invoke_worker(settings, payload)
     else:
         background_tasks.add_task(process_resume_async, **payload)
 

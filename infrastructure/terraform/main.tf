@@ -10,11 +10,11 @@ terraform {
 
   # Remote state — use S3 backend so team + CI share the same state
   backend "s3" {
-    bucket         = "resume-parser-tfstate"   # create this bucket manually first
+    bucket         = "resume-parser-tfstate" # create this bucket manually first
     key            = "resume-parser/terraform.tfstate"
     region         = "us-east-2"
     encrypt        = true
-    dynamodb_table = "resume-parser-tflock"    # create this table manually first
+    dynamodb_table = "resume-parser-tflock" # create this table manually first
   }
 }
 

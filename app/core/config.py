@@ -37,8 +37,16 @@ class Settings(BaseSettings):
     openai_max_tokens: int = 4096
 
     # Processing limits
-    max_file_size_mb: int = 10
+    # NOTE: Lambda Function URLs hard-cap the request payload at ~6 MB, and binary
+    # uploads are base64-expanded (~+33%) into the invocation event. 4 MB keeps the
+    # encoded request safely under that ceiling; raising this only helps if the app
+    # is fronted by something other than a Function URL.
+    max_file_size_mb: int = 4
     job_result_ttl_seconds: int = 3600  # 1 hour
+
+    # CORS — comma-separated origins. "*" is safe here because auth is via the
+    # X-API-Key header (not cookies), so cross-site credential theft is not a risk.
+    cors_allowed_origins: str = "*"
 
     # Rate limiting
     default_rate_limit_per_minute: int = 30
@@ -66,6 +74,10 @@ class Settings(BaseSettings):
     @property
     def max_file_size_bytes(self) -> int:
         return self.max_file_size_mb * 1024 * 1024
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
     @property
     def is_production(self) -> bool:

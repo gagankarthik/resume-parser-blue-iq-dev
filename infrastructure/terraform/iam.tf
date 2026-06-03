@@ -61,27 +61,21 @@ data "aws_iam_policy_document" "lambda_app" {
 
   # Textract — real AWS only, no LocalStack
   statement {
-    sid     = "Textract"
-    effect  = "Allow"
-    actions = ["textract:DetectDocumentText", "textract:AnalyzeDocument"]
+    sid       = "Textract"
+    effect    = "Allow"
+    actions   = ["textract:DetectDocumentText", "textract:AnalyzeDocument"]
     resources = ["*"]
   }
 
-  # Lambda — API function invokes Worker function
+  # Lambda — the function invokes ITSELF for async OCR work.
+  # ARN is constructed (not a resource reference) to avoid a dependency cycle:
+  # function → exec-role policy → function.
   statement {
-    sid     = "InvokeWorker"
+    sid     = "InvokeSelf"
     effect  = "Allow"
     actions = ["lambda:InvokeFunction"]
-    resources = [aws_lambda_function.worker.arn]
-  }
-
-  # SSM — read secrets at cold start
-  statement {
-    sid     = "SSMParams"
-    effect  = "Allow"
-    actions = ["ssm:GetParameter", "ssm:GetParameters"]
     resources = [
-      aws_ssm_parameter.openai_api_key.arn,
+      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${local.name_prefix}-api",
     ]
   }
 }
@@ -161,7 +155,6 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     ]
     resources = [
       aws_lambda_function.api.arn,
-      aws_lambda_function.worker.arn,
     ]
   }
 }

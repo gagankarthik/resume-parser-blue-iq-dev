@@ -9,13 +9,8 @@ output "ecr_repository_url" {
 }
 
 output "api_lambda_arn" {
-  description = "API Lambda ARN"
+  description = "Resume-parser Lambda ARN"
   value       = aws_lambda_function.api.arn
-}
-
-output "worker_lambda_arn" {
-  description = "Worker Lambda ARN"
-  value       = aws_lambda_function.worker.arn
 }
 
 output "github_actions_role_arn" {

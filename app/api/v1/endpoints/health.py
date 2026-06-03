@@ -26,7 +26,9 @@ async def _check_dynamodb(settings) -> str:
         if settings.dynamodb_endpoint_url:
             kwargs["endpoint_url"] = settings.dynamodb_endpoint_url
         db = boto3.client("dynamodb", **kwargs)
-        db.list_tables(Limit=1)
+        # DescribeTable (not ListTables) — covered by the least-privilege role
+        # and validates the table the app actually depends on.
+        db.describe_table(TableName=settings.dynamodb_table_api_keys)
     try:
         loop = asyncio.get_event_loop()
         await asyncio.wait_for(loop.run_in_executor(None, _probe), timeout=3.0)

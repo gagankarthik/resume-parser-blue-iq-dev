@@ -1,8 +1,10 @@
 """
-AWS Lambda entry point — Async OCR Worker Lambda.
+Async OCR worker pipeline.
 
-Invoked asynchronously (InvocationType='Event') by the API Lambda.
-Handler: app.handlers.worker_lambda.handler
+In the single-Lambda deployment this is invoked by the unified entry point
+(`app.handlers.lambda_handler`) when the function receives a non-HTTP event —
+i.e. a self-invoke with InvocationType='Event'. It is not registered as a
+separate Lambda handler.
 
 Expected event payload:
   {

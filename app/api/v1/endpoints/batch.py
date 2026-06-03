@@ -12,9 +12,6 @@ GET /api/v1/resume/batch/{batch_id}
   Poll overall progress: total / completed / failed / processing counts.
 """
 
-import json
-
-import boto3
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from ulid import ULID
 
@@ -28,18 +25,10 @@ from app.db import dynamodb as db
 from app.models.schemas import BatchSkipped, BatchStatusResponse, BatchSubmitResponse
 from app.storage import s3_client
 from app.workers.batch_processor import process_batch_locally
+from app.workers.dispatch import invoke_worker
 
 router = APIRouter()
 log = get_logger(__name__)
-
-
-def _invoke_worker_lambda(settings, payload: dict) -> None:
-    client = boto3.client("lambda", region_name=settings.aws_region)
-    client.invoke(
-        FunctionName=settings.worker_lambda_function_name,
-        InvocationType="Event",
-        Payload=json.dumps(payload).encode(),
-    )
 
 
 @router.post(
@@ -125,7 +114,7 @@ async def batch_parse(
 
     if settings.use_lambda_worker:
         for job in accepted_jobs:
-            _invoke_worker_lambda(settings, job)
+            invoke_worker(settings, job)
     else:
         background_tasks.add_task(process_batch_locally, batch_id, accepted_jobs)
 

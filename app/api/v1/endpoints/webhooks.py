@@ -14,9 +14,9 @@ from fastapi import APIRouter, Depends
 from ulid import ULID
 
 from app.api.dependencies import enforce_rate_limit
-from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
 from app.core.security import generate_webhook_secret
+from app.core.url_validator import UnsafeWebhookURLError, validate_webhook_url
 from app.db import dynamodb as db
 from app.models.schemas import WebhookCreateRequest, WebhookResponse
 
@@ -37,10 +37,12 @@ async def create_webhook(
     record: dict = Depends(enforce_rate_limit),
 ) -> WebhookResponse:
     company_id: str = record["company_id"]
-    settings = get_settings()
 
-    if settings.is_production and not payload.url.startswith("https://"):
-        raise api_error(422, ErrorCode.INVALID_REQUEST, "Webhook URL must use HTTPS in production")
+    # SSRF guard: scheme + DNS resolution must be public (https-only in prod).
+    try:
+        validate_webhook_url(payload.url)
+    except UnsafeWebhookURLError as exc:
+        raise api_error(422, ErrorCode.INVALID_REQUEST, str(exc))
 
     webhook_id = str(ULID())
     secret     = generate_webhook_secret()

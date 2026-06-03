@@ -19,6 +19,7 @@ import httpx
 
 from app.core.logging import get_logger
 from app.core.security import sign_webhook_payload
+from app.core.url_validator import UnsafeWebhookURLError, validate_webhook_url
 from app.db import dynamodb as db
 
 log = get_logger(__name__)
@@ -65,6 +66,14 @@ async def deliver_event(company_id: str, event: str, payload: dict) -> None:
 async def _deliver_to_hook(hook: dict, event: str, payload: dict) -> None:
     url    = hook["url"]
     secret = hook["hmac_secret"]
+
+    # SSRF re-check at delivery (defends against DNS rebinding on stored URLs).
+    # getaddrinfo is blocking, so run it off the event loop.
+    try:
+        await asyncio.get_event_loop().run_in_executor(None, validate_webhook_url, url)
+    except UnsafeWebhookURLError as exc:
+        log.warning("webhook_unsafe_url_skip", url=url, error=str(exc))
+        return
 
     if _circuit_open(url):
         log.warning("webhook_circuit_open_skip", url=url, event=event)

@@ -133,106 +133,21 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
-      - name: Update API Lambda image
+      # Sizing, env vars, Function URL, and the public-invoke permission are all
+      # owned by Terraform (run `terraform apply` when infra changes). CI only
+      # ships new code to the single function.
+      - name: Update Lambda image
         run: |
           aws lambda update-function-code \
             --function-name resume-parser-production-api \
             --image-uri ${{ needs.build-and-push.outputs.image_uri }} \
             --region ${{ env.AWS_REGION }}
 
-      - name: Wait for API Lambda update
+      - name: Wait for Lambda update
         run: |
           aws lambda wait function-updated \
             --function-name resume-parser-production-api \
             --region ${{ env.AWS_REGION }}
-
-      - name: Check if API Lambda update succeeded
-        run: |
-          if [ $? -ne 0 ]; then
-            echo "Update failed, but function might already have this image"
-            # Try with --publish flag as fallback
-            aws lambda update-function-code \
-              --function-name resume-parser-production-api \
-              --image-uri ${{ needs.build-and-push.outputs.image_uri }} \
-              --region ${{ env.AWS_REGION }} \
-              --publish
-          fi
-
-      - name: Update Worker Lambda image
-        run: |
-          aws lambda update-function-code \
-            --function-name resume-parser-production-worker \
-            --image-uri ${{ needs.build-and-push.outputs.image_uri }} \
-            --region ${{ env.AWS_REGION }}
-
-      - name: Wait for Worker Lambda update
-        run: |
-          aws lambda wait function-updated \
-            --function-name resume-parser-production-worker \
-            --region ${{ env.AWS_REGION }}
-
-      # The live functions ran at the AWS default 128 MB — too little for the
-      # cold-start imports (PyMuPDF, Pillow, openai, boto3) → Runtime.OutOfMemory
-      # + init timeout → HTTP 502. The deploy only updates code, so configuration
-      # drift persists. Enforce the intended sizing (matches Terraform) here.
-      # Also pin the image CMD per function: the shared image defaults to the API
-      # handler, so the Worker MUST override its command to the worker handler.
-      - name: Ensure Lambda sizing & handlers (match Terraform)
-        run: |
-          REGION=${{ env.AWS_REGION }}
-
-          echo "Configuring API Lambda (1024 MB / 29 s / API handler)"
-          aws lambda update-function-configuration \
-            --function-name resume-parser-production-api \
-            --memory-size 1024 \
-            --timeout 29 \
-            --image-config '{"Command":["app.handlers.lambda_handler.handler"]}' \
-            --region "$REGION"
-          aws lambda wait function-updated \
-            --function-name resume-parser-production-api --region "$REGION"
-
-          echo "Configuring Worker Lambda (2048 MB / 300 s / worker handler)"
-          aws lambda update-function-configuration \
-            --function-name resume-parser-production-worker \
-            --memory-size 2048 \
-            --timeout 300 \
-            --image-config '{"Command":["app.handlers.worker_lambda.handler"]}' \
-            --region "$REGION"
-          aws lambda wait function-updated \
-            --function-name resume-parser-production-worker --region "$REGION"
-
-      - name: Ensure API Function URL + public-invoke permission exist
-        run: |
-          FN=resume-parser-production-api
-
-          # 1. Ensure the Function URL config exists (AuthType=NONE).
-          if ! aws lambda get-function-url-config \
-                --function-name "$FN" --region ${{ env.AWS_REGION }} >/dev/null 2>&1; then
-            echo "Function URL missing — creating it"
-            aws lambda create-function-url-config \
-              --function-name "$FN" \
-              --auth-type NONE \
-              --region ${{ env.AWS_REGION }}
-          fi
-
-          # 2. Ensure the resource-based permission allowing public invoke exists.
-          #    Without this an AuthType=NONE URL returns HTTP 403. add-permission is
-          #    idempotent here: a pre-existing statement throws ResourceConflictException,
-          #    which we treat as success.
-          if aws lambda add-permission \
-                --function-name "$FN" \
-                --statement-id FunctionURLAllowPublicAccess \
-                --action lambda:InvokeFunctionUrl \
-                --principal '*' \
-                --function-url-auth-type NONE \
-                --region ${{ env.AWS_REGION }} 2>err.txt; then
-            echo "Public-invoke permission created"
-          elif grep -q ResourceConflictException err.txt; then
-            echo "Public-invoke permission already present — ok"
-          else
-            cat err.txt
-            exit 1
-          fi
 
       - name: Smoke test — health check
         id: smoke

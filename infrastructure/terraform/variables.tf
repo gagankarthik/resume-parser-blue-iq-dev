@@ -32,34 +32,18 @@ variable "ecr_image_uri" {
   type        = string
 }
 
+# Single function handles both the HTTP API and the async OCR path, so it is
+# sized for the heavier OCR workload (Tesseract + Textract + OpenAI).
 variable "api_lambda_memory_mb" {
-  description = "Memory for the API Lambda (MB)"
-  type        = number
-  default     = 1024
-}
-
-variable "worker_lambda_memory_mb" {
-  description = "Memory for the Worker Lambda (scanned PDFs need more RAM for Tesseract)"
+  description = "Memory for the resume-parser Lambda (MB) — sized for OCR"
   type        = number
   default     = 2048
 }
 
 variable "api_lambda_timeout_seconds" {
-  description = "API Lambda timeout — API Gateway hard-limits at 29s"
-  type        = number
-  default     = 29
-}
-
-variable "worker_lambda_timeout_seconds" {
-  description = "Worker Lambda timeout — Tesseract + Textract + OpenAI"
+  description = "Lambda timeout (s) — covers async OCR self-invocations; HTTP requests finish well under this"
   type        = number
   default     = 300
-}
-
-variable "worker_reserved_concurrency" {
-  description = "Reserved concurrency for worker Lambda — controls max parallel OCR+AI calls"
-  type        = number
-  default     = 10
 }
 
 variable "max_batch_size" {
