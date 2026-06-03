@@ -2,24 +2,21 @@
 
 locals {
   lambda_env = {
-    ENVIRONMENT                   = var.environment
-    AWS_REGION_NAME               = var.aws_region # avoid conflict with Lambda's AWS_REGION
-    DYNAMODB_TABLE_API_KEYS       = aws_dynamodb_table.api_keys.name
-    DYNAMODB_TABLE_RATE_LIMITS    = aws_dynamodb_table.rate_limits.name
-    DYNAMODB_TABLE_JOBS           = aws_dynamodb_table.jobs.name
-    DYNAMODB_TABLE_BATCHES        = aws_dynamodb_table.batches.name
-    DYNAMODB_TABLE_WEBHOOKS       = aws_dynamodb_table.webhooks.name
-    DYNAMODB_TABLE_AUDIT_LOGS     = aws_dynamodb_table.audit_logs.name
-    DYNAMODB_TABLE_COMPANIES      = aws_dynamodb_table.companies.name
-    S3_BUCKET_NAME                = aws_s3_bucket.temp.bucket
-    OPENAI_MODEL                  = var.openai_model
-    OPENAI_MAX_TOKENS             = "4096"
-    MAX_FILE_SIZE_MB              = "10" # NOTE: Function URL still caps requests at ~6 MB at the edge
-    MAX_BATCH_SIZE                = tostring(var.max_batch_size)
-    MAX_CONCURRENT_JOBS           = "5" # local-dev batch semaphore only
-    DEFAULT_RATE_LIMIT_PER_MINUTE = tostring(var.rate_limit_per_minute)
-    DEFAULT_RATE_LIMIT_PER_DAY    = tostring(var.rate_limit_per_day)
-    JOB_RESULT_TTL_SECONDS        = "3600"
+    ENVIRONMENT               = var.environment
+    AWS_REGION_NAME           = var.aws_region # avoid conflict with Lambda's AWS_REGION
+    DYNAMODB_TABLE_API_KEYS   = aws_dynamodb_table.api_keys.name
+    DYNAMODB_TABLE_JOBS       = aws_dynamodb_table.jobs.name
+    DYNAMODB_TABLE_BATCHES    = aws_dynamodb_table.batches.name
+    DYNAMODB_TABLE_WEBHOOKS   = aws_dynamodb_table.webhooks.name
+    DYNAMODB_TABLE_AUDIT_LOGS = aws_dynamodb_table.audit_logs.name
+    DYNAMODB_TABLE_COMPANIES  = aws_dynamodb_table.companies.name
+    S3_BUCKET_NAME            = aws_s3_bucket.temp.bucket
+    OPENAI_MODEL              = var.openai_model
+    OPENAI_MAX_TOKENS         = "4096"
+    MAX_FILE_SIZE_MB          = "10" # NOTE: Function URL still caps requests at ~6 MB at the edge
+    MAX_BATCH_SIZE            = tostring(var.max_batch_size)
+    MAX_CONCURRENT_JOBS       = "5" # local-dev batch semaphore only
+    JOB_RESULT_TTL_SECONDS    = "3600"
     # Single-function deployment: the function invokes ITSELF for async OCR work.
     WORKER_LAMBDA_FUNCTION_NAME = "${local.name_prefix}-api"
     OPENAI_API_KEY              = var.openai_api_key

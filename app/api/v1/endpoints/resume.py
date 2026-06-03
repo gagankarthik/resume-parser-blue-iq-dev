@@ -17,7 +17,7 @@ POST /api/v1/resume/{job_id}/retry
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from ulid import ULID
 
-from app.api.dependencies import enforce_rate_limit
+from app.api.dependencies import get_api_key_record
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
 from app.core.exceptions import UnsupportedFileTypeError
@@ -89,7 +89,7 @@ async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
 async def parse_resume(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Resume file: PDF, DOCX, PNG, JPG, or TIFF"),
-    record: dict = Depends(enforce_rate_limit),
+    record: dict = Depends(get_api_key_record),
 ) -> ParseResponse:
     settings   = get_settings()
     company_id = record["company_id"]
@@ -140,7 +140,7 @@ async def parse_resume(
 )
 async def get_job_status(
     job_id: str,
-    record: dict = Depends(enforce_rate_limit),
+    record: dict = Depends(get_api_key_record),
 ) -> JobStatusResponse:
     company_id = record["company_id"]
     job        = db.get_job(job_id)
@@ -182,7 +182,7 @@ async def retry_parse(
     job_id: str,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="The same resume file to re-parse"),
-    record: dict = Depends(enforce_rate_limit),
+    record: dict = Depends(get_api_key_record),
 ) -> RetryResponse:
     settings   = get_settings()
     company_id = record["company_id"]

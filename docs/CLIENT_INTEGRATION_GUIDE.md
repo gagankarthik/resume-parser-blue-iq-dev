@@ -226,22 +226,8 @@ handler **idempotent** (key on `job_id`) — a delivery may arrive more than onc
 
 ## 7. Rate limits
 
-Per API key, two windows:
-
-| Window | Default |
-|---|---|
-| Per minute | 30 requests |
-| Per day | 1000 requests |
-
-Every authenticated response includes:
-
-```
-X-RateLimit-Limit-Minute / X-RateLimit-Remaining-Minute
-X-RateLimit-Limit-Day    / X-RateLimit-Remaining-Day
-```
-
-Exceeding a limit returns `429 RATE_LIMIT_EXCEEDED`. Back off using the `Remaining`
-headers. Need higher limits? Contact us — they're configurable per key.
+There are no request-rate limits on the API. Please still upload responsibly
+(reasonable concurrency) so the async OCR workers aren't starved.
 
 ---
 
@@ -338,10 +324,9 @@ All errors share one envelope:
 | 413 | `FILE_TOO_LARGE` |
 | 415 | `UNSUPPORTED_FILE_TYPE`, `CORRUPTED_FILE` |
 | 422 | `VALIDATION_ERROR`, `BATCH_TOO_LARGE`, `EMPTY_BATCH`, `RETRY_LIMIT_REACHED` |
-| 429 | `RATE_LIMIT_EXCEEDED` |
 | 500 | `PARSE_FAILED`, `EXTRACTION_FAILED`, `OCR_FAILED`, `INTERNAL_ERROR` |
 
-For transient `5xx`/`429`, retry with exponential backoff. For `4xx`, fix the request.
+For transient `5xx`, retry with exponential backoff. For `4xx`, fix the request.
 
 ---
 
@@ -423,7 +408,6 @@ async function parseResume(file /* Blob/File */) {
 - [ ] Register a webhook and **verify the HMAC signature** on every delivery
 - [ ] Make webhook handling idempotent (key on `job_id`)
 - [ ] Persist results within the 1-hour window
-- [ ] Respect rate-limit headers; back off on `429`
 - [ ] Surface `error.hint` to users; log `error.request_id` for support
 - [ ] Keep uploads under 10 MB (and under ~6 MB while the API is fronted by a Lambda Function URL)
 

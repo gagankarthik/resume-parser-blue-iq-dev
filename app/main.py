@@ -129,7 +129,7 @@ def create_app() -> FastAPI:
             "ready for healthcare staffing profile fields.\n\n"
             "Specialised for nursing and allied health: normalises 360+ clinical specialties, "
             "credentials (RN, LPN, CRT, RRT, OT, PT, SLP…), and certifications (BLS, ACLS, CCRN…).\n\n"
-            "All responses include `X-Request-ID` for tracing and `X-RateLimit-*` headers."
+            "All responses include `X-Request-ID` for tracing."
         ),
         docs_url="/docs" if not settings.is_production else None,
         redoc_url="/redoc" if not settings.is_production else None,
@@ -157,9 +157,7 @@ def create_app() -> FastAPI:
         allow_origins=cors_origins,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["X-API-Key", "X-Request-ID", "Content-Type"],
-        expose_headers=["X-Request-ID", "X-RateLimit-Limit-Minute",
-                        "X-RateLimit-Remaining-Minute", "X-RateLimit-Limit-Day",
-                        "X-RateLimit-Remaining-Day"],
+        expose_headers=["X-Request-ID"],
     )
 
     app.include_router(router)

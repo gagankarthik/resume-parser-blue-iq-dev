@@ -40,11 +40,6 @@ class CompanyCreate(BaseModel):
     plan: str = "free"
 
 
-class KeyCreate(BaseModel):
-    rate_limit_per_minute: int = Field(default=30, gt=0, le=100_000)
-    rate_limit_per_day: int = Field(default=1000, gt=0, le=10_000_000)
-
-
 def _slug(name: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return (s or "company")[:40]
@@ -92,19 +87,13 @@ async def get_company(company_id: str) -> dict:
 # ── API keys ──────────────────────────────────────────────────────────────────
 
 @router.post("/companies/{company_id}/keys", status_code=201, summary="Issue an API key")
-async def issue_key(company_id: str, payload: KeyCreate) -> dict:
+async def issue_key(company_id: str) -> dict:
     if not db.get_company(company_id):
         raise api_error(404, ErrorCode.INVALID_REQUEST, "Company not found")
 
     raw_key, key_hash = generate_api_key()
     prefix = key_display_prefix(raw_key)
-    db.create_api_key(
-        key_hash=key_hash,
-        key_prefix=prefix,
-        company_id=company_id,
-        rate_limit_per_minute=payload.rate_limit_per_minute,
-        rate_limit_per_day=payload.rate_limit_per_day,
-    )
+    db.create_api_key(key_hash=key_hash, key_prefix=prefix, company_id=company_id)
     log.info("api_key_issued", company_id=company_id, key_prefix=prefix)
     # api_key is returned ONCE — never retrievable again.
     return {
@@ -112,8 +101,6 @@ async def issue_key(company_id: str, payload: KeyCreate) -> dict:
         "key_prefix": prefix,
         "company_id": company_id,
         "status": "active",
-        "rate_limit_per_minute": payload.rate_limit_per_minute,
-        "rate_limit_per_day": payload.rate_limit_per_day,
         "created_at": datetime.now(UTC).isoformat(),
     }
 
@@ -127,8 +114,6 @@ async def list_keys(company_id: str) -> list[dict]:
             "key_prefix": k.get("key_prefix"),
             "company_id": k.get("company_id"),
             "status": k.get("status"),
-            "rate_limit_per_minute": int(k.get("rate_limit_per_minute", 0)),
-            "rate_limit_per_day": int(k.get("rate_limit_per_day", 0)),
             "created_at": k.get("created_at"),
             # opaque handle for revoke (hash is required by the revoke endpoint)
             "key_hash": k.get("key_hash"),

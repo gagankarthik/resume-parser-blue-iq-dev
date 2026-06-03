@@ -58,15 +58,3 @@ variable "max_batch_size" {
   type        = number
   default     = 200
 }
-
-variable "rate_limit_per_minute" {
-  description = "Default per-key per-minute rate limit"
-  type        = number
-  default     = 30
-}
-
-variable "rate_limit_per_day" {
-  description = "Default per-key per-day rate limit"
-  type        = number
-  default     = 1000
-}

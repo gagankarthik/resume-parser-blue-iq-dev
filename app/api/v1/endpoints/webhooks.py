@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends
 from ulid import ULID
 
-from app.api.dependencies import enforce_rate_limit
+from app.api.dependencies import get_api_key_record
 from app.core.errors import ErrorCode, api_error
 from app.core.security import generate_webhook_secret
 from app.core.url_validator import UnsafeWebhookURLError, validate_webhook_url
@@ -34,7 +34,7 @@ _VALID_EVENTS = {"parse.completed", "parse.failed", "batch.completed"}
 )
 async def create_webhook(
     payload: WebhookCreateRequest,
-    record: dict = Depends(enforce_rate_limit),
+    record: dict = Depends(get_api_key_record),
 ) -> WebhookResponse:
     company_id: str = record["company_id"]
 
@@ -71,7 +71,7 @@ async def create_webhook(
     summary="List webhooks",
     tags=["Webhooks"],
 )
-async def list_webhooks(record: dict = Depends(enforce_rate_limit)) -> list[WebhookResponse]:
+async def list_webhooks(record: dict = Depends(get_api_key_record)) -> list[WebhookResponse]:
     hooks = db.list_webhooks(record["company_id"])
     return [
         WebhookResponse(
@@ -93,7 +93,7 @@ async def list_webhooks(record: dict = Depends(enforce_rate_limit)) -> list[Webh
 )
 async def delete_webhook(
     webhook_id: str,
-    record: dict = Depends(enforce_rate_limit),
+    record: dict = Depends(get_api_key_record),
 ) -> None:
     company_id: str = record["company_id"]
     hook = db.get_webhook(company_id, webhook_id)

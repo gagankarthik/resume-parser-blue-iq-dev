@@ -15,7 +15,7 @@ GET /api/v1/resume/batch/{batch_id}
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from ulid import ULID
 
-from app.api.dependencies import enforce_rate_limit
+from app.api.dependencies import get_api_key_record
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
 from app.core.exceptions import UnsupportedFileTypeError
@@ -49,7 +49,7 @@ log = get_logger(__name__)
 async def batch_parse(
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(..., description="Resume files — PDF, DOCX, PNG, JPG, TIFF"),
-    record: dict = Depends(enforce_rate_limit),
+    record: dict = Depends(get_api_key_record),
 ) -> BatchSubmitResponse:
     settings = get_settings()
     company_id: str = record["company_id"]
@@ -142,7 +142,7 @@ async def batch_parse(
 )
 async def get_batch_status(
     batch_id: str,
-    record: dict = Depends(enforce_rate_limit),
+    record: dict = Depends(get_api_key_record),
 ) -> BatchStatusResponse:
     company_id: str = record["company_id"]
     batch = db.get_batch(batch_id)

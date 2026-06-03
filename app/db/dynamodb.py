@@ -3,7 +3,6 @@ All DynamoDB operations in one place.
 
 Tables:
   api_keys      — pk: key_hash
-  rate_limits   — pk: window_key   (managed by rate_limiter.py)
   jobs          — pk: job_id       (async job tracking, TTL 1h)
   batches       — pk: batch_id     (batch tracking, TTL 24h)
   webhooks      — pk: company_id, sk: webhook_id
@@ -52,8 +51,6 @@ def create_api_key(
     key_hash: str,
     key_prefix: str,
     company_id: str,
-    rate_limit_per_minute: int,
-    rate_limit_per_day: int,
 ) -> None:
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_api_keys)
@@ -63,8 +60,6 @@ def create_api_key(
             "key_prefix": key_prefix,
             "company_id": company_id,
             "status": "active",
-            "rate_limit_per_minute": rate_limit_per_minute,
-            "rate_limit_per_day": rate_limit_per_day,
             "created_at": datetime.now(UTC).isoformat(),
         }
     )
@@ -99,20 +94,21 @@ def create_company(
     name: str,
     email: str,
     plan: str = "free",
+    password_hash: str | None = None,
 ) -> None:
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_companies)
-    table.put_item(
-        Item={
-            "company_id": company_id,
-            "name": name,
-            "email": email,
-            "plan": plan,
-            "status": "active",
-            "created_at": datetime.now(UTC).isoformat(),
-        },
-        ConditionExpression="attribute_not_exists(company_id)",
-    )
+    item: dict[str, Any] = {
+        "company_id": company_id,
+        "name": name,
+        "email": email,
+        "plan": plan,
+        "status": "active",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    if password_hash:
+        item["password_hash"] = password_hash
+    table.put_item(Item=item, ConditionExpression="attribute_not_exists(company_id)")
 
 
 def get_company(company_id: str) -> dict | None:

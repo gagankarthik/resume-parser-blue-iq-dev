@@ -26,19 +26,6 @@ awslocal dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --region $REGION || true
 
-# rate_limits (TTL-based, auto-expires)
-awslocal dynamodb create-table \
-  --table-name resume-parser-rate-limits \
-  --attribute-definitions AttributeName=window_key,AttributeType=S \
-  --key-schema AttributeName=window_key,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region $REGION || true
-
-awslocal dynamodb update-time-to-live \
-  --table-name resume-parser-rate-limits \
-  --time-to-live-specification Enabled=true,AttributeName=ttl \
-  --region $REGION || true
-
 # jobs (TTL 1 hour)
 awslocal dynamodb create-table \
   --table-name resume-parser-jobs \
@@ -125,8 +112,6 @@ awslocal dynamodb put-item \
     \"key_prefix\": {\"S\": \"rp_live_dev…\"},
     \"company_id\": {\"S\": \"dev-company\"},
     \"status\": {\"S\": \"active\"},
-    \"rate_limit_per_minute\": {\"N\": \"60\"},
-    \"rate_limit_per_day\": {\"N\": \"10000\"},
     \"created_at\": {\"S\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}
   }" \
   --region $REGION || true

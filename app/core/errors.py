@@ -31,9 +31,6 @@ class ErrorCode(StrEnum):
     INVALID_API_KEY        = "INVALID_API_KEY"
     REVOKED_API_KEY        = "REVOKED_API_KEY"
 
-    # ── Rate Limiting ─────────────────────────────────────────────────────────
-    RATE_LIMIT_EXCEEDED    = "RATE_LIMIT_EXCEEDED"
-
     # ── File Validation ───────────────────────────────────────────────────────
     FILE_TOO_LARGE         = "FILE_TOO_LARGE"
     UNSUPPORTED_FILE_TYPE  = "UNSUPPORTED_FILE_TYPE"
@@ -81,10 +78,6 @@ _HINTS: dict[str, str] = {
     ),
     ErrorCode.REVOKED_API_KEY: (
         "This API key has been revoked. Contact your administrator to issue a new key."
-    ),
-    ErrorCode.RATE_LIMIT_EXCEEDED: (
-        "You have sent too many requests. Check the X-RateLimit-Remaining-Minute and "
-        "X-RateLimit-Remaining-Day response headers to see when you can retry."
     ),
     ErrorCode.FILE_TOO_LARGE: (
         "The uploaded file is too large. Maximum size is 10 MB. "

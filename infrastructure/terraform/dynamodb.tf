@@ -28,24 +28,6 @@ resource "aws_dynamodb_table" "api_keys" {
   tags = local.common_tags
 }
 
-resource "aws_dynamodb_table" "rate_limits" {
-  name         = "resume-parser-rate-limits"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "window_key"
-
-  attribute {
-    name = "window_key"
-    type = "S"
-  }
-
-  ttl {
-    attribute_name = "ttl"
-    enabled        = true
-  }
-
-  tags = local.common_tags
-}
-
 resource "aws_dynamodb_table" "jobs" {
   name         = "resume-parser-jobs"
   billing_mode = "PAY_PER_REQUEST"

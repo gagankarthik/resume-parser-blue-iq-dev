@@ -22,7 +22,6 @@ class Settings(BaseSettings):
 
     # DynamoDB tables
     dynamodb_table_api_keys: str = "resume-parser-api-keys"
-    dynamodb_table_rate_limits: str = "resume-parser-rate-limits"
     dynamodb_table_jobs: str = "resume-parser-jobs"
     dynamodb_table_batches: str = "resume-parser-batches"
     dynamodb_table_webhooks: str = "resume-parser-webhooks"
@@ -38,6 +37,10 @@ class Settings(BaseSettings):
     # product platform (company onboarding, key management, usage stats).
     # Set a strong value in production; empty disables the admin endpoints.
     admin_api_token: str = ""
+
+    # Secret for signing self-serve account session tokens (/api/v1/auth).
+    # MUST be set to a strong random value in production.
+    auth_secret: str = "dev-insecure-auth-secret-change-me"
 
     # S3
     s3_bucket_name: str = "resume-parser-temp"
@@ -62,10 +65,6 @@ class Settings(BaseSettings):
     # (see app/main.py). Note: the test UI talks to the API through its own
     # server-side proxy, so it does not rely on CORS at all.
     cors_allowed_origins: str = ""
-
-    # Rate limiting
-    default_rate_limit_per_minute: int = 30
-    default_rate_limit_per_day: int = 1000
 
     # Webhooks
     webhook_timeout_seconds: int = 10

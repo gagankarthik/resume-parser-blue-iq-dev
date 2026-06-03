@@ -1,36 +1,47 @@
 """
-FastAPI dependency injection — authentication, caching, rate limiting.
+FastAPI dependency injection — authentication and caching.
 
 API key cache:
   In-memory dict with 5-minute TTL per Lambda instance.
   Reduces DynamoDB reads from 1/request to ~1/300 requests per instance.
   Revoked keys remain valid for up to TTL — acceptable trade-off.
   Cache is per-process; Lambda cold starts naturally clear it.
-
-Rate limit headers returned on every authenticated response:
-  X-RateLimit-Limit-Minute
-  X-RateLimit-Remaining-Minute
-  X-RateLimit-Limit-Day
-  X-RateLimit-Remaining-Day
 """
 
 import hmac
 import time
 
-from fastapi import Depends, Response
+from fastapi import Depends
 from fastapi.security import APIKeyHeader
 
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
 from app.core.logging import get_logger
-from app.core.rate_limiter import check_and_increment
-from app.core.security import hash_api_key, key_display_prefix, validate_key_format
+from app.core.security import (
+    hash_api_key,
+    key_display_prefix,
+    validate_key_format,
+    verify_account_token,
+)
 from app.db import dynamodb as db
 
 log = get_logger(__name__)
 
 _api_key_scheme = APIKeyHeader(name="X-API-Key", auto_error=False)
 _admin_token_scheme = APIKeyHeader(name="X-Admin-Token", auto_error=False)
+_bearer_scheme = APIKeyHeader(name="Authorization", auto_error=False)
+
+
+def get_current_account(authorization: str = Depends(_bearer_scheme)) -> str:
+    """Resolve the self-serve account (company_id) from a Bearer session token."""
+    if not authorization:
+        raise api_error(401, ErrorCode.MISSING_API_KEY, "Missing Authorization header")
+    token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else authorization
+    company_id = verify_account_token(token, get_settings().auth_secret)
+    if not company_id:
+        raise api_error(401, ErrorCode.INVALID_API_KEY, "Invalid or expired session")
+    return company_id
+
 
 # ── In-memory API key cache ───────────────────────────────────────────────────
 _KEY_CACHE: dict[str, tuple[dict, float]] = {}
@@ -102,36 +113,3 @@ def require_admin(token: str = Depends(_admin_token_scheme)) -> None:
     if not token or not hmac.compare_digest(token, expected):
         log.warning("admin_auth_failed")
         raise api_error(401, ErrorCode.INVALID_API_KEY, "Invalid admin token")
-
-
-def enforce_rate_limit(
-    response: Response,
-    record: dict = Depends(get_api_key_record),
-) -> dict:
-    """
-    Check sliding-window rate limits and set X-RateLimit-* response headers.
-    Headers are set even when the request is rejected so clients can backoff.
-    """
-    limit_min = int(record.get("rate_limit_per_minute", 30))
-    limit_day = int(record.get("rate_limit_per_day", 1000))
-
-    allowed, reason, rem_min, rem_day = check_and_increment(
-        key_hash=record["key_hash"],
-        limit_per_minute=limit_min,
-        limit_per_day=limit_day,
-    )
-
-    response.headers["X-RateLimit-Limit-Minute"]     = str(limit_min)
-    response.headers["X-RateLimit-Remaining-Minute"] = str(max(rem_min, 0))
-    response.headers["X-RateLimit-Limit-Day"]        = str(limit_day)
-    response.headers["X-RateLimit-Remaining-Day"]    = str(max(rem_day, 0))
-
-    if not allowed:
-        log.warning(
-            "rate_limit_exceeded",
-            company_id=record.get("company_id"),
-            reason=reason,
-        )
-        raise api_error(429, ErrorCode.RATE_LIMIT_EXCEEDED, reason)
-
-    return record
