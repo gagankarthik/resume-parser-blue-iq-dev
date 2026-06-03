@@ -12,7 +12,6 @@ Enterprise-grade resume parsing service that converts PDF, DOCX, and image resum
 - [Project Structure](#project-structure)
 - [API Reference](#api-reference)
 - [Authentication](#authentication)
-- [Rate Limiting](#rate-limiting)
 - [Webhooks](#webhooks)
 - [Processing Pipeline](#processing-pipeline)
 - [Data Privacy](#data-privacy)
@@ -34,7 +33,7 @@ The Resume Parser API accepts resume files via HTTP, extracts and semantically p
 **Key design decisions:**
 
 - **Zero data retention** — resume content is never stored. Raw files are deleted from S3 immediately after processing (in a `finally` block, even on failure). Only audit logs (metadata, no content) are kept.
-- **No Redis / no Celery** — FastAPI BackgroundTasks handles async processing. DynamoDB handles rate limiting and job tracking.
+- **No Redis / no Celery** — FastAPI BackgroundTasks handles async processing. DynamoDB handles job tracking.
 - **Single tenant** — built for one company. Auth is API key scoped to `company_id`.
 - **Sync/async split** — digital PDFs and DOCX files are processed synchronously and return results immediately. Scanned PDFs and images run asynchronously (OCR is slow) and deliver results via webhook + polling.
 
@@ -49,7 +48,6 @@ Client
 POST /api/v1/resume/parse
   │
   ├── API Key auth      (DynamoDB lookup)
-  ├── Rate limit check  (DynamoDB sliding window)
   ├── File validation   (type, size)
   │
   ├── [Digital PDF / DOCX] ────────────────────────────────────────────┐
@@ -70,7 +68,7 @@ POST /api/v1/resume/parse
 
 ### Scalability
 
-The app is stateless — S3 and DynamoDB handle all shared state. Scale horizontally by running multiple FastAPI containers behind a load balancer. DynamoDB rate limiting counters are atomic and work correctly across multiple instances.
+The app is stateless — S3 and DynamoDB handle all shared state. Scale horizontally by running multiple FastAPI containers behind a load balancer.
 
 ---
 
@@ -84,7 +82,7 @@ The app is stateless — S3 and DynamoDB handle all shared state. Scale horizont
 | DOCX Extraction | python-docx |
 | OCR | Tesseract (primary) → Amazon Textract (fallback) |
 | Validation | Pydantic v2 |
-| Auth & Rate Limiting | API Keys + DynamoDB |
+| Auth | API Keys + DynamoDB |
 | Job Tracking | DynamoDB (TTL 1 hour) |
 | File Storage | Amazon S3 (temp, auto-deleted) |
 | Webhook Delivery | HTTPX async + HMAC-SHA256 |
@@ -101,7 +99,7 @@ resume-parser/
 ├── app/
 │   ├── main.py                          # FastAPI app factory + lifespan
 │   ├── api/
-│   │   ├── dependencies.py              # Auth + rate limit DI
+│   │   ├── dependencies.py              # Auth DI
 │   │   └── v1/
 │   │       ├── router.py
 │   │       └── endpoints/
@@ -112,7 +110,6 @@ resume-parser/
 │   │   ├── config.py                    # Pydantic settings (env-based)
 │   │   ├── security.py                  # API key hashing, HMAC signing
 │   │   ├── logging.py                   # Structured logging (structlog)
-│   │   ├── rate_limiter.py              # DynamoDB sliding window
 │   │   └── exceptions.py               # Domain exceptions + HTTP helpers
 │   ├── db/
 │   │   └── dynamodb.py                  # All DynamoDB operations
@@ -367,33 +364,8 @@ aws dynamodb put-item \
     "key_prefix": {"S": "rp_live_abc…"},
     "company_id": {"S": "your-company"},
     "status": {"S": "active"},
-    "rate_limit_per_minute": {"N": "30"},
-    "rate_limit_per_day": {"N": "1000"},
     "created_at": {"S": "2026-06-01T00:00:00Z"}
   }'
-```
-
----
-
-## Rate Limiting
-
-Rate limiting uses a **DynamoDB sliding window** with two independent windows:
-
-| Window | Default | Header on exceed |
-|---|---|---|
-| Per minute | 30 requests | `429 Too Many Requests` |
-| Per day | 1000 requests | `429 Too Many Requests` |
-
-Limits are **per API key** and configurable individually in the `api_keys` table via `rate_limit_per_minute` and `rate_limit_per_day` fields.
-
-DynamoDB TTL auto-expires the counter records — no cleanup needed.
-
-**Response on rate limit exceeded:**
-
-```json
-{
-  "detail": "Rate limit: 30 requests/minute exceeded"
-}
 ```
 
 ---
@@ -588,7 +560,6 @@ Copy `.env.example` to `.env` and fill in values.
 | `DYNAMODB_ENDPOINT_URL` | No | — | Set to `http://localstack:4566` for local dev |
 | `S3_ENDPOINT_URL` | No | — | Set to `http://localstack:4566` for local dev |
 | `DYNAMODB_TABLE_API_KEYS` | No | `resume-parser-api-keys` | DynamoDB table name |
-| `DYNAMODB_TABLE_RATE_LIMITS` | No | `resume-parser-rate-limits` | DynamoDB table name |
 | `DYNAMODB_TABLE_JOBS` | No | `resume-parser-jobs` | DynamoDB table name |
 | `DYNAMODB_TABLE_WEBHOOKS` | No | `resume-parser-webhooks` | DynamoDB table name |
 | `DYNAMODB_TABLE_AUDIT_LOGS` | No | `resume-parser-audit-logs` | DynamoDB table name |
@@ -598,8 +569,6 @@ Copy `.env.example` to `.env` and fill in values.
 | `OPENAI_MAX_TOKENS` | No | `4096` | Max tokens for AI parsing |
 | `MAX_FILE_SIZE_MB` | No | `10` | Maximum upload size |
 | `JOB_RESULT_TTL_SECONDS` | No | `3600` | How long async results live in DynamoDB |
-| `DEFAULT_RATE_LIMIT_PER_MINUTE` | No | `30` | Default per-key per-minute limit |
-| `DEFAULT_RATE_LIMIT_PER_DAY` | No | `1000` | Default per-key per-day limit |
 | `WEBHOOK_TIMEOUT_SECONDS` | No | `10` | Timeout per webhook delivery attempt |
 | `WEBHOOK_MAX_RETRIES` | No | `3` | Max retries per webhook |
 
@@ -686,17 +655,7 @@ pytest -v
 | `key_prefix` | String | First 12 chars + `…` for display |
 | `company_id` | String | Owning company |
 | `status` | String | `active` or `revoked` |
-| `rate_limit_per_minute` | Number | Per-minute request limit |
-| `rate_limit_per_day` | Number | Per-day request limit |
 | `created_at` | String | ISO timestamp |
-
-### `resume-parser-rate-limits`
-
-| Attribute | Type | Description |
-|---|---|---|
-| `window_key` (PK) | String | `{key_hash}#min#{YYYY-MM-DDTHH:MM}` or `#day#{YYYY-MM-DD}` |
-| `count` | Number | Request count in this window |
-| `ttl` | Number | Unix timestamp — DynamoDB auto-expires |
 
 ### `resume-parser-jobs`
 
@@ -851,7 +810,6 @@ Each score is `0.0` to `1.0`. Use them to surface records that need human review
 | `413 Request Entity Too Large` | File exceeds `MAX_FILE_SIZE_MB` |
 | `415 Unsupported Media Type` | File extension not supported |
 | `422 Unprocessable Entity` | Invalid webhook event name or non-HTTPS URL |
-| `429 Too Many Requests` | Rate limit exceeded (per-minute or per-day) |
 | `404 Not Found` | Job ID not found or belongs to different company |
 | `500 Internal Server Error` | Unhandled pipeline error |
 

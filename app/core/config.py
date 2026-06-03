@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # AWS
-    aws_region: str = "us-east-1"
+    aws_region: str = "us-east-2"
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     dynamodb_endpoint_url: str = ""  # empty = real AWS

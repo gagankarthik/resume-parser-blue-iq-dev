@@ -21,12 +21,20 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr, Field
+from ulid import ULID
 
 from app.api.dependencies import require_admin
 from app.core.errors import ErrorCode, api_error
 from app.core.logging import get_logger
-from app.core.security import generate_api_key, key_display_prefix
+from app.core.security import (
+    generate_api_key,
+    generate_webhook_secret,
+    key_display_prefix,
+)
+from app.core.url_validator import UnsafeWebhookURLError, validate_webhook_url
 from app.db import dynamodb as db
+
+_VALID_EVENTS = {"parse.completed", "parse.failed", "batch.completed"}
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)], tags=["Admin"])
 log = get_logger(__name__)
@@ -190,3 +198,76 @@ async def usage(company_id: str, days: int = 30) -> dict:
         ],
         "by_file_type": dict(by_file_type),
     }
+
+
+# ── Webhooks ──────────────────────────────────────────────────────────────────
+# Same store the API-key-scoped /webhooks surface uses; here it is managed
+# server-to-server by the dashboard, scoped to an explicit company_id.
+
+class WebhookCreate(BaseModel):
+    url: str
+    events: list[str] = Field(default_factory=list)
+
+
+@router.get("/companies/{company_id}/webhooks", summary="List a company's webhooks")
+async def list_webhooks(company_id: str) -> list[dict]:
+    if not db.get_company(company_id):
+        raise api_error(404, ErrorCode.INVALID_REQUEST, "Company not found")
+    # Never return hmac_secret — it is shown only once at creation.
+    return [
+        {
+            "webhook_id": h.get("webhook_id"),
+            "url": h.get("url"),
+            "events": h.get("events", []),
+            "status": h.get("status", "active"),
+            "created_at": h.get("created_at", ""),
+        }
+        for h in db.list_webhooks(company_id)
+    ]
+
+
+@router.post("/companies/{company_id}/webhooks", status_code=201, summary="Register a webhook")
+async def create_webhook(company_id: str, payload: WebhookCreate) -> dict:
+    if not db.get_company(company_id):
+        raise api_error(404, ErrorCode.INVALID_REQUEST, "Company not found")
+
+    events = [e for e in payload.events if e in _VALID_EVENTS]
+    if not events:
+        raise api_error(422, ErrorCode.INVALID_REQUEST, "Select at least one valid event")
+
+    # SSRF guard: scheme + DNS resolution must be public (https-only in prod).
+    try:
+        validate_webhook_url(payload.url)
+    except UnsafeWebhookURLError as exc:
+        raise api_error(422, ErrorCode.INVALID_REQUEST, str(exc))
+
+    webhook_id = str(ULID())
+    secret = generate_webhook_secret()
+    db.create_webhook(
+        webhook_id=webhook_id,
+        company_id=company_id,
+        url=payload.url,
+        hmac_secret=secret,
+        events=events,
+    )
+    log.info("webhook_created", company_id=company_id, webhook_id=webhook_id)
+    # hmac_secret is returned ONCE — never retrievable again.
+    return {
+        "webhook_id": webhook_id,
+        "url": payload.url,
+        "events": events,
+        "hmac_secret": secret,
+        "status": "active",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+
+@router.delete(
+    "/companies/{company_id}/webhooks/{webhook_id}",
+    status_code=204,
+    summary="Delete a webhook",
+)
+async def delete_webhook(company_id: str, webhook_id: str) -> None:
+    if not db.get_webhook(company_id, webhook_id):
+        raise api_error(404, ErrorCode.WEBHOOK_NOT_FOUND, "Webhook not found")
+    db.delete_webhook(company_id, webhook_id)
