@@ -57,7 +57,7 @@ X-API-Key: rp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 |---|---|
 | Field name | `file` |
 | Supported types | `.pdf`, `.docx`, `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.webp` |
-| Max size | **4 MB** (the endpoint is fronted by a Lambda Function URL with a ~6 MB request cap; 4 MB leaves headroom for encoding) |
+| Max size | **10 MB** (application limit). Note: the endpoint is currently fronted by a Lambda Function URL that caps requests at ~6 MB at the edge — uploads above ~6 MB need the presigned-S3 upload flow. Contact us for files larger than ~6 MB. |
 
 Files are validated by **magic bytes**, not just extension — a renamed file is rejected.
 
@@ -318,8 +318,8 @@ All errors share one envelope:
   "error": {
     "status_code": 413,
     "error_code": "FILE_TOO_LARGE",
-    "detail": "File size 6144 KB exceeds the 4 MB limit",
-    "hint": "The uploaded file is too large. Maximum size is 4 MB...",
+    "detail": "File size 12288 KB exceeds the 10 MB limit",
+    "hint": "The uploaded file is too large. Maximum size is 10 MB...",
     "request_id": "a1b2c3d4-..."
   }
 }
@@ -425,6 +425,6 @@ async function parseResume(file /* Blob/File */) {
 - [ ] Persist results within the 1-hour window
 - [ ] Respect rate-limit headers; back off on `429`
 - [ ] Surface `error.hint` to users; log `error.request_id` for support
-- [ ] Keep uploads under 4 MB
+- [ ] Keep uploads under 10 MB (and under ~6 MB while the API is fronted by a Lambda Function URL)
 
 Questions or higher limits: contact us with your `request_id` where relevant.

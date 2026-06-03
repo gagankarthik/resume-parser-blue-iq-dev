@@ -13,7 +13,7 @@ locals {
     S3_BUCKET_NAME                = aws_s3_bucket.temp.bucket
     OPENAI_MODEL                  = var.openai_model
     OPENAI_MAX_TOKENS             = "4096"
-    MAX_FILE_SIZE_MB              = "4" # Lambda Function URL caps requests at ~6 MB (base64-expanded)
+    MAX_FILE_SIZE_MB              = "10" # NOTE: Function URL still caps requests at ~6 MB at the edge
     MAX_BATCH_SIZE                = tostring(var.max_batch_size)
     MAX_CONCURRENT_JOBS           = "5" # local-dev batch semaphore only
     DEFAULT_RATE_LIMIT_PER_MINUTE = tostring(var.rate_limit_per_minute)
