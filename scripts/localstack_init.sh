@@ -101,6 +101,31 @@ awslocal dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --region $REGION || true
 
+# feedback (feedback_id pk) + company-created GSI for model-improvement export (TTL)
+awslocal dynamodb create-table \
+  --table-name resume-parser-feedback \
+  --attribute-definitions \
+    AttributeName=feedback_id,AttributeType=S \
+    AttributeName=company_id,AttributeType=S \
+    AttributeName=created_at,AttributeType=S \
+  --key-schema \
+    AttributeName=feedback_id,KeyType=HASH \
+  --global-secondary-indexes '[{
+    "IndexName": "company-created-index",
+    "KeySchema": [
+      {"AttributeName": "company_id", "KeyType": "HASH"},
+      {"AttributeName": "created_at", "KeyType": "RANGE"}
+    ],
+    "Projection": {"ProjectionType": "ALL"}
+  }]' \
+  --billing-mode PAY_PER_REQUEST \
+  --region $REGION || true
+
+awslocal dynamodb update-time-to-live \
+  --table-name resume-parser-feedback \
+  --time-to-live-specification Enabled=true,AttributeName=ttl \
+  --region $REGION || true
+
 # Seed a development API key: rp_live_devkey00000000000000000000000000000000
 # hash of "rp_live_devkey00000000000000000000000000000000"
 DEV_KEY_HASH=$(echo -n "rp_live_devkey00000000000000000000000000000000" | sha256sum | awk '{print $1}')

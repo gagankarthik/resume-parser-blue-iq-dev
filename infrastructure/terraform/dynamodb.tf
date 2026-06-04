@@ -152,3 +152,43 @@ resource "aws_dynamodb_table" "companies" {
   point_in_time_recovery { enabled = true }
   tags = local.common_tags
 }
+
+# Parsing feedback — original parser JSON + user-corrected JSON, captured after
+# the review step for model improvement. Contains resume PII, so records are
+# TTL-expired (app sets `ttl`; see feedback_retention_days, default 90 days).
+resource "aws_dynamodb_table" "feedback" {
+  name         = "resume-parser-feedback"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "feedback_id"
+
+  attribute {
+    name = "feedback_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "company_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
+
+  # Batch-export a company's corrections over a time range for model improvement.
+  global_secondary_index {
+    name            = "company-created-index"
+    hash_key        = "company_id"
+    range_key       = "created_at"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  point_in_time_recovery { enabled = true }
+  tags = local.common_tags
+}

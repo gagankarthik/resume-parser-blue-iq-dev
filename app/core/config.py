@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,7 +14,14 @@ class Settings(BaseSettings):
     debug: bool = False
 
     # AWS
-    aws_region: str = "us-east-2"
+    # On Lambda, AWS_REGION is a reserved runtime variable we cannot override, so
+    # Terraform passes the region as AWS_REGION_NAME. Accept either — AWS_REGION
+    # (auto-set by Lambda / used in dev) or AWS_REGION_NAME (Terraform) — so the
+    # client region is always explicit instead of relying on an implicit default.
+    aws_region: str = Field(
+        default="us-east-2",
+        validation_alias=AliasChoices("aws_region", "aws_region_name"),
+    )
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     dynamodb_endpoint_url: str = ""  # empty = real AWS
@@ -27,11 +35,18 @@ class Settings(BaseSettings):
     dynamodb_table_webhooks: str = "resume-parser-webhooks"
     dynamodb_table_audit_logs: str = "resume-parser-audit-logs"
     dynamodb_table_companies: str = "resume-parser-companies"
+    dynamodb_table_feedback: str = "resume-parser-feedback"
 
     # GSI names (used by usage/stats and onboarding queries)
     audit_logs_company_index: str = "company-timestamp-index"
     companies_email_index: str = "email-index"
     api_keys_company_index: str = "company-index"
+    feedback_company_index: str = "company-created-index"
+
+    # How long parsing feedback (original + corrected JSON) is retained before
+    # the DynamoDB TTL expires it. Feedback carries resume PII, so it is not kept
+    # indefinitely; 90 days is enough to batch-export for model improvement.
+    feedback_retention_days: int = 90
 
     # Admin API — token that gates the /api/v1/admin/* endpoints used by the
     # product platform (company onboarding, key management, usage stats).
@@ -43,7 +58,9 @@ class Settings(BaseSettings):
     auth_secret: str = "dev-insecure-auth-secret-change-me"
 
     # S3
-    s3_bucket_name: str = "resume-parser-temp"
+    # Must match the bucket Terraform provisions (infrastructure/terraform/s3.tf).
+    # Kept in sync with .env.example; overridden in production via S3_BUCKET_NAME.
+    s3_bucket_name: str = "resume-parser-blue-iq-temp"
 
     # OpenAI
     openai_api_key: str = ""

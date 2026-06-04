@@ -16,7 +16,7 @@ variable "environment" {
 }
 
 variable "openai_api_key" {
-  description = "OpenAI API key — stored in SSM Parameter Store, never in state"
+  description = "OpenAI API key — passed to the Lambda as an env var. Provide via TF_VAR_openai_api_key (never commit it). Marked sensitive so it is redacted from CLI output, but note it is still present in Terraform state — keep the state backend (S3) encrypted and access-restricted."
   type        = string
   sensitive   = true
 }

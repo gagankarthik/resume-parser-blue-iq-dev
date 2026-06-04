@@ -12,7 +12,13 @@ POST /api/v1/resume/{job_id}/retry
   Re-parse a resume when the original result was unsatisfactory.
   Client re-uploads the file; a new job_id is created linked to the original.
   Up to MAX_RETRY_COUNT retries per original job.
+
+POST /api/v1/resume/{job_id}/feedback
+  Submit the original parser JSON + the user-corrected JSON after review.
+  Stored for model improvement. Accepted asynchronously (HTTP 202).
 """
+
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from ulid import ULID
@@ -26,6 +32,8 @@ from app.core.logging import get_logger
 from app.db import dynamodb as db
 from app.models.schemas import (
     ConfidenceScores,
+    FeedbackRequest,
+    FeedbackResponse,
     JobStatusResponse,
     ParsedResumeAI,
     ParseResponse,
@@ -33,6 +41,7 @@ from app.models.schemas import (
     SkillsValidation,
 )
 from app.services.extraction.classifier import classify
+from app.services.feedback import diff_fields
 from app.services.normalization.skills_validator import validate_skills
 from app.services.pipeline import PipelineInput
 from app.services.pipeline import run as run_pipeline
@@ -245,4 +254,69 @@ async def retry_parse(
     return RetryResponse(
         job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
         status="processing", poll_url=f"/api/v1/resume/job/{new_job_id}",
+    )
+
+
+# ── Feedback (model improvement) ──────────────────────────────────────────────
+
+@router.post(
+    "/resume/{job_id}/feedback",
+    response_model=FeedbackResponse,
+    status_code=202,
+    summary="Submit parsing feedback",
+    description=(
+        "Submit the original parser JSON together with the user-corrected JSON "
+        "after a review. The corrections are stored (scoped to your account) and "
+        "used to improve parsing accuracy over time.\n\n"
+        "Send this **after** the review step — typically only when the user "
+        "actually changed something (`changed: true`), though feedback with no "
+        "changes is also accepted as a positive signal. Processed asynchronously; "
+        "the response (HTTP 202) confirms the feedback was recorded."
+    ),
+    tags=["Resume"],
+)
+async def submit_feedback(
+    job_id: str,
+    payload: FeedbackRequest,
+    record: dict = Depends(get_api_key_record),
+) -> FeedbackResponse:
+    company_id = record["company_id"]
+
+    # Defense-in-depth: if the original job is still on record (jobs TTL ~1h),
+    # make sure it belongs to this account. Feedback often arrives after the job
+    # has expired, so a missing job is fine — we still accept it.
+    original_job = db.get_job(job_id)
+    if original_job and original_job.get("company_id") != company_id:
+        raise api_error(404, ErrorCode.JOB_NOT_FOUND, "Job not found")
+
+    changed_fields = diff_fields(payload.original, payload.updated)
+    # Trust the client's flag if given; otherwise derive it from the diff.
+    changed = payload.changed if payload.changed is not None else bool(changed_fields)
+
+    feedback_id = str(ULID())
+    created_at = datetime.now(UTC).isoformat()
+    db.create_feedback(
+        feedback_id=feedback_id,
+        job_id=job_id,
+        company_id=company_id,
+        original=payload.original,
+        updated=payload.updated,
+        changed=changed,
+        changed_fields=changed_fields,
+        created_at=created_at,
+        profile_id=payload.profile_id,
+        notes=payload.notes,
+    )
+    log.info(
+        "feedback_received",
+        job_id=job_id, company_id=company_id, feedback_id=feedback_id,
+        changed=changed, changed_field_count=len(changed_fields),
+    )
+    return FeedbackResponse(
+        feedback_id=feedback_id,
+        job_id=job_id,
+        status="accepted",
+        changed=changed,
+        changed_fields=changed_fields,
+        created_at=created_at,
     )

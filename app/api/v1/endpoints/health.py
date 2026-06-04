@@ -9,19 +9,47 @@ GET /api/v1/health
 
 import asyncio
 import time
+from collections.abc import Callable
 from typing import Any
 
 import boto3
 from fastapi import APIRouter
 
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.models.schemas import HealthResponse
 
 router = APIRouter()
+log = get_logger(__name__)
+
+_PROBE_TIMEOUT_SECONDS = 3.0
+
+
+async def _probe(dependency: str, fn: Callable[[], Any]) -> str:
+    """Run a blocking boto3 probe off the event loop; never raise.
+
+    Returns "ok" or "unreachable". The real exception is logged (not exposed in
+    the response) so a degraded health check is diagnosable from CloudWatch
+    rather than a silent "unreachable".
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        await asyncio.wait_for(
+            loop.run_in_executor(None, fn), timeout=_PROBE_TIMEOUT_SECONDS
+        )
+        return "ok"
+    except Exception as exc:
+        log.warning(
+            "health_dependency_unreachable",
+            dependency=dependency,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return "unreachable"
 
 
 async def _check_dynamodb(settings) -> str:
-    def _probe():
+    def fn() -> None:
         kwargs: dict[str, Any] = {"region_name": settings.aws_region}
         if settings.dynamodb_endpoint_url:
             kwargs["endpoint_url"] = settings.dynamodb_endpoint_url
@@ -29,27 +57,19 @@ async def _check_dynamodb(settings) -> str:
         # DescribeTable (not ListTables) — covered by the least-privilege role
         # and validates the table the app actually depends on.
         db.describe_table(TableName=settings.dynamodb_table_api_keys)
-    try:
-        loop = asyncio.get_event_loop()
-        await asyncio.wait_for(loop.run_in_executor(None, _probe), timeout=3.0)
-        return "ok"
-    except Exception:
-        return "unreachable"
+
+    return await _probe("dynamodb", fn)
 
 
 async def _check_s3(settings) -> str:
-    def _probe():
+    def fn() -> None:
         kwargs: dict[str, Any] = {"region_name": settings.aws_region}
         if settings.s3_endpoint_url:
             kwargs["endpoint_url"] = settings.s3_endpoint_url
         s3 = boto3.client("s3", **kwargs)
         s3.head_bucket(Bucket=settings.s3_bucket_name)
-    try:
-        loop = asyncio.get_event_loop()
-        await asyncio.wait_for(loop.run_in_executor(None, _probe), timeout=3.0)
-        return "ok"
-    except Exception:
-        return "unreachable"
+
+    return await _probe("s3", fn)
 
 
 @router.get(

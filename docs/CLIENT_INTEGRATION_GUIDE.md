@@ -127,6 +127,36 @@ Re-upload the **same file** to re-run extraction + AI when a result was poor. Re
 a new `job_id` linked to the original. Up to 3 retries per job (`RETRY_LIMIT_REACHED`
 after that). Same sync/async behavior as `/parse`.
 
+### Submit feedback — `POST /api/v1/resume/{job_id}/feedback`
+After a user reviews and corrects a parsed resume, send the original parser JSON and the
+corrected JSON so we can improve parsing accuracy. Server-to-server (uses your `X-API-Key`).
+Returns `202 Accepted` — feedback is processed asynchronously.
+
+```jsonc
+// request body
+{
+  "original": { /* the JSON returned by /resume/parse */ },
+  "updated":  { /* the user-corrected JSON */ },
+  "changed":  true,            // optional — derived from the diff if omitted
+  "profile_id": "gig-8821",    // optional — your record id
+  "notes": "fixed name suffix" // optional
+}
+```
+```jsonc
+// 202 response
+{
+  "feedback_id": "01J3K5M9N1P3Q5R7S9T1U3V5W7",
+  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
+  "status": "accepted",
+  "changed": true,
+  "changed_fields": ["personal_info.full_name", "skills[1]"],
+  "created_at": "2026-06-03T12:34:56+00:00"
+}
+```
+Send it only when the user actually changed something, or always as a quality signal —
+both are accepted. `changed_fields` lists the exact leaf paths that differed. Payloads are
+capped at ~350 KB. Records are retained 90 days then auto-deleted.
+
 ### Batch — `POST /api/v1/resume/batch`
 `multipart/form-data` with multiple `files`. Up to **200** files. Returns `202` with a
 `batch_id` and per-file `job_ids`; invalid files are listed in `skipped_files`. All

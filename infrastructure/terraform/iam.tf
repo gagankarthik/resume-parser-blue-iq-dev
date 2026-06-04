@@ -25,7 +25,7 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
 
 # Application permissions — least-privilege
 data "aws_iam_policy_document" "lambda_app" {
-  # DynamoDB — 5 tables
+  # DynamoDB — all application tables (and their GSIs)
   statement {
     sid    = "DynamoDB"
     effect = "Allow"
@@ -45,16 +45,20 @@ data "aws_iam_policy_document" "lambda_app" {
       "${aws_dynamodb_table.audit_logs.arn}/index/*",
       aws_dynamodb_table.companies.arn,
       "${aws_dynamodb_table.companies.arn}/index/*",
+      aws_dynamodb_table.feedback.arn,
+      "${aws_dynamodb_table.feedback.arn}/index/*",
     ]
   }
 
-  # S3 — temp bucket only
+  # S3 — temp bucket only.
+  # Note: the HeadBucket API call (used by /health) is authorized by
+  # s3:ListBucket — there is no separate s3:HeadBucket IAM action.
   statement {
     sid    = "S3Temp"
     effect = "Allow"
     actions = [
       "s3:PutObject", "s3:GetObject", "s3:DeleteObject",
-      "s3:ListBucket", "s3:HeadBucket",
+      "s3:ListBucket",
     ]
     resources = [
       aws_s3_bucket.temp.arn,
