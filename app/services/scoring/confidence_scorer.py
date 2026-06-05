@@ -12,7 +12,16 @@ import re
 from app.models.schemas import ConfidenceScores, ParsedResumeAI
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_PHONE_RE = re.compile(r"[\d]{7,}")
+_NON_DIGIT_RE = re.compile(r"\D")
+
+
+def _has_phone_digits(value: str) -> bool:
+    """True when the value holds a plausible phone digit count (7+).
+
+    Counts TOTAL digits, not consecutive — formatted numbers like
+    '(555) 234-5678' never have a 7-digit run but are valid.
+    """
+    return len(_NON_DIGIT_RE.sub("", value)) >= 7
 
 
 def score(parsed: ParsedResumeAI) -> ConfidenceScores:
@@ -34,7 +43,7 @@ def _score_personal(parsed: ParsedResumeAI) -> float:
         points += 1.0
     if p.email and _EMAIL_RE.match(p.email):
         points += 1.5
-    if p.phone and _PHONE_RE.search(p.phone):
+    if p.phone and _has_phone_digits(p.phone):
         points += 1.0
     if p.location:
         points += 0.5

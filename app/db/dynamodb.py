@@ -187,6 +187,34 @@ def create_job(
     table.put_item(Item=item)
 
 
+def create_upload_job(
+    job_id: str,
+    company_id: str,
+    s3_key: str,
+    filename: str,
+) -> None:
+    """Create a job awaiting a direct (presigned) S3 upload.
+
+    Records the company_id and s3_key so /resume/parse-uploaded can verify
+    ownership and locate the file. Status is 'pending_upload' until the client
+    completes the upload and calls parse-uploaded.
+    """
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
+    table.put_item(
+        Item={
+            "job_id": job_id,
+            "company_id": company_id,
+            "status": "pending_upload",
+            "s3_key": s3_key,
+            "filename": filename,
+            "created_at": datetime.now(UTC).isoformat(),
+            "ttl": int(time.time()) + settings.job_result_ttl_seconds,
+            "retry_count": 0,
+        }
+    )
+
+
 def update_job_processing(job_id: str) -> None:
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)

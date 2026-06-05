@@ -19,9 +19,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # ── Shared validators ─────────────────────────────────────────────────────────
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
-_DATE_RE   = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+# Accept either YYYY-MM or full YYYY-MM-DD.
+_DATE_RE   = re.compile(r"^\d{4}-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?$")
 _URL_RE    = re.compile(r"^https?://", re.I)
-_PHONE_DIGITS_RE = re.compile(r"\d{6,}")
 
 
 def _sanitize_email(v: str | None) -> str | None:
@@ -41,13 +41,33 @@ def _sanitize_url(v: str | None) -> str | None:
 
 
 def _sanitize_date(v: str | None) -> str | None:
-    """Accept YYYY-MM or 'Present'; return None for unrecognised formats."""
+    """Accept YYYY-MM-DD, YYYY-MM, or 'Present'; return None otherwise.
+
+    A month-only date (YYYY-MM) is padded to the first of the month so the
+    output is always a full calendar date when the day is unknown
+    (e.g. '2024-02' → '2024-02-01').
+    """
     if not v:
         return None
     v = v.strip()
     if v.lower() == "present":
         return "Present"
-    return v if _DATE_RE.match(v) else None
+    if not _DATE_RE.match(v):
+        return None
+    return f"{v}-01" if len(v) == 7 else v
+
+
+def _sanitize_phone(v: str | None) -> str | None:
+    """Keep phones with a plausible digit count (7–15), preserving format.
+
+    Counts TOTAL digits, not consecutive ones — a formatted number like
+    '(555) 234-5678' has no run of 6+ digits yet is perfectly valid.
+    """
+    if not v:
+        return None
+    v = v.strip()
+    digit_count = len(re.sub(r"\D", "", v))
+    return v if 7 <= digit_count <= 15 else None
 
 
 def _sanitize_year(v: int | None) -> int | None:
@@ -61,6 +81,24 @@ def _sanitize_str(v: str | None) -> str | None:
         return None
     v = v.strip()
     return v if v else None
+
+
+def _sanitize_yes_no_na(v: str | None) -> str | None:
+    """Coerce a tri-state facility flag to exactly 'Yes', 'No', or 'N/A'.
+
+    Anything that doesn't clearly read as yes/no/na (including blanks) becomes
+    None so an unstated flag is never invented.
+    """
+    if not v:
+        return None
+    key = v.strip().lower().replace(".", "").replace("/", "")
+    if key in {"yes", "y", "true"}:
+        return "Yes"
+    if key in {"no", "n", "false"}:
+        return "No"
+    if key in {"na", "n a", "notapplicable", "none"}:
+        return "N/A"
+    return None
 
 
 def _coerce_list(v) -> list:
@@ -78,7 +116,7 @@ class PersonalInfo(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "full_name": "Jane Smith, RN",
+                "full_name": "Jane Smith",
                 "email": "jane.smith@email.com",
                 "phone": "+1 555 234 5678",
                 "location": "Houston, TX",
@@ -90,7 +128,7 @@ class PersonalInfo(BaseModel):
         }
     )
 
-    full_name:      str | None = Field(None, description="Full name of the candidate, including credentials if listed (e.g. 'Jane Smith, RN')")
+    full_name:      str | None = Field(None, description="Candidate's name ONLY — exclude trailing credential/licence/degree suffixes (e.g. 'Jane Smith', not 'Jane Smith, RN BSN')")
     email:          str | None = Field(None, description="Primary email address")
     phone:          str | None = Field(None, description="Primary phone number in original format")
     location:       str | None = Field(None, description="City, state and/or country")
@@ -117,23 +155,57 @@ class PersonalInfo(BaseModel):
     @field_validator("phone", mode="before")
     @classmethod
     def sanitize_phone(cls, v: object) -> str | None:
-        if not isinstance(v, str):
-            return None
-        v = v.strip()
-        return v if _PHONE_DIGITS_RE.search(v) else None
+        return _sanitize_phone(str(v)) if isinstance(v, str) else None
 
 
 class ExperienceItem(BaseModel):
+    """
+    A single work-history entry.
+
+    Field names mirror the platform's "Edit Work History" form so a parsed entry
+    maps straight onto it: `company` → Facility Name, `is_current` → Currently
+    Employed, `city`/`state`/`country`/`zip_code` → the location block,
+    `profession`/`specialties` → Select Profession / Select Specialties, and the
+    facility/position attributes feed the optional "Additional Details" section.
+    All of these extra fields are optional and stay null/empty when the resume
+    doesn't state them. (Latitude/longitude are intentionally omitted — the
+    platform geocodes them from city/state/zip.)
+    """
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "company": "Memorial Hermann Hospital",
-                "role": "RN - ICU",
-                "start_date": "2020-03",
-                "end_date": "Present",
-                "is_current": True,
-                "location": "Houston, TX",
-                "description": "Provided critical care nursing for 12-bed MICU.",
+                "company": "Fort Sanders Regional Medical Center",
+                "role": "RN - Med Surg/Tele",
+                "start_date": "2026-01-01",
+                "end_date": "2026-04-30",
+                "is_current": False,
+                "location": "Knoxville, TN",
+                "city": "Knoxville",
+                "state": "Tennessee",
+                "country": "United States",
+                "zip_code": "37916",
+                "profession": "RN",
+                "specialties": ["Med Surg / Tele"],
+                "service_type": None,
+                "nurse_to_patient_ratio": "1:5",
+                "facility_beds": None,
+                "beds_in_unit": "30",
+                "teaching_facility": "N/A",
+                "magnet_facility": "N/A",
+                "trauma_facility": "N/A",
+                "trauma_level": None,
+                "additional_info": None,
+                "position_held": "Staff Nurse",
+                "agency_name": None,
+                "charge_experience": None,
+                "charting_system": "Epic",
+                "shift": "Nights",
+                "reason_for_leaving": None,
+                "description": [
+                    "Provided care on a 30-bed Med Surg/Telemetry unit.",
+                    "Managed post-operative and cardiac step-down patients.",
+                ],
                 "achievements": [
                     "Charge nurse for 18-month period",
                     "Preceptor for 6 new graduate nurses",
@@ -142,13 +214,38 @@ class ExperienceItem(BaseModel):
         }
     )
 
-    company:       str           = Field(..., description="Employer or facility name")
+    company:       str           = Field(..., description="Employer or facility name (maps to 'Facility Name')")
     role:          str           = Field(..., description="Job title or role, including credential if present (e.g. 'RN - MICU')")
-    start_date:    str | None = Field(None, description="Start date in YYYY-MM format")
-    end_date:      str | None = Field(None, description="End date in YYYY-MM format, or 'Present' for current role")
-    is_current:    bool          = Field(False, description="True if this is the candidate's current position")
-    location:      str | None = Field(None, description="City and state of the workplace")
-    description:   str | None = Field(None, description="Role description and responsibilities")
+    start_date:    str | None = Field(None, description="Start date as YYYY-MM-DD. Use the stated day; if only month/year is given, use the 1st (e.g. '2024-02-01')")
+    end_date:      str | None = Field(None, description="End date as YYYY-MM-DD (use the 1st when only month/year is given), or 'Present' for current role")
+    is_current:    bool          = Field(False, description="True if this is the candidate's current position ('Currently Employed')")
+    location:      str | None = Field(None, description="Free-text city and state of the workplace, as written on the resume")
+    # ── Structured facility location (Work History form) ──────────────────────
+    city:          str | None = Field(None, description="Facility city, if stated")
+    state:         str | None = Field(None, description="Facility state/province, if stated (full name preferred, e.g. 'Tennessee')")
+    country:       str | None = Field(None, description="Facility country, if stated")
+    zip_code:      str | None = Field(None, description="Facility postal/ZIP code, if stated")
+    # ── Clinical classification (Select Profession / Select Specialties) ──────
+    profession:    str | None = Field(None, description="Credential/profession for this role exactly as stated (e.g. 'RN', 'LPN', 'CRT'). Do NOT expand the abbreviation.")
+    specialties:   list[str]     = Field(default_factory=list, description="Clinical specialties/units for this role (e.g. 'Med Surg/Tele', 'ICU'). One per item.")
+    # ── Facility attributes (Additional Details — only if stated) ─────────────
+    service_type:           str | None = Field(None, description="Service type, if stated")
+    nurse_to_patient_ratio: str | None = Field(None, description="Nurse-to-patient ratio, if stated (e.g. '1:5')")
+    facility_beds:          str | None = Field(None, description="Total facility bed count, if stated")
+    beds_in_unit:           str | None = Field(None, description="Bed count for the unit, if stated")
+    teaching_facility:      str | None = Field(None, description="'Yes', 'No', or 'N/A' — only if stated, else null")
+    magnet_facility:        str | None = Field(None, description="'Yes', 'No', or 'N/A' — only if stated, else null")
+    trauma_facility:        str | None = Field(None, description="'Yes', 'No', or 'N/A' — only if stated, else null")
+    trauma_level:           str | None = Field(None, description="Trauma level (e.g. 'Level I'), if stated")
+    additional_info:        str | None = Field(None, description="Any other facility detail stated for this role")
+    # ── Position details (Work History form) ──────────────────────────────────
+    position_held:          str | None = Field(None, description="Position/title held, if distinct from the credential (e.g. 'Staff Nurse', 'Charge Nurse')")
+    agency_name:            str | None = Field(None, description="Staffing/travel agency name, if this was an agency assignment")
+    charge_experience:      str | None = Field(None, description="Charge experience, if stated")
+    charting_system:        str | None = Field(None, description="EHR/charting system used (e.g. 'Epic', 'Cerner', 'Meditech'), if stated")
+    shift:                  str | None = Field(None, description="Shift worked (e.g. 'Days', 'Nights', 'Rotating'), if stated")
+    reason_for_leaving:     str | None = Field(None, description="Reason for leaving, if stated")
+    description:   list[str]     = Field(default_factory=list, description="Role responsibilities as an array of short strings — one item per responsibility/bullet, never a single paragraph")
     achievements:  list[str]     = Field(default_factory=list, description="Notable accomplishments in this role")
 
     @field_validator("company", "role", mode="before")
@@ -163,10 +260,38 @@ class ExperienceItem(BaseModel):
     def sanitize_dates(cls, v: object) -> str | None:
         return _sanitize_date(str(v)) if isinstance(v, str) else None
 
-    @field_validator("location", "description", mode="before")
+    @field_validator(
+        "location", "city", "state", "country", "zip_code", "profession",
+        "service_type", "nurse_to_patient_ratio", "facility_beds", "beds_in_unit",
+        "trauma_level", "additional_info", "position_held", "agency_name",
+        "charge_experience", "charting_system", "shift", "reason_for_leaving",
+        mode="before",
+    )
     @classmethod
     def sanitize_optional_strings(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
+
+    @field_validator("teaching_facility", "magnet_facility", "trauma_facility", mode="before")
+    @classmethod
+    def sanitize_yes_no_na(cls, v: object) -> str | None:
+        return _sanitize_yes_no_na(str(v)) if isinstance(v, str) else None
+
+    @field_validator("specialties", mode="before")
+    @classmethod
+    def coerce_specialties(cls, v: object) -> list[str]:
+        items = _coerce_list(v)
+        return [s for i in items if isinstance(i, str) and (s := i.strip())]
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def coerce_description(cls, v: object) -> list[str]:
+        # Always a list of strings. If the model emits a single paragraph,
+        # split it into sentence-sized bullets so the output is never one blob.
+        if isinstance(v, str):
+            parts = re.split(r"(?<=[.!?])\s+", v.strip())
+            return [p.strip() for p in parts if p.strip()]
+        items = _coerce_list(v)
+        return [s for i in items if isinstance(i, str) and (s := i.strip())]
 
     @field_validator("achievements", mode="before")
     @classmethod
@@ -316,10 +441,7 @@ class ReferenceItem(BaseModel):
     @field_validator("phone", mode="before")
     @classmethod
     def sanitize_phone(cls, v: object) -> str | None:
-        if not isinstance(v, str):
-            return None
-        v = v.strip()
-        return v if _PHONE_DIGITS_RE.search(v) else None
+        return _sanitize_phone(str(v)) if isinstance(v, str) else None
 
 
 class ParsedResumeAI(BaseModel):
@@ -332,7 +454,7 @@ class ParsedResumeAI(BaseModel):
         json_schema_extra={
             "example": {
                 "personal_info": {
-                    "full_name": "Jane Smith, RN",
+                    "full_name": "Jane Smith",
                     "email": "jane.smith@email.com",
                     "phone": "+1 555 234 5678",
                     "location": "Houston, TX",
@@ -343,11 +465,14 @@ class ParsedResumeAI(BaseModel):
                     {
                         "company": "Memorial Hermann Hospital",
                         "role": "RN - ICU",
-                        "start_date": "2020-03",
+                        "start_date": "2020-03-15",
                         "end_date": "Present",
                         "is_current": True,
                         "location": "Houston, TX",
-                        "description": "Provided critical care nursing in a 12-bed MICU.",
+                        "description": [
+                            "Provided critical care nursing in a 12-bed MICU.",
+                            "Coordinated care for ventilated patients.",
+                        ],
                         "achievements": ["Charge nurse for 18 months"],
                     }
                 ],
@@ -493,6 +618,82 @@ class ParseResponse(BaseModel):
     confidence:        ConfidenceScores | None = Field(None, description="Per-section confidence scores — present when status is 'completed'")
     skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — present when status is 'completed'")
     poll_url:          str | None              = Field(None, description="Polling URL — present when status is 'processing'")
+
+
+class UploadUrlRequest(BaseModel):
+    """Request body for POST /api/v1/resume/upload-url"""
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"filename": "jane_smith_rn.pdf"}}
+    )
+
+    filename: str = Field(
+        ...,
+        description="Original filename including extension (.pdf, .docx, .png, .jpg, .jpeg, .tiff, .webp)",
+        examples=["jane_smith_rn.pdf"],
+    )
+
+    @field_validator("filename")
+    @classmethod
+    def _non_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("filename is required")
+        return v
+
+
+class UploadUrlResponse(BaseModel):
+    """Response for POST /api/v1/resume/upload-url.
+
+    Use this for files larger than ~6 MB. POST the file as multipart form data to
+    `upload_url`, including every key in `fields` plus a `file` field, then call
+    `parse_url` with the returned `job_id`.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
+                "upload_url": "https://resume-parser-blue-iq-temp.s3.amazonaws.com/",
+                "fields": {
+                    "key": "temp/01J3K5M2N4P6Q8R0S2T4U6V8W0/jane_smith_rn.pdf",
+                    "x-amz-server-side-encryption": "AES256",
+                    "policy": "<base64-policy>",
+                    "x-amz-signature": "<signature>",
+                },
+                "s3_key": "temp/01J3K5M2N4P6Q8R0S2T4U6V8W0/jane_smith_rn.pdf",
+                "max_file_size_mb": 10,
+                "expires_in_seconds": 900,
+                "parse_url": "/api/v1/resume/parse-uploaded",
+            }
+        }
+    )
+
+    job_id:             str            = Field(..., description="Job identifier (ULID) — pass this to parse-uploaded")
+    upload_url:         str            = Field(..., description="S3 endpoint to POST the file to (multipart form data)")
+    fields:             dict[str, str] = Field(..., description="Form fields that must accompany the upload, exactly as given")
+    s3_key:             str            = Field(..., description="The S3 object key the file will be stored under")
+    max_file_size_mb:   int            = Field(..., description="Maximum accepted file size; larger uploads are rejected by S3")
+    expires_in_seconds: int            = Field(..., description="Seconds until the upload URL expires")
+    parse_url:          str            = Field(..., description="Endpoint to call (with job_id) once the upload completes")
+
+
+class ParseUploadedRequest(BaseModel):
+    """Request body for POST /api/v1/resume/parse-uploaded"""
+
+    model_config = ConfigDict(
+        json_schema_extra={"example": {"job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0"}}
+    )
+
+    job_id: str = Field(..., description="The job_id returned by /resume/upload-url")
+
+    @field_validator("job_id")
+    @classmethod
+    def _non_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("job_id is required")
+        return v
 
 
 class JobStatusResponse(BaseModel):

@@ -27,7 +27,7 @@ from app.api.dependencies import get_api_key_record
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
 from app.core.exceptions import UnsupportedFileTypeError
-from app.core.file_validator import validate_file
+from app.core.file_validator import is_supported_extension, validate_file
 from app.core.logging import get_logger
 from app.db import dynamodb as db
 from app.models.schemas import (
@@ -37,8 +37,11 @@ from app.models.schemas import (
     JobStatusResponse,
     ParsedResumeAI,
     ParseResponse,
+    ParseUploadedRequest,
     RetryResponse,
     SkillsValidation,
+    UploadUrlRequest,
+    UploadUrlResponse,
 )
 from app.services.extraction.classifier import classify
 from app.services.feedback import diff_fields
@@ -136,6 +139,141 @@ async def parse_resume(
                          poll_url=f"/api/v1/resume/job/{job_id}")
 
 
+# ── Large-file upload (presigned, two-step) ───────────────────────────────────
+
+@router.post(
+    "/resume/upload-url",
+    response_model=UploadUrlResponse,
+    summary="Request a direct-upload URL (large files)",
+    description=(
+        "Get a presigned S3 URL to upload a resume **directly to storage**, "
+        "bypassing the ~6 MB request limit of the standard `/resume/parse` endpoint. "
+        "Use this for files up to the full `max_file_size_mb`.\n\n"
+        "**Flow:** call this → POST the file to the returned `upload_url` (multipart "
+        "form data: every key in `fields`, then a `file` field) → call "
+        "`POST /resume/parse-uploaded` with the returned `job_id`. "
+        "The upload URL expires after `expires_in_seconds`."
+    ),
+    tags=["Resume"],
+)
+async def create_upload_url(
+    payload: UploadUrlRequest,
+    record: dict = Depends(get_api_key_record),
+) -> UploadUrlResponse:
+    settings   = get_settings()
+    company_id = record["company_id"]
+
+    if not is_supported_extension(payload.filename):
+        raise api_error(
+            415, ErrorCode.UNSUPPORTED_FILE_TYPE,
+            f"Unsupported file extension for '{payload.filename}'. "
+            "Accepted: .pdf, .docx, .png, .jpg, .jpeg, .tiff, .webp",
+        )
+
+    job_id    = str(ULID())
+    presigned = s3_client.create_presigned_upload(
+        job_id, payload.filename,
+        settings.max_file_size_bytes, settings.presigned_upload_expiry_seconds,
+    )
+    db.create_upload_job(job_id, company_id, presigned["key"], payload.filename)
+
+    log.info("upload_url_issued", job_id=job_id, company_id=company_id)
+    return UploadUrlResponse(
+        job_id=job_id,
+        upload_url=presigned["url"],
+        fields=presigned["fields"],
+        s3_key=presigned["key"],
+        max_file_size_mb=settings.max_file_size_mb,
+        expires_in_seconds=settings.presigned_upload_expiry_seconds,
+        parse_url="/api/v1/resume/parse-uploaded",
+    )
+
+
+@router.post(
+    "/resume/parse-uploaded",
+    response_model=ParseResponse,
+    summary="Parse a file uploaded via a presigned URL",
+    description=(
+        "Parse a resume that was uploaded with `/resume/upload-url`. "
+        "Behaves exactly like `/resume/parse`: digital PDF/DOCX return the parsed JSON "
+        "**synchronously**; scanned PDFs and images return a `job_id` for "
+        "**asynchronous** (OCR) processing via webhook + polling."
+    ),
+    tags=["Resume"],
+)
+async def parse_uploaded(
+    payload: ParseUploadedRequest,
+    background_tasks: BackgroundTasks,
+    record: dict = Depends(get_api_key_record),
+) -> ParseResponse:
+    settings   = get_settings()
+    company_id = record["company_id"]
+
+    job = db.get_job(payload.job_id)
+    if not job or job.get("company_id") != company_id:
+        raise api_error(404, ErrorCode.JOB_NOT_FOUND, "Upload job not found")
+    if job.get("status") != "pending_upload":
+        raise api_error(
+            409, ErrorCode.UPLOAD_ALREADY_PARSED,
+            "This upload has already been processed",
+        )
+
+    s3_key   = job["s3_key"]
+    filename = job.get("filename", "upload")
+
+    try:
+        content = s3_client.download_file(s3_key)
+    except Exception:
+        raise api_error(
+            422, ErrorCode.UPLOAD_NOT_FOUND,
+            "No uploaded file found for this job — complete the upload first",
+        )
+
+    # Validate the downloaded bytes (size + magic bytes) before processing.
+    if len(content) > settings.max_file_size_bytes:
+        s3_client.delete_file(s3_key)
+        raise api_error(
+            413, ErrorCode.FILE_TOO_LARGE,
+            f"File size {len(content) // 1024} KB exceeds the {settings.max_file_size_mb} MB limit",
+        )
+    try:
+        validate_file(filename, content)
+    except UnsupportedFileTypeError as exc:
+        s3_client.delete_file(s3_key)
+        raise api_error(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
+
+    strategy, needs_async = classify(filename, content)
+    log.info("parse_uploaded_request", job_id=payload.job_id, company_id=company_id,
+             strategy=strategy, needs_async=needs_async, size_bytes=len(content))
+
+    if not needs_async:
+        result = await run_pipeline(PipelineInput(
+            job_id=payload.job_id, filename=filename, content=content, company_id=company_id,
+        ))
+        db.update_job_completed(payload.job_id, {
+            "data": result.parsed.model_dump(),
+            "confidence": result.confidence.model_dump(),
+        })
+        db.write_audit_log(
+            job_id=payload.job_id, company_id=company_id,
+            file_type=result.file_type, file_size_bytes=len(content),
+            status="completed", duration_ms=result.duration_ms,
+            ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
+        )
+        s3_client.delete_file(s3_key)
+        return ParseResponse(job_id=payload.job_id, status="completed",
+                             data=result.parsed, confidence=result.confidence,
+                             skills_validation=validate_skills(result.parsed))
+
+    # Async: the file is already in S3; the worker downloads and deletes it.
+    await _dispatch_async(settings, background_tasks, {
+        "job_id": payload.job_id, "company_id": company_id, "s3_key": s3_key,
+        "filename": filename, "file_size_bytes": len(content),
+    })
+    return ParseResponse(job_id=payload.job_id, status="processing",
+                         poll_url=f"/api/v1/resume/job/{payload.job_id}")
+
+
 # ── Job status polling ────────────────────────────────────────────────────────
 
 @router.get(
@@ -189,7 +327,7 @@ async def get_job_status(
         "Re-upload the same file — the parser will re-run the full extraction "
         "and AI pipeline. A new `job_id` is created and linked to the original. "
         "Maximum retries per job: `MAX_RETRY_COUNT` (default 3). "
-        "Retries count against your rate limit."
+        "Each retry runs the full pipeline and consumes AI tokens like a fresh parse."
     ),
     tags=["Resume"],
 )

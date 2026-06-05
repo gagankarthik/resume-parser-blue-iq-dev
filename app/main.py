@@ -127,7 +127,7 @@ def create_app() -> FastAPI:
         description=(
             "**Resume Parser API** — converts PDF, DOCX, and image resumes into structured JSON "
             "ready for healthcare staffing profile fields.\n\n"
-            "Specialised for nursing and allied health: normalises 360+ clinical specialties, "
+            "Specialised for nursing and allied health: normalises 350+ clinical specialties, "
             "credentials (RN, LPN, CRT, RRT, OT, PT, SLP…), and certifications (BLS, ACLS, CCRN…).\n\n"
             "All responses include `X-Request-ID` for tracing."
         ),

@@ -57,7 +57,7 @@ X-API-Key: rp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 |---|---|
 | Field name | `file` |
 | Supported types | `.pdf`, `.docx`, `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.webp` |
-| Max size | **10 MB** (application limit). Note: the endpoint is currently fronted by a Lambda Function URL that caps requests at ~6 MB at the edge — uploads above ~6 MB need the presigned-S3 upload flow. Contact us for files larger than ~6 MB. |
+| Max size | **~6 MB** on this endpoint (the Lambda Function URL caps request bodies at the edge). For files up to **10 MB**, use the [large-file upload flow](#3a-large-file-upload-over-6-mb). |
 
 Files are validated by **magic bytes**, not just extension — a renamed file is rejected.
 
@@ -95,6 +95,45 @@ The processing path is chosen automatically from the file:
 
 > **Integration tip:** branch on `status`. If `completed`, use `data` immediately.
 > If `processing`, poll `poll_url` or wait for the `parse.completed` webhook.
+
+### 3a. Large-file upload (over ~6 MB)
+
+For files larger than the ~6 MB edge cap, upload directly to S3 with a presigned URL and
+then parse by reference. Three steps:
+
+**1. Request an upload URL** — `POST /api/v1/resume/upload-url`
+
+```json
+// request
+{ "filename": "jane_smith_rn.pdf" }
+
+// response
+{
+  "job_id": "01J3K5...",
+  "upload_url": "https://...s3.amazonaws.com/",
+  "fields": { "key": "temp/01J3.../jane_smith_rn.pdf", "x-amz-server-side-encryption": "AES256", "policy": "...", "x-amz-signature": "..." },
+  "max_file_size_mb": 10,
+  "expires_in_seconds": 900,
+  "parse_url": "/api/v1/resume/parse-uploaded"
+}
+```
+
+**2. Upload to S3** — POST the file as `multipart/form-data` to `upload_url`, sending **every
+key in `fields`** first, then a `file` field with the bytes. S3 enforces the size limit and
+returns `204` on success. The API key is **not** sent in this step (it goes to S3, not us).
+
+```python
+import requests
+pre = requests.post(f"{BASE}/api/v1/resume/upload-url",
+                    headers={"X-API-Key": API_KEY}, json={"filename": "jane.pdf"}).json()
+with open("jane.pdf", "rb") as fh:
+    requests.post(pre["upload_url"], data=pre["fields"], files={"file": fh})  # → 204
+```
+
+**3. Parse it** — `POST /api/v1/resume/parse-uploaded` with `{ "job_id": "<from step 1>" }`.
+The response is identical to `/resume/parse` (sync for digital PDF/DOCX, async for scans).
+
+> The upload URL expires after `expires_in_seconds` (15 min). After that, request a new one.
 
 ---
 
@@ -281,11 +320,11 @@ There are no request-rate limits on the API. Please still upload responsibly
     {
       "company": "Acme Corporation",
       "role": "Senior Software Engineer",
-      "start_date": "2021-03",
+      "start_date": "2021-03-01",
       "end_date": "Present",
       "is_current": true,
       "location": "San Francisco, CA",
-      "description": "Led backend architecture...",
+      "description": ["Led backend architecture.", "Owned the payments service."],
       "achievements": ["Reduced API latency by 40%", "Mentored 4 engineers"]
     }
   ],
@@ -310,7 +349,11 @@ There are no request-rate limits on the API. Please still upload responsibly
 }
 ```
 
-Dates are normalized to ISO `YYYY-MM` where possible (`"Present"` for current roles).
+Dates are normalized to ISO `YYYY-MM-DD` (`"Present"` for current roles). The exact
+day is used when the résumé states one; when only month/year is given, the day falls
+back to the 1st (e.g. `"2021-03-01"`). `full_name` excludes trailing credential/licence
+suffixes (e.g. "RN", "BSN") — those appear in `skills`/`certifications`. Experience
+`description` is an **array of strings** (one per responsibility), not a single string.
 
 ### Confidence scores
 

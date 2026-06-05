@@ -100,3 +100,48 @@ def test_empty_skills():
     assert result.recognized_ratio == 0.0
     assert result.recognized == []
     assert result.unrecognized == []
+
+
+# ── Spreadsheet coverage (2.11.26 updates) ────────────────────────────────────
+
+def test_punctuation_variant_recognized():
+    # Spreadsheet uses "Med Surg/ Tele"; taxonomy stores "Med Surg / Tele".
+    result = _validate(["Med Surg/ Tele"])
+    assert result.recognized == ["Med Surg / Tele"]
+    assert result.groups["Med Surg / Tele"] == "Med Surg / Tele"
+
+
+def test_hyphen_for_endash_recognized():
+    # Resume hyphen should match the en-dash canonical.
+    result = _validate(["Ultrasound Tech - General"])
+    assert result.recognized == ["Ultrasound Tech – General"]
+    assert result.groups["Ultrasound Tech – General"] == "Imaging Tech"
+
+
+def test_credential_prefix_setting_recognized():
+    result = _validate(["OT - Acute Care"])
+    assert result.recognized == ["Occupational Therapist – Acute Care"]
+    assert result.groups["Occupational Therapist – Acute Care"] == "OT"
+
+
+def test_pediatric_specialty_grouped_pediatrics():
+    result = _validate(["Pediatric Med Surg", "PICU"])
+    assert result.groups["Pediatric Med Surg"] == "Pediatrics"
+    assert result.groups["Pediatric Intensive Care Unit"] == "Pediatrics"
+
+
+def test_sterile_processing_spt_recognized():
+    result = _validate(["Sterile Processing Tech (SPT)"])
+    assert result.recognized == ["Sterile Processing Technician"]
+    assert result.groups["Sterile Processing Technician"] == "Sterile Processing"
+
+
+def test_paren_social_worker_recognized():
+    result = _validate(["LCSW (Licensed Clinical Social Worker)"])
+    assert result.recognized == ["Licensed Clinical Social Worker"]
+    assert result.groups["Licensed Clinical Social Worker"] == "Social Worker"
+
+
+def test_dietary_group_populated():
+    result = _validate(["Dietician"])
+    assert result.groups["Dietician"] == "Dietary"

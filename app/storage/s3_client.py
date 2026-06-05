@@ -40,6 +40,39 @@ def upload_temp_file(job_id: str, filename: str, content: bytes) -> str:
     return key
 
 
+def create_presigned_upload(
+    job_id: str,
+    filename: str,
+    max_bytes: int,
+    expires_in: int = 900,
+) -> dict:
+    """Issue a presigned POST so the client can upload straight to S3.
+
+    This bypasses the API's ~6 MB request cap (the Lambda Function URL limit) and
+    lets clients send the full max file size. The ``content-length-range``
+    condition makes S3 itself reject anything larger than ``max_bytes``, and
+    server-side encryption is enforced via the policy.
+
+    Returns ``{"key", "url", "fields"}`` — the client POSTs the file to ``url``
+    with ``fields`` (plus the ``file`` field) as multipart form data.
+    """
+    settings = get_settings()
+    key = f"temp/{job_id}/{filename}"
+    s3 = _get_s3()
+    presigned = s3.generate_presigned_post(
+        Bucket=settings.s3_bucket_name,
+        Key=key,
+        Fields={"x-amz-server-side-encryption": "AES256"},
+        Conditions=[
+            {"x-amz-server-side-encryption": "AES256"},
+            ["content-length-range", 1, max_bytes],
+        ],
+        ExpiresIn=expires_in,
+    )
+    log.info("s3_presigned_upload", job_id=job_id, key=key, expires_in=expires_in)
+    return {"key": key, "url": presigned["url"], "fields": presigned["fields"]}
+
+
 def download_file(s3_key: str) -> bytes:
     settings = get_settings()
     s3 = _get_s3()

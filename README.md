@@ -7,6 +7,7 @@ Enterprise-grade resume parsing service that converts PDF, DOCX, and image resum
 ## Table of Contents
 
 - [Overview](#overview)
+- [Documentation](#documentation)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -36,6 +37,18 @@ The Resume Parser API accepts resume files via HTTP, extracts and semantically p
 - **No Redis / no Celery** — FastAPI BackgroundTasks handles async processing. DynamoDB handles job tracking.
 - **Single tenant** — built for one company. Auth is API key scoped to `company_id`.
 - **Sync/async split** — digital PDFs and DOCX files are processed synchronously and return results immediately. Scanned PDFs and images run asynchronously (OCR is slow) and deliver results via webhook + polling.
+
+---
+
+## Documentation
+
+Full documentation lives in [`docs/`](./docs/) — see [`docs/README.md`](./docs/README.md) for the index.
+
+| Document | What's inside |
+| --- | --- |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Enterprise architecture: design principles, compute model, data layer, security, scalability, CI/CD. |
+| [`docs/CLIENT_INTEGRATION_GUIDE.md`](./docs/CLIENT_INTEGRATION_GUIDE.md) | Step-by-step API integration with Python/Node examples and a checklist. |
+| [`docs/ocean-blue-integration-flow.md`](./docs/ocean-blue-integration-flow.md) | End-to-end integration flow diagram (frontend → backend → API). |
 
 ---
 
@@ -177,7 +190,9 @@ POST /api/v1/resume/parse
 
 **Supported file types:** `.pdf`, `.docx`, `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.webp`
 
-**Max file size:** 10 MB (configurable via `MAX_FILE_SIZE_MB`)
+**Max file size:** 10 MB (configurable via `MAX_FILE_SIZE_MB`). This multipart endpoint
+is fronted by a Lambda Function URL that caps requests at ~6 MB at the AWS edge — for files
+above that, use the [presigned upload flow](#large-file-upload-over-6-mb).
 
 **Response — Synchronous (digital PDF / DOCX)**
 
@@ -216,6 +231,53 @@ POST /api/v1/resume/parse
   "poll_url": "/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0"
 }
 ```
+
+---
+
+### Large-file upload (over ~6 MB)
+
+The standard `/resume/parse` endpoint is bounded by the Lambda Function URL's ~6 MB request
+limit. For files up to the full `MAX_FILE_SIZE_MB`, upload directly to S3 with a presigned URL,
+then parse by reference. Three steps:
+
+**1. Request an upload URL**
+
+```http
+POST /api/v1/resume/upload-url
+X-API-Key: rp_live_...
+Content-Type: application/json
+
+{ "filename": "jane_smith_rn.pdf" }
+```
+
+```json
+{
+  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
+  "upload_url": "https://resume-parser-blue-iq-temp.s3.amazonaws.com/",
+  "fields": { "key": "temp/01J3.../jane_smith_rn.pdf", "x-amz-server-side-encryption": "AES256", "policy": "...", "x-amz-signature": "..." },
+  "s3_key": "temp/01J3.../jane_smith_rn.pdf",
+  "max_file_size_mb": 10,
+  "expires_in_seconds": 900,
+  "parse_url": "/api/v1/resume/parse-uploaded"
+}
+```
+
+**2. Upload the file straight to S3** — POST it as `multipart/form-data` to `upload_url`,
+including every key in `fields` and then a `file` field with the bytes. (S3 enforces the size
+limit and rejects anything larger.) A successful upload returns HTTP 204.
+
+**3. Parse it**
+
+```http
+POST /api/v1/resume/parse-uploaded
+X-API-Key: rp_live_...
+Content-Type: application/json
+
+{ "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0" }
+```
+
+The response is identical to `/resume/parse` — digital PDF/DOCX return the parsed JSON
+synchronously; scanned PDFs/images return `status: "processing"` with a `poll_url`.
 
 ---
 

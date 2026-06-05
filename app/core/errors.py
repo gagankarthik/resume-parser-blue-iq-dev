@@ -49,6 +49,8 @@ class ErrorCode(StrEnum):
     JOB_NOT_FOUND          = "JOB_NOT_FOUND"
     BATCH_NOT_FOUND        = "BATCH_NOT_FOUND"
     WEBHOOK_NOT_FOUND      = "WEBHOOK_NOT_FOUND"
+    UPLOAD_NOT_FOUND       = "UPLOAD_NOT_FOUND"
+    UPLOAD_ALREADY_PARSED  = "UPLOAD_ALREADY_PARSED"
 
     # ── Retry ─────────────────────────────────────────────────────────────────
     RETRY_LIMIT_REACHED    = "RETRY_LIMIT_REACHED"
@@ -128,6 +130,13 @@ _HINTS: dict[str, str] = {
     ),
     ErrorCode.WEBHOOK_NOT_FOUND: (
         "This webhook was not found or does not belong to your account."
+    ),
+    ErrorCode.UPLOAD_NOT_FOUND: (
+        "No uploaded file was found for this job. Upload the file to the presigned URL "
+        "first, then call /resume/parse-uploaded. Upload URLs expire after 15 minutes."
+    ),
+    ErrorCode.UPLOAD_ALREADY_PARSED: (
+        "This upload has already been parsed. Request a new upload URL to parse another file."
     ),
     ErrorCode.RETRY_LIMIT_REACHED: (
         "This resume has already been retried the maximum number of times. "

@@ -15,10 +15,8 @@ reloaded from DynamoDB) without storing anything extra.
 
 from app.models.schemas import ParsedResumeAI, SkillsValidation
 from app.services.normalization.healthcare_taxonomy import (
-    ALL_SPECIALTIES,
-    PROFESSION_ABBREVIATIONS,
-    SPECIALTY_ABBREVIATIONS,
-    SPECIALTY_GROUPS,
+    get_specialty_group,
+    resolve_specialty,
 )
 
 # Common clinical certifications/credentials that appear in skills lists.
@@ -32,33 +30,6 @@ KNOWN_CERTIFICATIONS: frozenset[str] = frozenset(
         "CHPN", "CDE", "CRRN", "SANE", "ONS", "ACLS-EP", "STABLE", "CPR",
     )
 )
-
-# Recognized canonical names (lowercased) → original canonical form.
-_CANONICAL_LOWER: dict[str, str] = {s.lower(): s for s in ALL_SPECIALTIES}
-
-# Full profession names (e.g. "Registered Nurse") count as recognized too.
-_PROFESSION_NAMES_LOWER: dict[str, str] = {
-    name.lower(): name for name in PROFESSION_ABBREVIATIONS.values()
-}
-
-# Un-normalized abbreviations (e.g. raw "ICU", "RN") are still recognizable.
-_ABBREVIATION_KEYS: frozenset[str] = frozenset(SPECIALTY_ABBREVIATIONS) | frozenset(
-    PROFESSION_ABBREVIATIONS
-)
-
-
-def _canonical_match(key: str) -> str | None:
-    """Return the canonical specialty/profession name for a skill, or None."""
-    if key in _CANONICAL_LOWER:
-        return _CANONICAL_LOWER[key]
-    if key in _PROFESSION_NAMES_LOWER:
-        return _PROFESSION_NAMES_LOWER[key]
-    if key in SPECIALTY_ABBREVIATIONS:
-        return SPECIALTY_ABBREVIATIONS[key]
-    if key in PROFESSION_ABBREVIATIONS:
-        return PROFESSION_ABBREVIATIONS[key]
-    return None
-
 
 def validate_skills(parsed: ParsedResumeAI) -> SkillsValidation:
     """
@@ -81,7 +52,7 @@ def validate_skills(parsed: ParsedResumeAI) -> SkillsValidation:
             continue
         key = name.lower()
 
-        canonical = _canonical_match(key)
+        canonical = resolve_specialty(name)
         if canonical is not None:
             resolved = canonical
         elif key in KNOWN_CERTIFICATIONS:
@@ -97,7 +68,7 @@ def validate_skills(parsed: ParsedResumeAI) -> SkillsValidation:
 
         if canonical is not None:
             recognized.append(canonical)
-            group = SPECIALTY_GROUPS.get(canonical)
+            group = get_specialty_group(canonical)
             if group:
                 groups[canonical] = group
         elif key in KNOWN_CERTIFICATIONS:

@@ -68,12 +68,13 @@ class Settings(BaseSettings):
     openai_max_tokens: int = 4096
 
     # Processing limits
-    # NOTE: this is the application-level cap. The Lambda Function URL fronting the
-    # API still hard-caps the request payload at ~6 MB (the synchronous invoke
-    # limit), so uploads between ~6 MB and this value will be rejected at the AWS
-    # edge before reaching the app. To genuinely support 10 MB, switch large
-    # uploads to a presigned-S3 flow (client → S3, then call the API with the key).
+    # The direct multipart endpoint (POST /resume/parse) is still bounded by the
+    # Lambda Function URL's ~6 MB request cap, so files larger than that must use
+    # the presigned-upload flow (POST /resume/upload-url → client uploads straight
+    # to S3 → POST /resume/parse-uploaded), which supports the full size below.
     max_file_size_mb: int = 10
+    # How long a presigned upload URL stays valid (seconds).
+    presigned_upload_expiry_seconds: int = 900  # 15 minutes
     job_result_ttl_seconds: int = 3600  # 1 hour
 
     # CORS — comma-separated allowed origins. Empty by default so production

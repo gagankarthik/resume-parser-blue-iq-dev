@@ -13,6 +13,8 @@ Provides:
   ALL_SPECIALTIES          — combined deduplicated list
 """
 
+import re
+
 # ── Profession credential expansions ─────────────────────────────────────────
 # Used to normalize credential strings found on resumes
 PROFESSION_ABBREVIATIONS: dict[str, str] = {
@@ -104,6 +106,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "pcu": "Progressive Care Unit",
     "pcu float": "Progressive Care Unit Float",
     "pcu oncology": "Progressive Care – Oncology",
+    "pcu - oncology": "Progressive Care – Oncology",
     "pediatric bmt": "Pediatric Bone Marrow Transplant",
     "pediatric cvor": "Pediatric Cardiovascular Operating Room",
     "pediatric er": "Pediatric Emergency Room",
@@ -140,7 +143,11 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "xray tech": "X-Ray Technologist",
     "cath lab tech": "Cardiac Catheterization Lab Technologist",
     "echo tech": "Echocardiography Technologist",
+    "echo tech - cardiac sonographer": "Echocardiography Technologist",
+    "echo tech - cardiac sonographer peds": "Echocardiography Technologist – Pediatric",
     "cardiac sonographer": "Echocardiography Technologist",
+    "ultrasound tech - general ii": "Ultrasound Tech – General II",
+    "eeg tech manager": "EEG Technician Manager",
     "cvor tech": "Cardiovascular Operating Room Tech",
     # ── Allied Health — Respiratory & Neuro ───────────────────────────────────
     "crt": "Certified Respiratory Therapist",
@@ -154,23 +161,39 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "ot": "Occupational Therapist",
     "cota": "Certified Occupational Therapy Assistant",
     "pt": "Physical Therapist",
+    "pt aide": "Physical Therapy Aide",
     "pta": "Physical Therapist Assistant",
     "slp": "Speech-Language Pathologist",
     "slpa": "Speech-Language Pathologist Assistant",
     # ── Allied Health — Surgical Services ────────────────────────────────────
     "or tech": "Operating Room Technologist / Surgical Tech",
     "surgical tech": "Operating Room Technologist / Surgical Tech",
+    "or tech / surgical tech": "Operating Room Technologist / Surgical Tech",
+    "certified or tech / surgical tech (cst)": "Certified Surgical Technologist",
+    "cvor certified surgical first assistant": "Cardiovascular Operating Room Surgical First Assistant",
+    "pediatric cvor tech": "Pediatric Cardiovascular Operating Room Tech",
+    "pediatric or tech / surgical tech": "Pediatric Operating Room Tech / Surgical Tech",
     "spt": "Sterile Processing Technician",
     "sterile processing tech": "Sterile Processing Technician",
+    "sterile processing tech (spt)": "Sterile Processing Technician",
+    "pediatric sterile processing tech (spt)": "Pediatric Sterile Processing Technician",
+    "sterile processing tech (spt) director": "Sterile Processing Director",
+    "sterile processing tech (spt) manager": "Sterile Processing Manager",
+    "sterile processing tech (spt) team lead": "Sterile Processing Team Lead",
     "gi/endo tech": "Gastrointestinal / Endoscopy Technician",
     "ob tech": "Obstetric Technician",
     "cst": "Certified Surgical Technologist",
     # ── Allied Health — Social Services ──────────────────────────────────────
     "csw": "Certified Social Worker",
+    "csw (certified social worker)": "Certified Social Worker",
     "lcsw": "Licensed Clinical Social Worker",
+    "lcsw (licensed clinical social worker)": "Licensed Clinical Social Worker",
     "licsw": "Licensed Independent Clinical Social Worker",
+    "licsw (licensed independent clinical social worker)": "Licensed Independent Clinical Social Worker",
     "lmsw": "Licensed Master Social Worker",
+    "lmsw (licensed master social worker)": "Licensed Master Social Worker",
     "msw": "Masters of Social Work",
+    "msw (masters of social work)": "Masters of Social Work",
     # ── Allied Health — Laboratory ────────────────────────────────────────────
     "cls": "Clinical Lab Scientist",
     "mlt": "Medical Lab Technician",
@@ -186,6 +209,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "ma - pediatrics": "Medical Assistant – Pediatrics",
     "ma - urgent care": "Medical Assistant – Urgent Care",
     "ma - snf/ltc": "Medical Assistant – SNF/LTC",
+    "ma - medical assistant": "Medical Assistant",
 }
 
 # ── Specialty → Group mapping ─────────────────────────────────────────────────
@@ -339,6 +363,161 @@ SPECIALTY_GROUPS: dict[str, str] = {
     "Sterile Processing Technician": "Sterile Processing",
     "Cardiovascular Operating Room Tech": "OR Tech",
     "Obstetric Technician": "OR Tech",
+    # ── Completed from the 2.11.26 spreadsheet (Speciality → Group) ───────────
+    "Cardiac Catheterization Lab Technologist": "Imaging Tech",
+    "Cardiac Stress Testing": "Echo Lab",
+    "Cardiovascular Operating Room Surgical First Assistant": "OR Tech",
+    "Case Worker": "Social Worker",
+    "Certified OB Tech": "OR Tech",
+    "Certified Occupational Therapist Assistant – School": "COTA",
+    "Certified Occupational Therapy Assistant – Acute Care": "COTA",
+    "Certified Occupational Therapy Assistant – Behavioral Health": "COTA",
+    "Certified Occupational Therapy Assistant – Home Health": "COTA",
+    "Certified Occupational Therapy Assistant – Inpatient Rehab": "COTA",
+    "Certified Occupational Therapy Assistant – LTAC": "COTA",
+    "Certified Occupational Therapy Assistant – Outpatient": "COTA",
+    "Certified Occupational Therapy Assistant – Pediatrics": "COTA",
+    "Certified Occupational Therapy Assistant – SNF": "COTA",
+    "Certified Occupational Therapy Assistant – School": "COTA",
+    "Certified School Nurse": "School RN",
+    "Certified Surgical Technologist": "OR Tech",
+    "Dietary Aide": "Dietary",
+    "Dietary Tech": "Dietary",
+    "Dietician": "Dietary",
+    "Infusion": "Oncology",
+    "Licensed Marriage and Family Therapist": "Social Worker",
+    "Licensed Professional Clinical Counselor": "Social Worker",
+    "Licensed Professional Counselor": "Social Worker",
+    "Med Surg - Neuro": "Med Surg",
+    "Med Surg - Oncology": "Med Surg",
+    "Med Surg / Tele Float": "Med Surg / Tele",
+    "Med Surg Float": "Med Surg",
+    "Medical Assistant": "Medical Assistant",
+    "Medical Assistant – Acute Float Pool": "Medical Assistant",
+    "Medical Assistant – Allergy and Immunology": "Medical Assistant",
+    "Medical Assistant – Dermatology": "Medical Assistant",
+    "Medical Assistant – Family Practice": "Medical Assistant",
+    "Medical Assistant – Internal Medicine": "Medical Assistant",
+    "Medical Assistant – OB/GYN": "Medical Assistant",
+    "Medical Assistant – Oncology": "Medical Assistant",
+    "Medical Assistant – Otorhinolaryngology (ENT)": "Medical Assistant",
+    "Medical Assistant – Pain Management": "Medical Assistant",
+    "Medical Assistant – Pediatrics": "Medical Assistant",
+    "Medical Assistant – SNF/LTC": "Medical Assistant",
+    "Medical Assistant – Urgent Care": "Medical Assistant",
+    "Medical Assistant – Vaccination Support": "Medical Assistant",
+    "Mental Health": "Social Worker",
+    "Metabolomic Technician": "Laboratory",
+    "Microbiology Tech": "Laboratory",
+    "OR Tech First Assistant": "OR Tech",
+    "Occupational Therapist – Acute Care": "OT",
+    "Occupational Therapist – Behavioral Health": "OT",
+    "Occupational Therapist – Home Health": "OT",
+    "Occupational Therapist – Inpatient Rehab": "OT",
+    "Occupational Therapist – LTAC": "OT",
+    "Occupational Therapist – Outpatient": "OT",
+    "Occupational Therapist – Pediatrics": "OT",
+    "Occupational Therapist – SNF": "OT",
+    "Occupational Therapist – School": "OT",
+    "Oncology - Chemo Certified": "Oncology",
+    "Oncology - Clinic": "Oncology",
+    "Oncology - Pediatric": "Oncology",
+    "Outpatient Clinic Cardiology": "Outpatient Clinic",
+    "Outpatient Clinic Hematology Oncology": "Oncology",
+    "Outpatient Clinic Infusion": "Oncology",
+    "Outpatient Clinic Phlebotomy": "Outpatient Clinic",
+    "Outpatient Pediatrics": "Pediatrics",
+    "Outpatient Surgery": "Operating Room",
+    "Pathology Assistant": "Laboratory",
+    "Pediatric Acute Care Float Pool": "Pediatrics",
+    "Pediatric Ambulatory Care": "Pediatrics",
+    "Pediatric Apheresis": "Pediatrics",
+    "Pediatric Behavioral Health": "Behavioral Health",
+    "Pediatric Bone Marrow Transplant": "Pediatrics",
+    "Pediatric Cardiology": "Pediatrics",
+    "Pediatric Cardiovascular Operating Room": "Pediatrics",
+    "Pediatric Cardiovascular Operating Room Tech": "OR Tech",
+    "Pediatric Cath Lab": "Pediatrics",
+    "Pediatric Critical Care Float Pool": "Pediatrics",
+    "Pediatric Dialysis": "Pediatrics",
+    "Pediatric Emergency Room": "Pediatrics",
+    "Pediatric Endoscopy": "Pediatrics",
+    "Pediatric Home Health": "Pediatrics",
+    "Pediatric IV Therapy": "Pediatrics",
+    "Pediatric Infusion": "Pediatrics",
+    "Pediatric Long-Term Acute Care": "Pediatrics",
+    "Pediatric Med Surg": "Pediatrics",
+    "Pediatric Medical Intensive Care Unit": "Pediatrics",
+    "Pediatric Neuro": "Pediatrics",
+    "Pediatric Operating Room": "Pediatrics",
+    "Pediatric Operating Room Tech / Surgical Tech": "OR Tech",
+    "Pediatric Ortho": "Pediatrics",
+    "Pediatric Post-Anesthesia Care Unit": "Pediatrics",
+    "Pediatric Progressive Care Unit": "Pediatrics",
+    "Pediatric Pulmonary": "Pediatrics",
+    "Pediatric Rehab": "Pediatrics",
+    "Pediatric Stepdown": "Pediatrics",
+    "Pediatric Sterile Processing Technician": "Sterile Processing",
+    "Pediatric Telemetry": "Pediatrics",
+    "Pediatric Transplant": "Pediatrics",
+    "Pediatric Transport": "Pediatrics",
+    "Pediatric Wound Care": "Pediatrics",
+    "Pediatrics": "Pediatrics",
+    "Physical Therapist Assistant – Acute Care": "PTA",
+    "Physical Therapist Assistant – Behavioral Health": "PTA",
+    "Physical Therapist Assistant – Home Health": "PTA",
+    "Physical Therapist Assistant – Inpatient Rehab": "PTA",
+    "Physical Therapist Assistant – LTAC": "PTA",
+    "Physical Therapist Assistant – Outpatient": "PTA",
+    "Physical Therapist Assistant – Pediatrics": "PTA",
+    "Physical Therapist Assistant – SNF": "PTA",
+    "Physical Therapist Assistant – School": "PTA",
+    "Physical Therapist – Acute Care": "PT",
+    "Physical Therapist – Behavioral Health": "PT",
+    "Physical Therapist – Home Health": "PT",
+    "Physical Therapist – Inpatient Rehab": "PT",
+    "Physical Therapist – LTAC": "PT",
+    "Physical Therapist – Outpatient": "PT",
+    "Physical Therapist – Pediatrics": "PT",
+    "Physical Therapist – SNF": "PT",
+    "Physical Therapist – School": "PT",
+    "Physical Therapy Aide": "PTA",
+    "Progressive Care Unit Float": "Stepdown",
+    "Progressive Care – Oncology": "Stepdown",
+    "Radiology Manager": "Manager",
+    "Registered Respiratory Therapist – NICU": "Respiratory",
+    "Registered Respiratory Therapist – PICU": "Respiratory",
+    "Registered Respiratory Therapist – Pediatrics": "Respiratory",
+    "School Nurse - 1:1": "School RN",
+    "School Nurse - Bus Run": "School RN",
+    "School Psychologist": "Social Worker",
+    "Social Worker Assistant": "Social Worker",
+    "Special Procedures": "Imaging Tech",
+    "Speech-Language Pathologist Assistant – Acute Care": "SLPA",
+    "Speech-Language Pathologist Assistant – Behavioral Health": "SLPA",
+    "Speech-Language Pathologist Assistant – Inpatient Rehab": "SLPA",
+    "Speech-Language Pathologist Assistant – LTAC": "SLPA",
+    "Speech-Language Pathologist Assistant – Outpatient": "SLPA",
+    "Speech-Language Pathologist Assistant – SNF": "SLPA",
+    "Speech-Language Pathologist Assistant – School": "SLPA",
+    "Speech-Language Pathologist – Acute Care": "SLP",
+    "Speech-Language Pathologist – Behavioral Health": "SLP",
+    "Speech-Language Pathologist – Home Health": "SLP",
+    "Speech-Language Pathologist – Inpatient Rehab": "SLP",
+    "Speech-Language Pathologist – LTAC": "SLP",
+    "Speech-Language Pathologist – Outpatient": "SLP",
+    "Speech-Language Pathologist – Pediatrics": "SLP",
+    "Speech-Language Pathologist – SNF": "SLP",
+    "Speech-Language Pathologist – School": "SLP",
+    "Sterile Processing Director": "Sterile Processing",
+    "Sterile Processing Manager": "Sterile Processing",
+    "Sterile Processing Team Lead": "Sterile Processing",
+    "Student Nurse": "New Graduate",
+    "Summer Camp": "School RN",
+    "Telemetry Float": "Med Surg / Tele",
+    "Ultrasound Tech – General II": "Imaging Tech",
+    "Ultrasound Tech – Maternal Fetal": "Imaging Tech",
+    "Ultrasound Tech – Vascular": "Imaging Tech",
 }
 
 # ── Canonical specialty lists ─────────────────────────────────────────────────
@@ -399,8 +578,8 @@ NURSING_SPECIALTIES: list[str] = [
     "Registered Nurse First Assistant", "School Nurse", "School Nurse - 1:1",
     "School Nurse - Bus Run", "Surgical Intensive Care Unit", "Skilled Nursing Facility",
     "Stepdown", "Stepdown Cardiac", "Stepdown Neuro", "Student Nurse", "Sub-Acute",
-    "Summer Camp", "Transitional Care Unit", "Telemetry Float", "Telemetry",
-    "Triage / Call Center", "Transplant", "Trauma Intensive Care Unit",
+    "Summer Camp", "Surveyor", "Transitional Care Unit", "Telemetry Float", "Telemetry",
+    "Theragnostics", "Triage / Call Center", "Transplant", "Trauma Intensive Care Unit",
     "Urgent Care", "Utilization Review", "Vaccination Support", "Wound Care",
 ]
 
@@ -435,7 +614,7 @@ ALLIED_HEALTH_SPECIALTIES: list[str] = [
     "Medical Assistant – Pediatrics", "Medical Assistant – SNF/LTC",
     "Medical Assistant – Urgent Care", "Medical Assistant – Vaccination Support",
     # Other
-    "Paramedic", "Patient Care Technician", "Perfusionist",
+    "Paramedic", "Patient Care Technician", "Perfusionist", "Contractor",
     # Radiology & Cardiology
     "Cath Lab Manager", "Cardiac Catheterization Lab Technologist",
     "CT Technologist (Computed Tomography)", "Diagnostic Imaging Assistant",
@@ -444,8 +623,10 @@ ALLIED_HEALTH_SPECIALTIES: list[str] = [
     "Holter Monitor Stress Test Technician", "Interventional Radiology Tech",
     "Mammography Tech", "Monitor Tech",
     "MRI Technologist (Magnetic Resonance Imaging)", "Nuclear Med Tech",
+    "Echocardiography Technologist", "Echocardiography Technologist – Pediatric",
     "Radiation Therapist", "Radiology Manager", "Registered Radiology Assistant",
     "Sonographer", "Special Procedures", "Ultrasound Tech – General",
+    "Ultrasound Tech – General II",
     "Ultrasound Tech – Vascular", "Ultrasound Tech – Maternal Fetal", "X-Ray Technologist",
     "Cardiovascular Operating Room Tech",
     # Respiratory & Neuro
@@ -534,9 +715,76 @@ ALLIED_HEALTH_SPECIALTIES: list[str] = [
 ALL_SPECIALTIES: list[str] = list(dict.fromkeys(NURSING_SPECIALTIES + ALLIED_HEALTH_SPECIALTIES))
 
 
+# ── Punctuation-robust matching ───────────────────────────────────────────────
+# Resumes and the source spreadsheet disagree on punctuation: en-dash vs hyphen
+# ("Ultrasound Tech – General" vs "...- General"), slash spacing ("Med Surg / Tele"
+# vs "Med Surg/ Tele"). We match on a normalized key so every variant resolves to
+# the same canonical name without enumerating each spelling.
+
+
+def _match_key(s: str) -> str:
+    """Punctuation/whitespace-insensitive lookup key for a specialty string."""
+    s = s.replace("–", "-").replace("—", "-")  # en/em dash → hyphen
+    s = s.lower().strip()
+    s = re.sub(r"\s*/\s*", "/", s)   # collapse spacing around slashes
+    s = re.sub(r"\s*-\s*", "-", s)   # collapse spacing around hyphens
+    s = re.sub(r"\s+", " ", s)
+    return s
+
+
+_SPECIALTY_BY_KEY:   dict[str, str] = {_match_key(s): s for s in ALL_SPECIALTIES}
+_ABBREV_BY_KEY:      dict[str, str] = {_match_key(k): v for k, v in SPECIALTY_ABBREVIATIONS.items()}
+_PROF_ABBREV_BY_KEY: dict[str, str] = {_match_key(k): v for k, v in PROFESSION_ABBREVIATIONS.items()}
+_PROF_NAME_BY_KEY:   dict[str, str] = {_match_key(v): v for v in PROFESSION_ABBREVIATIONS.values()}
+_GROUP_BY_KEY:       dict[str, str] = {_match_key(k): g for k, g in SPECIALTY_GROUPS.items()}
+
+
+def resolve_specialty(raw: str) -> str | None:
+    """
+    Resolve a raw skill string to a canonical specialty or profession name.
+
+    Resolution order (all punctuation/case-insensitive):
+      1. Canonical specialty name (e.g. "Intensive Care Unit")
+      2. Specialty abbreviation/shorthand (e.g. "ICU", "Med Surg/ Tele")
+      3. Full profession/credential name (e.g. "Registered Nurse")
+      4. Profession/credential abbreviation (e.g. "RN", "OT")
+      5. Credential-prefix expansion — "OT - Acute Care" → "Occupational
+         Therapist – Acute Care" — so every "<credential> - <setting>" variant
+         from the taxonomy resolves without enumerating each setting.
+
+    Returns the canonical name, or None when the string is out-of-taxonomy.
+    """
+    if not raw or not raw.strip():
+        return None
+
+    key = _match_key(raw)
+    if key in _SPECIALTY_BY_KEY:
+        return _SPECIALTY_BY_KEY[key]
+    if key in _ABBREV_BY_KEY:
+        return _ABBREV_BY_KEY[key]
+    if key in _PROF_NAME_BY_KEY:
+        return _PROF_NAME_BY_KEY[key]
+    if key in _PROF_ABBREV_BY_KEY:
+        return _PROF_ABBREV_BY_KEY[key]
+
+    # Credential-prefix expansion: a single leading token, then a separator.
+    m = re.match(r"^\s*([A-Za-z]+)\s*[-–/]\s*(.+)$", raw)
+    if m:
+        head_key = _match_key(m.group(1))
+        expanded = _PROF_ABBREV_BY_KEY.get(head_key) or _ABBREV_BY_KEY.get(head_key)
+        if expanded:
+            candidate = _match_key(f"{expanded}-{m.group(2)}")
+            if candidate in _SPECIALTY_BY_KEY:
+                return _SPECIALTY_BY_KEY[candidate]
+
+    return None
+
+
 def get_specialty_group(specialty: str) -> str | None:
-    """Return the group label for a canonical specialty name, or None."""
-    return SPECIALTY_GROUPS.get(specialty)
+    """Return the group label for a specialty name (punctuation-insensitive)."""
+    if specialty in SPECIALTY_GROUPS:
+        return SPECIALTY_GROUPS[specialty]
+    return _GROUP_BY_KEY.get(_match_key(specialty))
 
 
 def expand_profession(abbrev: str) -> str:
@@ -545,18 +793,5 @@ def expand_profession(abbrev: str) -> str:
 
 
 def normalize_specialty(raw: str) -> str:
-    """
-    Normalize a specialty string found on a resume:
-      1. Check abbreviation map → return canonical full name
-      2. Otherwise return original with title-case cleanup
-    """
-    key = raw.lower().strip()
-    if key in SPECIALTY_ABBREVIATIONS:
-        return SPECIALTY_ABBREVIATIONS[key]
-
-    # Check if it's already a canonical name (case-insensitive)
-    lower_all = {s.lower(): s for s in ALL_SPECIALTIES}
-    if key in lower_all:
-        return lower_all[key]
-
-    return raw.strip()
+    """Normalize a specialty string to its canonical name, or return it cleaned."""
+    return resolve_specialty(raw) or raw.strip()

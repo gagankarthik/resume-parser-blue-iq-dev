@@ -14,7 +14,7 @@ from typing import Any
 import boto3
 import pytesseract
 from pdf2image import convert_from_bytes
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance, ImageFilter, ImageSequence
 
 from app.core.config import get_settings
 from app.core.exceptions import OCRError
@@ -56,7 +56,10 @@ def _to_images(content: bytes, filename: str) -> list[Image.Image]:
     ext = filename.rsplit(".", 1)[-1].lower()
     if ext == "pdf":
         return convert_from_bytes(content, dpi=300)
-    return [Image.open(io.BytesIO(content))]
+    # Iterate every frame so multi-page TIFFs are OCR'd in full, not just page 1.
+    # Single-frame formats (PNG/JPG/WEBP) yield exactly one image.
+    img = Image.open(io.BytesIO(content))
+    return [frame.copy() for frame in ImageSequence.Iterator(img)]
 
 
 # ── Preprocessing pipeline ────────────────────────────────────────────────────

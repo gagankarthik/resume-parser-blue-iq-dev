@@ -73,8 +73,17 @@ Extract structured information from the resume text below.
 EXTRACTION RULES:
 - Extract ONLY what is explicitly stated. Never infer or hallucinate.
 - Use null for any field not present in the text.
-- Dates: ISO format YYYY-MM, or "Present" for current roles.
+- full_name: the candidate's name ONLY. Do NOT include trailing credential, licence, or degree suffixes (e.g. "Jane Smith, RN BSN" → "Jane Smith"). Keep those in skills[]/certifications[] instead.
+- Dates: ISO format YYYY-MM-DD. Use the exact day when stated (e.g. "2/16/2024" → "2024-02-16"); if only month/year is given, use the first of that month (e.g. "Feb 2024" → "2024-02-01"). Use "Present" for current roles.
+- description: an ARRAY of short strings — one item per responsibility/bullet. Never return a single paragraph or one long sentence.
 - Separate each role/assignment as its own experience entry (important for travel nurses).
+- For each experience entry, also fill these when explicitly stated (else null/empty — never guess):
+  • city, state, country, zip_code — split the facility location into parts (state as full name, e.g. "Tennessee").
+  • profession — the credential for that role as written (e.g. "RN", "LPN", "CRT"); do NOT expand it.
+  • specialties — the clinical units/specialties for that role (e.g. "Med Surg/Tele", "ICU"), as a list.
+  • position_held, agency_name, shift, charting_system (Epic/Cerner/Meditech…), reason_for_leaving.
+  • nurse_to_patient_ratio, facility_beds, beds_in_unit, service_type, trauma_level, additional_info.
+  • teaching_facility, magnet_facility, trauma_facility — only as "Yes"/"No"/"N/A" when the resume says so, else null.
 - Skills: individual items only — not sentences. Include clinical specialties AND credentials separately.
 - Certifications (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN…) → certifications[] not skills[].
 - Preserve credential abbreviations exactly (RN, LPN, CRT, RRT, OT, PT, SLP…). Do NOT expand them.

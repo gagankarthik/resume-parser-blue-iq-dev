@@ -67,6 +67,16 @@ def validate_file(filename: str, content: bytes) -> str:
     return declared_type
 
 
+def is_supported_extension(filename: str) -> bool:
+    """True if the filename has a supported extension.
+
+    Extension-only check (no content) — used by the presigned-upload endpoint to
+    reject obviously-wrong files before issuing an upload URL. Magic-byte
+    validation still runs on the downloaded content before parsing.
+    """
+    return _get_ext(filename) in _EXT_TO_TYPE
+
+
 def _get_ext(filename: str) -> str:
     idx = filename.rfind(".")
     return filename[idx:].lower() if idx != -1 else ""
