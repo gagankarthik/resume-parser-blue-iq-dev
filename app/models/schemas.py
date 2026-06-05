@@ -12,6 +12,7 @@ Design principles:
 from __future__ import annotations
 
 import re
+from datetime import date as _date
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -19,9 +20,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # ── Shared validators ─────────────────────────────────────────────────────────
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
-# Accept either YYYY-MM or full YYYY-MM-DD.
-_DATE_RE   = re.compile(r"^\d{4}-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?$")
-_URL_RE    = re.compile(r"^https?://", re.I)
+_URL_RE   = re.compile(r"^https?://", re.I)
+
+# Month-name → number, accepting 3-letter prefixes (jan, sept, etc.).
+_MONTHS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
 
 
 def _sanitize_email(v: str | None) -> str | None:
@@ -40,21 +45,88 @@ def _sanitize_url(v: str | None) -> str | None:
     return v if len(v) <= 2048 else None
 
 
-def _sanitize_date(v: str | None) -> str | None:
-    """Accept YYYY-MM-DD, YYYY-MM, or 'Present'; return None otherwise.
+def _fmt_mdy(mo: int, day: int, year: int) -> str | None:
+    # Reject impossible calendar dates (e.g. 02/30, 04/31) instead of echoing them.
+    if not 1900 <= year <= 2035:
+        return None
+    try:
+        _date(year, mo, day)
+    except ValueError:
+        return None
+    return f"{mo:02d}/{day:02d}/{year}"
 
-    A month-only date (YYYY-MM) is padded to the first of the month so the
-    output is always a full calendar date when the day is unknown
-    (e.g. '2024-02' → '2024-02-01').
+
+def _fmt_my(mo: int, year: int) -> str | None:
+    if not (1 <= mo <= 12 and 1900 <= year <= 2035):
+        return None
+    return f"{mo:02d}/{year}"
+
+
+def _expand_yy(yy: int) -> int:
+    """Expand a 2-digit year using a 1969–2068 pivot (e.g. 19 → 2019, 98 → 1998)."""
+    return 2000 + yy if yy < 69 else 1900 + yy
+
+
+def _sanitize_date(v: str | None) -> str | None:
+    """Normalize a date to MM/DD/YYYY, MM/YYYY, or YYYY — preserving the precision
+    actually stated on the résumé. 'Present' passes through; unparseable → None.
+
+    Crucially, this NEVER invents a missing day or month. A month/year value such
+    as 'August 2018' becomes '08/2018' (not '08/01/2018'), and a year-only value
+    stays 'YYYY'. Accepts ISO (YYYY-MM-DD / YYYY-MM), US numeric (M/D/YYYY,
+    M/YYYY), and written forms ('Aug 2018', 'July 21, 2019', 'July 21st 2019').
     """
     if not v:
         return None
-    v = v.strip()
+    v = str(v).strip()
+    if not v:
+        return None
     if v.lower() == "present":
         return "Present"
-    if not _DATE_RE.match(v):
-        return None
-    return f"{v}-01" if len(v) == 7 else v
+
+    # ISO full / year-month
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", v)
+    if m:
+        return _fmt_mdy(int(m[2]), int(m[3]), int(m[1]))
+    m = re.match(r"^(\d{4})-(\d{1,2})$", v)
+    if m:
+        return _fmt_my(int(m[2]), int(m[1]))
+
+    # US numeric full / month-year  (slash or hyphen separated)
+    m = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$", v)
+    if m:
+        return _fmt_mdy(int(m[1]), int(m[2]), int(m[3]))
+    m = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{2})$", v)
+    if m:
+        return _fmt_mdy(int(m[1]), int(m[2]), _expand_yy(int(m[3])))
+    m = re.match(r"^(\d{1,2})[/-](\d{4})$", v)
+    if m:
+        return _fmt_my(int(m[1]), int(m[2]))
+
+    # Written: "Month DD, YYYY" / "Month DDth YYYY"
+    m = re.match(r"^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$", v)
+    if m and m[1][:3].lower() in _MONTHS:
+        return _fmt_mdy(_MONTHS[m[1][:3].lower()], int(m[2]), int(m[3]))
+
+    # Written: "Month YYYY"
+    m = re.match(r"^([A-Za-z]{3,9})\.?\s+(\d{4})$", v)
+    if m and m[1][:3].lower() in _MONTHS:
+        return _fmt_my(_MONTHS[m[1][:3].lower()], int(m[2]))
+
+    # Written with a 2-digit year: "Month 'YY" (apostrophe = explicit year), or
+    # "Month YY" where YY cannot be a day-of-month (>31). A bare "Month 15" is an
+    # ambiguous day/year, so we do NOT guess a year — better None than a wrong date.
+    m = re.match(r"^([A-Za-z]{3,9})\.?\s+('?)(\d{2})$", v)
+    if m and m[1][:3].lower() in _MONTHS and (m[2] == "'" or int(m[3]) > 31):
+        return _fmt_my(_MONTHS[m[1][:3].lower()], _expand_yy(int(m[3])))
+
+    # Year only
+    m = re.match(r"^(\d{4})$", v)
+    if m:
+        year = int(m[1])
+        return str(year) if 1900 <= year <= 2035 else None
+
+    return None
 
 
 def _sanitize_phone(v: str | None) -> str | None:
@@ -177,13 +249,13 @@ class ExperienceItem(BaseModel):
             "example": {
                 "company": "Fort Sanders Regional Medical Center",
                 "role": "RN - Med Surg/Tele",
-                "start_date": "2026-01-01",
-                "end_date": "2026-04-30",
+                "start_date": "01/01/2026",
+                "end_date": "04/30/2026",
                 "is_current": False,
-                "location": "Knoxville, TN",
+                "location": "1901 W Clinch Ave, Knoxville, TN 37916",
                 "city": "Knoxville",
-                "state": "Tennessee",
-                "country": "United States",
+                "state": "TN",
+                "country": None,
                 "zip_code": "37916",
                 "profession": "RN",
                 "specialties": ["Med Surg / Tele"],
@@ -216,15 +288,15 @@ class ExperienceItem(BaseModel):
 
     company:       str           = Field(..., description="Employer or facility name (maps to 'Facility Name')")
     role:          str           = Field(..., description="Job title or role, including credential if present (e.g. 'RN - MICU')")
-    start_date:    str | None = Field(None, description="Start date as YYYY-MM-DD. Use the stated day; if only month/year is given, use the 1st (e.g. '2024-02-01')")
-    end_date:      str | None = Field(None, description="End date as YYYY-MM-DD (use the 1st when only month/year is given), or 'Present' for current role")
+    start_date:    str | None = Field(None, description="Start date as MM/DD/YYYY. If only month/year is stated use MM/YYYY; if only a year, YYYY. NEVER invent a missing day or month.")
+    end_date:      str | None = Field(None, description="End date as MM/DD/YYYY (or MM/YYYY / YYYY when the day/month is not stated), or 'Present' for a current role.")
     is_current:    bool          = Field(False, description="True if this is the candidate's current position ('Currently Employed')")
-    location:      str | None = Field(None, description="Free-text city and state of the workplace, as written on the resume")
+    location:      str | None = Field(None, description="The FULL workplace location/address exactly as written on the résumé, including street if present (e.g. '500 J Clyde Morris Blvd, Newport News, VA 23601')")
     # ── Structured facility location (Work History form) ──────────────────────
-    city:          str | None = Field(None, description="Facility city, if stated")
-    state:         str | None = Field(None, description="Facility state/province, if stated (full name preferred, e.g. 'Tennessee')")
-    country:       str | None = Field(None, description="Facility country, if stated")
-    zip_code:      str | None = Field(None, description="Facility postal/ZIP code, if stated")
+    city:          str | None = Field(None, description="Facility city, only if stated — copied verbatim")
+    state:         str | None = Field(None, description="Facility state/province, only if stated — copied exactly as written (keep 'NY', do NOT expand to 'New York')")
+    country:       str | None = Field(None, description="Facility country — ONLY if explicitly written on the résumé; otherwise null. Do NOT infer 'United States'.")
+    zip_code:      str | None = Field(None, description="Facility postal/ZIP code, only if stated — never guessed from the city")
     # ── Clinical classification (Select Profession / Select Specialties) ──────
     profession:    str | None = Field(None, description="Credential/profession for this role exactly as stated (e.g. 'RN', 'LPN', 'CRT'). Do NOT expand the abbreviation.")
     specialties:   list[str]     = Field(default_factory=list, description="Clinical specialties/units for this role (e.g. 'Med Surg/Tele', 'ICU'). One per item.")
@@ -285,11 +357,15 @@ class ExperienceItem(BaseModel):
     @field_validator("description", mode="before")
     @classmethod
     def coerce_description(cls, v: object) -> list[str]:
-        # Always a list of strings. If the model emits a single paragraph,
-        # split it into sentence-sized bullets so the output is never one blob.
+        # Always a list of strings — one item per bullet/line. When the model
+        # emits the whole block as a single string, split on line breaks and
+        # bullet glyphs only — NOT on sentence boundaries — so a multi-sentence
+        # bullet ("Works in the CCU. Also worked in the SICU.") stays one item.
         if isinstance(v, str):
-            parts = re.split(r"(?<=[.!?])\s+", v.strip())
-            return [p.strip() for p in parts if p.strip()]
+            # Split on line breaks and true bullet glyphs only. The middle dot '·'
+            # is excluded — it is commonly an inline separator ("Charge nurse · ICU").
+            parts = re.split(r"[\r\n]+|\s*[•▪◦‣]\s*", v.strip())
+            return [s for p in parts if (s := re.sub(r"^[-*]\s+", "", p).strip())]
         items = _coerce_list(v)
         return [s for i in items if isinstance(i, str) and (s := i.strip())]
 
@@ -353,10 +429,11 @@ class CertificationItem(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "name": "ACLS",
+                "name": "BLS",
                 "issuer": "American Heart Association",
-                "issued_date": "2023-06",
-                "expiry_date": "2025-06",
+                "issued_date": None,
+                "expiry_date": None,
+                "date": "12/2024",
                 "credential_id": None,
             }
         }
@@ -364,8 +441,9 @@ class CertificationItem(BaseModel):
 
     name:           str           = Field(..., description="Certification name (e.g. 'ACLS', 'BLS', 'CCRN')")
     issuer:         str | None = Field(None, description="Issuing organisation")
-    issued_date:    str | None = Field(None, description="Issue date in YYYY-MM format")
-    expiry_date:    str | None = Field(None, description="Expiry date in YYYY-MM format")
+    issued_date:    str | None = Field(None, description="Issue/award date — ONLY when the résumé labels it as issued/awarded/completed. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
+    expiry_date:    str | None = Field(None, description="Expiry/renewal date — ONLY when the résumé labels it as expires/valid through/renewal. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
+    date:           str | None = Field(None, description="A certification date when the résumé does NOT say whether it is the issue or the expiry date (e.g. 'BLS: 12/2024'). Do NOT assume expiry — put unlabeled dates here. Same MM/DD/YYYY / MM/YYYY / YYYY format.")
     credential_id:  str | None = Field(None, description="Credential ID or certificate number")
 
     @field_validator("name", mode="before")
@@ -380,7 +458,7 @@ class CertificationItem(BaseModel):
     def sanitize_optional(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
 
-    @field_validator("issued_date", "expiry_date", mode="before")
+    @field_validator("issued_date", "expiry_date", "date", mode="before")
     @classmethod
     def sanitize_dates(cls, v: object) -> str | None:
         return _sanitize_date(str(v)) if isinstance(v, str) else None
@@ -465,10 +543,10 @@ class ParsedResumeAI(BaseModel):
                     {
                         "company": "Memorial Hermann Hospital",
                         "role": "RN - ICU",
-                        "start_date": "2020-03-15",
+                        "start_date": "03/15/2020",
                         "end_date": "Present",
                         "is_current": True,
-                        "location": "Houston, TX",
+                        "location": "6411 Fannin St, Houston, TX 77030",
                         "description": [
                             "Provided critical care nursing in a 12-bed MICU.",
                             "Coordinated care for ventilated patients.",
@@ -486,7 +564,7 @@ class ParsedResumeAI(BaseModel):
                 ],
                 "skills": ["RN", "ICU", "NICU", "ACLS", "BLS"],
                 "certifications": [
-                    {"name": "ACLS", "issuer": "American Heart Association", "expiry_date": "2025-06"}
+                    {"name": "ACLS", "issuer": "American Heart Association", "expiry_date": "06/2025"}
                 ],
                 "projects": [],
                 "languages": ["English", "Spanish"],

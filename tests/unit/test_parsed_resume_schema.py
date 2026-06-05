@@ -112,3 +112,83 @@ def test_experience_specialties_canonicalized_by_normalizer():
     )
     normalize(parsed)
     assert parsed.experience[0].specialties == ["Med Surg / Tele", "Intensive Care Unit"]
+
+
+# ── Dates: MM/DD/YYYY, partial precision preserved, never fabricated ──────────
+
+def test_experience_month_year_date_not_padded():
+    exp = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "Y", "start_date": "August 2018", "end_date": "April '19"}]}
+    ).experience[0]
+    assert exp.start_date == "08/2018"   # NOT 08/01/2018
+    assert exp.end_date == "04/2019"     # apostrophe = explicit 2-digit year
+
+
+def test_ambiguous_bare_month_day_not_guessed():
+    # "June 30" could be the 30th or June 2030 — ambiguous, so don't invent a year.
+    exp = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "Y", "start_date": "June 30"}]}
+    ).experience[0]
+    assert exp.start_date is None
+
+
+def test_impossible_calendar_date_rejected():
+    exp = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "Y", "start_date": "02/30/2024", "end_date": "04/31/2025"}]}
+    ).experience[0]
+    assert exp.start_date is None
+    assert exp.end_date is None
+
+
+def test_experience_full_date_us_format():
+    exp = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "Y", "start_date": "2021-02-14", "end_date": "Present"}]}
+    ).experience[0]
+    assert exp.start_date == "02/14/2021"
+    assert exp.end_date == "Present"
+
+
+def test_experience_address_and_state_not_fabricated():
+    exp = ParsedResumeAI.model_validate(
+        {
+            "experience": [
+                {
+                    "company": "Riverside Regional Medical Center",
+                    "role": "Critical Care RN",
+                    "location": "500 J Clyde Morris Blvd, Newport News, VA 23601",
+                    "state": "VA",
+                }
+            ]
+        }
+    ).experience[0]
+    assert exp.location == "500 J Clyde Morris Blvd, Newport News, VA 23601"
+    assert exp.state == "VA"        # not expanded to "Virginia"
+    assert exp.country is None      # not invented as "United States"
+
+
+def test_experience_multi_sentence_bullet_stays_one_item():
+    exp = ParsedResumeAI.model_validate(
+        {
+            "experience": [
+                {
+                    "company": "X",
+                    "role": "Y",
+                    "description": [
+                        "Works in the Critical Care Unit/Cardiac Care Unit. Also worked in the SICU.",
+                        "Collaborates with the interdisciplinary team.",
+                    ],
+                }
+            ]
+        }
+    ).experience[0]
+    assert exp.description[0] == "Works in the Critical Care Unit/Cardiac Care Unit. Also worked in the SICU."
+    assert len(exp.description) == 2
+
+
+def test_certification_bare_date_is_neutral_not_expiry():
+    cert = ParsedResumeAI.model_validate(
+        {"certifications": [{"name": "BLS", "date": "12/2024"}]}
+    ).certifications[0]
+    assert cert.date == "12/2024"
+    assert cert.expiry_date is None
+    assert cert.issued_date is None

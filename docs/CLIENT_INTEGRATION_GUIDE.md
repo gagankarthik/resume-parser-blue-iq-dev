@@ -320,10 +320,15 @@ There are no request-rate limits on the API. Please still upload responsibly
     {
       "company": "Acme Corporation",
       "role": "Senior Software Engineer",
-      "start_date": "2021-03-01",
+      "start_date": "03/2021",
       "end_date": "Present",
       "is_current": true,
-      "location": "San Francisco, CA",
+      "location": "500 Howard St, San Francisco, CA 94105",
+      "city": "San Francisco",
+      "state": "CA",
+      "country": null,
+      "zip_code": "94105",
+      "specialties": ["Med Surg / Tele"],
       "description": ["Led backend architecture.", "Owned the payments service."],
       "achievements": ["Reduced API latency by 40%", "Mentored 4 engineers"]
     }
@@ -340,7 +345,7 @@ There are no request-rate limits on the API. Please still upload responsibly
   ],
   "skills": ["Python", "FastAPI", "AWS", "Docker"],
   "certifications": [
-    { "name": "AWS Solutions Architect", "issuer": "Amazon Web Services", "issued_date": "2023-06", "expiry_date": "2026-06", "credential_id": "ABC123" }
+    { "name": "AWS Solutions Architect", "issuer": "Amazon Web Services", "issued_date": "06/2023", "expiry_date": "06/2026", "date": null, "credential_id": "ABC123" }
   ],
   "projects": [
     { "name": "Analytics Dashboard", "description": "Real-time log analytics", "technologies": ["React", "Node.js"], "url": "github.com/janesmith/dash" }
@@ -349,11 +354,24 @@ There are no request-rate limits on the API. Please still upload responsibly
 }
 ```
 
-Dates are normalized to ISO `YYYY-MM-DD` (`"Present"` for current roles). The exact
-day is used when the résumé states one; when only month/year is given, the day falls
-back to the 1st (e.g. `"2021-03-01"`). `full_name` excludes trailing credential/licence
-suffixes (e.g. "RN", "BSN") — those appear in `skills`/`certifications`. Experience
-`description` is an **array of strings** (one per responsibility), not a single string.
+**Dates** are `MM/DD/YYYY`, preserving the precision actually written — when only a
+month/year is stated the value is `MM/YYYY` and a year-only value is `YYYY`; a missing
+day or month is **never** invented (`"August 2018"` → `"08/2018"`, not `"08/01/2018"`).
+`"Present"` is used for current roles.
+
+**Location** keeps the full address line exactly as written (street included); `city`,
+`state`, `country`, and `zip_code` are filled only when explicitly present and are **not**
+inferred or expanded (`"VA"` stays `"VA"`; `country` is `null` unless the résumé names one).
+
+**Experience `description`** is an **array of strings** — one item per bullet, copied as
+written (a multi-sentence bullet stays a single item).
+
+**Certifications**: a bare date next to a cert (e.g. `"BLS: 12/2024"`) is ambiguous, so it
+is placed in the neutral `date` field — `issued_date`/`expiry_date` are set only when the
+résumé explicitly labels them.
+
+`full_name` excludes trailing credential/licence suffixes (e.g. "RN", "BSN") — those appear
+in `skills`/`certifications`.
 
 ### Confidence scores
 

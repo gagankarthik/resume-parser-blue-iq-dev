@@ -13,34 +13,48 @@ from app.services.normalization.normalizer import (
     _strip_name_credentials,
 )
 
-# ── Date normalization (output is always YYYY-MM-DD) ──────────────────────────
+# ── Date normalization (MM/DD/YYYY; partial precision preserved) ──────────────
+# Never invent a missing day or month — a month/year value stays month/year.
 
-def test_date_iso_full_passthrough():
-    assert _normalize_date("2024-02-16") == "2024-02-16"
+def test_date_iso_full_to_us():
+    assert _normalize_date("2024-02-16") == "02/16/2024"
 
 
-def test_date_iso_month_padded_to_first():
-    assert _normalize_date("2023-05") == "2023-05-01"
+def test_date_iso_month_keeps_precision():
+    # Month/year only → MM/YYYY (NOT padded to a fabricated day).
+    assert _normalize_date("2023-05") == "05/2023"
 
 
 def test_date_us_numeric_keeps_day():
-    assert _normalize_date("2/16/2024") == "2024-02-16"
+    assert _normalize_date("2/16/2024") == "02/16/2024"
 
 
 def test_date_month_name_with_day():
-    assert _normalize_date("February 16, 2024") == "2024-02-16"
+    assert _normalize_date("February 16, 2024") == "02/16/2024"
 
 
 def test_date_month_name_no_day():
-    assert _normalize_date("January 2023") == "2023-01-01"
+    assert _normalize_date("January 2023") == "01/2023"
+
+
+def test_date_month_name_ordinal_day():
+    assert _normalize_date("July 21st, 2019") == "07/21/2019"
 
 
 def test_date_slash_month_year():
-    assert _normalize_date("05/2023") == "2023-05-01"
+    assert _normalize_date("05/2023") == "05/2023"
 
 
 def test_date_year_only():
-    assert _normalize_date("2023") == "2023-01-01"
+    assert _normalize_date("2023") == "2023"
+
+
+def test_date_present_passthrough():
+    assert _normalize_date("Present") == "Present"
+
+
+def test_date_unparseable_is_none():
+    assert _normalize_date("sometime last year") is None
 
 
 # ── Name credential stripping ─────────────────────────────────────────────────

@@ -71,14 +71,20 @@ def _build_prompt(sections: dict[str, str], anchors: RuleExtracted) -> str:
 Extract structured information from the resume text below.
 
 EXTRACTION RULES:
-- Extract ONLY what is explicitly stated. Never infer or hallucinate.
+- Extract ONLY what is explicitly stated. NEVER infer, guess, expand, or hallucinate. If a value is not written on the résumé, use null.
 - Use null for any field not present in the text.
 - full_name: the candidate's name ONLY. Do NOT include trailing credential, licence, or degree suffixes (e.g. "Jane Smith, RN BSN" → "Jane Smith"). Keep those in skills[]/certifications[] instead.
-- Dates: ISO format YYYY-MM-DD. Use the exact day when stated (e.g. "2/16/2024" → "2024-02-16"); if only month/year is given, use the first of that month (e.g. "Feb 2024" → "2024-02-01"). Use "Present" for current roles.
-- description: an ARRAY of short strings — one item per responsibility/bullet. Never return a single paragraph or one long sentence.
+- Dates — keep exactly the precision written; never invent a missing day or month:
+  • Full date  → MM/DD/YYYY   (e.g. "2/16/2024" → "02/16/2024", "July 21, 2019" → "07/21/2019")
+  • Month+year → MM/YYYY      (e.g. "August 2018" → "08/2018", "9/2019" → "09/2019") — do NOT add a day.
+  • Year only  → YYYY
+  • Current role → "Present".
+  For a range like "August 2018 - April 19", output start "08/2018" and end "04/2019" (do NOT fabricate days).
+- description: an ARRAY where each item is ONE bullet/line copied as written. If a single bullet contains multiple sentences, keep them together in that one item — do NOT split a bullet into several items, and do NOT merge separate bullets.
 - Separate each role/assignment as its own experience entry (important for travel nurses).
-- For each experience entry, also fill these when explicitly stated (else null/empty — never guess):
-  • city, state, country, zip_code — split the facility location into parts (state as full name, e.g. "Tennessee").
+- For each experience entry, also fill these ONLY when explicitly stated (else null/empty — never guess or infer):
+  • location — the FULL address line exactly as written, including street/suite if present (e.g. "500 J Clyde Morris Blvd, Newport News, VA 23601"). Do NOT shorten it to just city/state.
+  • city, state, country, zip_code — copy the parts that appear, verbatim. Keep state as written ("NY", "VA" — do NOT expand to "New York"/"Virginia"). Leave country null unless the résumé literally names a country (do NOT assume "United States"). Never guess a ZIP from the city.
   • profession — the credential for that role as written (e.g. "RN", "LPN", "CRT"); do NOT expand it.
   • specialties — the clinical units/specialties for that role (e.g. "Med Surg/Tele", "ICU"), as a list.
   • position_held, agency_name, shift, charting_system (Epic/Cerner/Meditech…), reason_for_leaving.
@@ -86,6 +92,7 @@ EXTRACTION RULES:
   • teaching_facility, magnet_facility, trauma_facility — only as "Yes"/"No"/"N/A" when the resume says so, else null.
 - Skills: individual items only — not sentences. Include clinical specialties AND credentials separately.
 - Certifications (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN…) → certifications[] not skills[].
+- Certification dates: a bare date next to a cert (e.g. "BLS: 12/2024") is AMBIGUOUS — do NOT assume it is an expiry. Put it in the neutral `date` field. Only use `issued_date` when the résumé labels it issued/awarded/completed, and `expiry_date` only when labeled expires/valid through/renewal.
 - Preserve credential abbreviations exactly (RN, LPN, CRT, RRT, OT, PT, SLP…). Do NOT expand them.
 - Float pool / per-diem / agency assignments: list each separately in experience[].
 - References: extract any listed referees into references[] (name, relationship/title, company, email, phone). If the resume only says "References available upon request", leave references[] empty.

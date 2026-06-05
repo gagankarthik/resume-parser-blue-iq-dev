@@ -12,7 +12,13 @@ Covers:
 
 import re
 
-from app.models.schemas import EducationItem, ExperienceItem, ParsedResumeAI, PersonalInfo
+from app.models.schemas import (
+    EducationItem,
+    ExperienceItem,
+    ParsedResumeAI,
+    PersonalInfo,
+    _sanitize_date,
+)
 from app.services.normalization.healthcare_taxonomy import (
     PROFESSION_ABBREVIATIONS,
     normalize_specialty,
@@ -38,11 +44,6 @@ _DEGREE_MAP: dict[str, str] = {
     "bsn": "Bachelor of Science in Nursing",
     "msn": "Master of Science in Nursing",
     "dnp": "Doctor of Nursing Practice",
-}
-
-_MONTH_ABBR = {
-    "jan": "01", "feb": "02", "mar": "03", "apr": "04", "may": "05", "jun": "06",
-    "jul": "07", "aug": "08", "sep": "09", "oct": "10", "nov": "11", "dec": "12",
 }
 
 # Credential / licence / degree tokens that may trail a candidate's name and must
@@ -182,61 +183,9 @@ def _expand_role_credentials(role: str) -> str:
 
 
 def _normalize_date(raw: str) -> str | None:
-    """Normalize a date to YYYY-MM-DD.
-
-    The exact day is preserved when the input states one (e.g. '2/16/2024'
-    → '2024-02-16'). When only month/year (or year) is known, the day falls
-    back to the 1st ('Feb 2024' → '2024-02-01', '2024' → '2024-01-01').
+    """Normalize a date to MM/DD/YYYY, MM/YYYY, or YYYY — preserving the stated
+    precision and never inventing a missing day or month. Delegates to the shared
+    parser in schemas so the schema-time and post-processing behaviour are identical
+    (e.g. '2/16/2024' → '02/16/2024', 'August 2018' → '08/2018', '2019' → '2019').
     """
-    raw = raw.strip()
-
-    # Already full ISO YYYY-MM-DD
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
-        return raw
-
-    # ISO month only → first of month
-    if re.match(r"^\d{4}-\d{2}$", raw):
-        return f"{raw}-01"
-
-    _MONTH_NAME = (
-        r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
-        r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
-    )
-
-    # Month name + day + year  e.g. "Feb 16, 2024", "February 16 2024"
-    m = re.search(rf"(?i){_MONTH_NAME}[\s.]+(\d{{1,2}})(?:st|nd|rd|th)?[\s,]+(\d{{4}})", raw)
-    if m:
-        month = _MONTH_ABBR.get(m.group(1)[:3].lower(), "01")
-        return f"{m.group(3)}-{month}-{m.group(2).zfill(2)}"
-
-    # Month name + year  e.g. "January 2023" → first of month
-    m = re.search(rf"(?i){_MONTH_NAME}[\s,]+(\d{{4}})", raw)
-    if m:
-        month = _MONTH_ABBR.get(m.group(1)[:3].lower(), "01")
-        return f"{m.group(2)}-{month}-01"
-
-    # Numeric M/D/YYYY (US order — day present)
-    m = re.match(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$", raw)
-    if m:
-        return f"{m.group(3)}-{m.group(1).zfill(2)}-{m.group(2).zfill(2)}"
-
-    # Numeric YYYY/M/D (day present)
-    m = re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$", raw)
-    if m:
-        return f"{m.group(1)}-{m.group(2).zfill(2)}-{m.group(3).zfill(2)}"
-
-    # YYYY/MM or YYYY-MM → first of month
-    m = re.match(r"^(\d{4})[-/](\d{1,2})$", raw)
-    if m:
-        return f"{m.group(1)}-{m.group(2).zfill(2)}-01"
-
-    # MM/YYYY or MM-YYYY → first of month
-    m = re.match(r"^(\d{1,2})[-/](\d{4})$", raw)
-    if m:
-        return f"{m.group(2)}-{m.group(1).zfill(2)}-01"
-
-    # Just a year → first of year
-    if re.match(r"^\d{4}$", raw):
-        return f"{raw}-01-01"
-
-    return None
+    return _sanitize_date(raw)
