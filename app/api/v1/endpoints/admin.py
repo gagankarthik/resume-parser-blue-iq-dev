@@ -200,6 +200,86 @@ async def usage(company_id: str, days: int = 30) -> dict:
     }
 
 
+# ── Platform-wide stats (admin overview) ──────────────────────────────────────
+
+@router.get("/stats", summary="Platform-wide usage & company stats")
+async def platform_stats(days: int = 30) -> dict:
+    """Aggregate usage across ALL companies for the admin overview.
+
+    Sums each company's audit logs over the window (using the per-company GSI),
+    so the cost scales with the number of companies, not a full table scan.
+    Returns headline totals, a by-day series, and a per-company breakdown sorted
+    by volume (heaviest consumers first).
+    """
+    days = max(1, min(days, 365))
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    companies = db.list_companies()
+
+    totals = {"jobs": 0, "completed": 0, "failed": 0, "ocr_jobs": 0, "tokens_used": 0}
+    duration_sum = 0
+    duration_count = 0
+    active_companies = 0
+    active_keys = 0
+    by_day: dict[str, dict[str, int]] = defaultdict(lambda: {"jobs": 0, "tokens": 0})
+    per_company: list[dict] = []
+
+    for c in companies:
+        cid = c.get("company_id")
+        if not cid:
+            continue
+        if c.get("status", "active") == "active":
+            active_companies += 1
+
+        keys = db.list_api_keys_for_company(cid)
+        active_keys += sum(1 for k in keys if k.get("status") == "active")
+
+        logs = db.get_audit_logs_for_company(cid, since)
+        c_tokens = sum(int(r.get("ai_tokens_used", 0) or 0) for r in logs)
+        last_active = max((str(r.get("timestamp", "")) for r in logs), default="")
+
+        totals["jobs"] += len(logs)
+        totals["completed"] += sum(1 for r in logs if r.get("status") == "completed")
+        totals["failed"] += sum(1 for r in logs if r.get("status") == "failed")
+        totals["ocr_jobs"] += sum(1 for r in logs if r.get("ocr_used"))
+        totals["tokens_used"] += c_tokens
+
+        for r in logs:
+            d = int(r.get("duration_ms", 0) or 0)
+            if d:
+                duration_sum += d
+                duration_count += 1
+            day = str(r.get("timestamp", ""))[:10]
+            if day:
+                by_day[day]["jobs"] += 1
+                by_day[day]["tokens"] += int(r.get("ai_tokens_used", 0) or 0)
+
+        per_company.append({
+            "company_id": cid,
+            "name": c.get("name") or cid,
+            "plan": c.get("plan", ""),
+            "status": c.get("status", "active"),
+            "jobs": len(logs),
+            "tokens": c_tokens,
+            "active_keys": sum(1 for k in keys if k.get("status") == "active"),
+            "last_active": last_active,
+        })
+
+    totals["avg_duration_ms"] = round(duration_sum / duration_count) if duration_count else 0
+    per_company.sort(key=lambda x: (x["jobs"], x["tokens"]), reverse=True)
+
+    return {
+        "window_days": days,
+        "companies": {"total": len(companies), "active": active_companies},
+        "active_keys": active_keys,
+        "totals": totals,
+        "by_day": [
+            {"date": d, "jobs": v["jobs"], "tokens": v["tokens"]}
+            for d, v in sorted(by_day.items())
+        ],
+        "companies_list": per_company,
+    }
+
+
 # ── Webhooks ──────────────────────────────────────────────────────────────────
 # Same store the API-key-scoped /webhooks surface uses; here it is managed
 # server-to-server by the dashboard, scoped to an explicit company_id.
