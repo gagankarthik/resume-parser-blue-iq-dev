@@ -30,6 +30,7 @@ class ErrorCode(StrEnum):
     INVALID_API_KEY_FORMAT = "INVALID_API_KEY_FORMAT"
     INVALID_API_KEY        = "INVALID_API_KEY"
     REVOKED_API_KEY        = "REVOKED_API_KEY"
+    ACCOUNT_DEACTIVATED    = "ACCOUNT_DEACTIVATED"
 
     # ── File Validation ───────────────────────────────────────────────────────
     FILE_TOO_LARGE         = "FILE_TOO_LARGE"
@@ -80,6 +81,9 @@ _HINTS: dict[str, str] = {
     ),
     ErrorCode.REVOKED_API_KEY: (
         "This API key has been revoked. Contact your administrator to issue a new key."
+    ),
+    ErrorCode.ACCOUNT_DEACTIVATED: (
+        "This account has been deactivated. Contact your administrator to reactivate it."
     ),
     ErrorCode.FILE_TOO_LARGE: (
         "The uploaded file is too large. Maximum size is 10 MB. "

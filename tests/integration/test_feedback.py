@@ -23,6 +23,8 @@ def _authenticate(monkeypatch, company_id: str = "acme-1"):
         "_get_cached_api_key",
         lambda key_hash: {"company_id": company_id, "status": "active"},
     )
+    # The auth path also checks the owning company isn't deactivated.
+    monkeypatch.setattr(deps, "_company_is_active", lambda company_id: True)
 
 
 def test_feedback_requires_api_key():

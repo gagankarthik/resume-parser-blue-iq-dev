@@ -47,6 +47,12 @@ def get_current_account(authorization: str = Depends(_bearer_scheme)) -> str:
 _KEY_CACHE: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL_SECONDS = 300  # 5 minutes
 
+# Company status is cached separately with a shorter TTL so an admin
+# deactivation takes effect quickly (within _COMPANY_TTL_SECONDS) without adding
+# a DynamoDB read to every authenticated request.
+_COMPANY_STATUS_CACHE: dict[str, tuple[str, float]] = {}
+_COMPANY_TTL_SECONDS = 60
+
 
 def _get_cached_api_key(key_hash: str) -> dict | None:
     now = time.time()
@@ -61,6 +67,23 @@ def _get_cached_api_key(key_hash: str) -> dict | None:
     if record:
         _KEY_CACHE[key_hash] = (record, now + _CACHE_TTL_SECONDS)
     return record
+
+
+def _company_is_active(company_id: str) -> bool:
+    """True unless the owning company has been deactivated by an admin.
+
+    A missing company (or missing status) defaults to active so legacy keys are
+    never locked out by this check.
+    """
+    now = time.time()
+    entry = _COMPANY_STATUS_CACHE.get(company_id)
+    if entry and now < entry[1]:
+        return entry[0] == "active"
+
+    company = db.get_company(company_id)
+    status = (company or {}).get("status", "active")
+    _COMPANY_STATUS_CACHE[company_id] = (status, now + _COMPANY_TTL_SECONDS)
+    return status == "active"
 
 
 def _evict_key_cache(key_hash: str) -> None:
@@ -96,6 +119,10 @@ def get_api_key_record(api_key: str = Depends(_api_key_scheme)) -> dict:
             company_id=record.get("company_id"),
         )
         raise api_error(403, ErrorCode.REVOKED_API_KEY, "API key has been revoked")
+
+    if not _company_is_active(record["company_id"]):
+        log.warning("auth_account_deactivated", company_id=record.get("company_id"))
+        raise api_error(403, ErrorCode.ACCOUNT_DEACTIVATED, "This account has been deactivated")
 
     record["key_hash"] = key_hash
     return record

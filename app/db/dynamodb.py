@@ -136,6 +136,39 @@ def list_companies() -> list[dict]:
     return table.scan().get("Items", [])
 
 
+# Mutable fields an admin may update; everything else (id, email, created_at,
+# password_hash) is immutable through this path.
+_COMPANY_MUTABLE = ("plan", "status")
+
+
+def update_company(company_id: str, updates: dict) -> dict | None:
+    """Patch a company's mutable fields (plan, status). Returns the updated item,
+    or None if the company does not exist."""
+    fields = {k: v for k, v in updates.items() if k in _COMPANY_MUTABLE and v is not None}
+    if not fields:
+        return get_company(company_id)
+
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_companies)
+    names = {f"#{k}": k for k in fields}
+    values = {f":{k}": v for k, v in fields.items()}
+    expr = "SET " + ", ".join(f"#{k} = :{k}" for k in fields)
+    try:
+        resp = table.update_item(
+            Key={"company_id": company_id},
+            UpdateExpression=expr,
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+            ConditionExpression="attribute_exists(company_id)",
+            ReturnValues="ALL_NEW",
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return None
+        raise
+    return resp.get("Attributes")
+
+
 # ── Usage / stats (from audit logs) ───────────────────────────────────────────
 
 def get_audit_logs_for_company(company_id: str, since_iso: str) -> list[dict]:

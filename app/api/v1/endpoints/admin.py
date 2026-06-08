@@ -109,6 +109,61 @@ async def get_company(company_id: str) -> dict:
     return _public(company)
 
 
+class CompanyUpdate(BaseModel):
+    plan: str | None = Field(default=None, min_length=1, max_length=40)
+    status: str | None = Field(default=None)
+
+
+_VALID_COMPANY_STATUS = {"active", "disabled"}
+
+
+@router.patch("/companies/{company_id}", summary="Update a company (plan / status)")
+async def update_company(company_id: str, payload: CompanyUpdate) -> dict:
+    """Activate/deactivate a company or change its plan. Deactivating sets
+    status='disabled', which the API-key auth path then rejects (the org's keys
+    stop working until it is reactivated)."""
+    if payload.plan is None and payload.status is None:
+        raise api_error(422, ErrorCode.INVALID_REQUEST, "Provide plan and/or status to update")
+    if payload.status is not None and payload.status not in _VALID_COMPANY_STATUS:
+        raise api_error(
+            422, ErrorCode.INVALID_REQUEST,
+            f"status must be one of {sorted(_VALID_COMPANY_STATUS)}",
+        )
+
+    updated = db.update_company(company_id, {"plan": payload.plan, "status": payload.status})
+    if not updated:
+        raise api_error(404, ErrorCode.INVALID_REQUEST, "Company not found")
+
+    log.info("company_updated", company_id=company_id, plan=payload.plan, status=payload.status)
+    keys = db.list_api_keys_for_company(company_id)
+    updated["active_key_count"] = sum(1 for k in keys if k.get("status") == "active")
+    return _public(updated)
+
+
+@router.get("/companies/{company_id}/logs", summary="Recent activity logs")
+async def company_logs(company_id: str, days: int = 30, limit: int = 100) -> list[dict]:
+    """Recent audit-log entries for a company (most recent first). Audit records
+    never contain résumé content — only operational metadata."""
+    days = max(1, min(days, 365))
+    limit = max(1, min(limit, 500))
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    logs = db.get_audit_logs_for_company(company_id, since)
+    logs.sort(key=lambda r: str(r.get("timestamp", "")), reverse=True)
+    return [
+        {
+            "job_id": r.get("job_id"),
+            "timestamp": r.get("timestamp"),
+            "file_type": r.get("file_type"),
+            "status": r.get("status"),
+            "duration_ms": int(r.get("duration_ms", 0) or 0),
+            "ocr_used": bool(r.get("ocr_used")),
+            "ai_tokens_used": int(r.get("ai_tokens_used", 0) or 0),
+            "error_code": r.get("error_code", ""),
+        }
+        for r in logs[:limit]
+    ]
+
+
 # ── API keys ──────────────────────────────────────────────────────────────────
 
 @router.post("/companies/{company_id}/keys", status_code=201, summary="Issue an API key")
@@ -256,6 +311,7 @@ async def platform_stats(days: int = 30) -> dict:
         per_company.append({
             "company_id": cid,
             "name": c.get("name") or cid,
+            "email": c.get("email", ""),
             "plan": c.get("plan", ""),
             "status": c.get("status", "active"),
             "jobs": len(logs),
