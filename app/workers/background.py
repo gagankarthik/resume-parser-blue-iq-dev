@@ -37,6 +37,7 @@ async def process_resume_async(
     filename: str,
     file_size_bytes: int,
     batch_id: str | None = None,
+    force_textract: bool = False,
 ) -> None:
     """
     Full pipeline for one resume file.
@@ -57,6 +58,7 @@ async def process_resume_async(
                 filename=filename,
                 content=content,
                 company_id=company_id,
+                force_textract=force_textract,
             )
         )
         status = "completed"

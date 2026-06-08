@@ -43,6 +43,10 @@ class PipelineInput:
     filename:   str
     content:    bytes
     company_id: str
+    # Force AWS Textract instead of Tesseract for any OCR this resume needs
+    # (scanned files, or a digital PDF that falls back to OCR). OR's with the
+    # global settings.force_textract default.
+    force_textract: bool = False
 
 
 @dataclass
@@ -73,6 +77,24 @@ async def run(inp: PipelineInput) -> PipelineResult:
                 loop.run_in_executor(None, pdf_extractor.extract, inp.content),
                 timeout=_TIMEOUT_EXTRACTION,
             )
+            # The classifier picked the digital path on text *length* alone, but a
+            # PDF can carry a broken/garbled text layer (e.g. CID-encoded fonts with
+            # no Unicode map) that passes the length gate yet is unusable. When the
+            # extracted text looks low-quality, fall back to the OCR/Textract path so
+            # the resume is still read instead of feeding the AI garbage.
+            if _is_low_quality_pdf_text(raw_text):
+                log.info(
+                    "pdf_text_low_quality_ocr_fallback",
+                    job_id=inp.job_id, chars=len(raw_text.strip()),
+                )
+                raw_text, ocr_used = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, ocr_extractor.extract,
+                        inp.content, inp.filename, inp.force_textract,
+                    ),
+                    timeout=_TIMEOUT_OCR,
+                )
+                file_type = ExtractionStrategy.OCR.value
         elif strategy == ExtractionStrategy.DOCX:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, docx_extractor.extract, inp.content),
@@ -80,7 +102,10 @@ async def run(inp: PipelineInput) -> PipelineResult:
             )
         else:
             result = await asyncio.wait_for(
-                loop.run_in_executor(None, ocr_extractor.extract, inp.content, inp.filename),
+                loop.run_in_executor(
+                    None, ocr_extractor.extract,
+                    inp.content, inp.filename, inp.force_textract,
+                ),
                 timeout=_TIMEOUT_OCR,
             )
             raw_text, ocr_used = result
@@ -135,6 +160,43 @@ async def run(inp: PipelineInput) -> PipelineResult:
         ai_tokens_used=tokens,
         duration_ms=duration_ms,
     )
+
+
+# A digital PDF must clear this many usable characters before we trust its text
+# layer; below it, the OCR fallback is cheaper insurance than parsing nothing.
+_MIN_PDF_TEXT_CHARS = 120
+# Minimum fraction of "wordy" characters (letters, digits, common punctuation)
+# among non-space characters. Garbled CID extractions are dominated by boxes,
+# replacement chars, and stray symbols and fall well below this.
+_MIN_PDF_WORDY_RATIO = 0.55
+
+
+def _is_low_quality_pdf_text(text: str) -> bool:
+    """Heuristic: does this digital-PDF text layer look broken/garbled?
+
+    Conservative by design — a false positive only costs one OCR pass, but a
+    false negative feeds the AI unreadable junk. Flags text that is too short,
+    riddled with PyMuPDF CID artefacts, or has too few wordy characters.
+    """
+    stripped = text.strip()
+    if len(stripped) < _MIN_PDF_TEXT_CHARS:
+        return True
+    # PyMuPDF emits "(cid:NN)" when a font has no Unicode map — a strong signal
+    # the text layer cannot be decoded to real characters.
+    if stripped.count("(cid:") >= 5:
+        return True
+    non_space = [c for c in stripped if not c.isspace()]
+    if not non_space:
+        return True
+    wordy = sum(c.isalnum() or c in ".,/-:;()&'@" for c in non_space)
+    if wordy / len(non_space) < _MIN_PDF_WORDY_RATIO:
+        return True
+    # A readable résumé always has a decent run of alphabetic characters; an all-
+    # symbol or replacement-char (�) layer does not.
+    letters = sum(c.isalpha() for c in non_space)
+    if letters / len(non_space) < 0.40:
+        return True
+    return False
 
 
 def _clean_text(text: str) -> str:

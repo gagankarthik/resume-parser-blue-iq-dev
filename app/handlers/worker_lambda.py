@@ -14,6 +14,7 @@ Expected event payload:
     "filename":        "resume.pdf",
     "file_size_bytes": 204800,
     "batch_id":        "01J3K5..."   (optional)
+    "force_textract":  false          (optional — skip Tesseract, use Textract)
   }
 """
 
@@ -54,6 +55,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 filename=event["filename"],
                 file_size_bytes=int(event["file_size_bytes"]),
                 batch_id=event.get("batch_id"),
+                force_textract=bool(event.get("force_textract", False)),
             )
         )
         loop.close()

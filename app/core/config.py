@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = ""        # empty = real AWS
     textract_endpoint_url: str = ""  # always real AWS Textract
 
+    # OCR
+    # When True, the OCR path skips Tesseract entirely and goes straight to AWS
+    # Textract for every scanned PDF/image. Leave False to keep the cost-saving
+    # tiered behaviour (Tesseract first, Textract only when confidence is low).
+    # Callers can also force Textract per-request via the `force_textract` flag on
+    # the parse endpoints, which OR's with this global default.
+    force_textract: bool = False
+
     # DynamoDB tables
     dynamodb_table_api_keys: str = "resume-parser-api-keys"
     dynamodb_table_jobs: str = "resume-parser-jobs"

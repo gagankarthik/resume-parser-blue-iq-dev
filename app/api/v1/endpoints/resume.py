@@ -20,7 +20,7 @@ POST /api/v1/resume/{job_id}/feedback
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from ulid import ULID
 
 from app.api.dependencies import get_api_key_record
@@ -103,6 +103,12 @@ async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
 async def parse_resume(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Resume file: PDF, DOCX, PNG, JPG, or TIFF"),
+    force_textract: bool = Form(
+        False,
+        description="Skip Tesseract and use AWS Textract directly for any OCR this "
+                    "file needs (scanned PDFs/images, or a digital PDF with a broken "
+                    "text layer). Higher accuracy on hard scans, higher cost.",
+    ),
     record: dict = Depends(get_api_key_record),
 ) -> ParseResponse:
     settings   = get_settings()
@@ -113,11 +119,13 @@ async def parse_resume(
     strategy, needs_async = classify(filename, content)
 
     log.info("parse_request", job_id=job_id, company_id=company_id,
-             strategy=strategy, needs_async=needs_async, size_bytes=len(content))
+             strategy=strategy, needs_async=needs_async, size_bytes=len(content),
+             force_textract=force_textract)
 
     if not needs_async:
         result = await run_pipeline(PipelineInput(
             job_id=job_id, filename=filename, content=content, company_id=company_id,
+            force_textract=force_textract,
         ))
         db.write_audit_log(
             job_id=job_id, company_id=company_id,
@@ -134,6 +142,7 @@ async def parse_resume(
     await _dispatch_async(settings, background_tasks, {
         "job_id": job_id, "company_id": company_id, "s3_key": s3_key,
         "filename": filename, "file_size_bytes": len(content),
+        "force_textract": force_textract,
     })
     return ParseResponse(job_id=job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{job_id}")
@@ -249,6 +258,7 @@ async def parse_uploaded(
     if not needs_async:
         result = await run_pipeline(PipelineInput(
             job_id=payload.job_id, filename=filename, content=content, company_id=company_id,
+            force_textract=payload.force_textract,
         ))
         db.update_job_completed(payload.job_id, {
             "data": result.parsed.model_dump(),
@@ -269,6 +279,7 @@ async def parse_uploaded(
     await _dispatch_async(settings, background_tasks, {
         "job_id": payload.job_id, "company_id": company_id, "s3_key": s3_key,
         "filename": filename, "file_size_bytes": len(content),
+        "force_textract": payload.force_textract,
     })
     return ParseResponse(job_id=payload.job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{payload.job_id}")
@@ -335,6 +346,11 @@ async def retry_parse(
     job_id: str,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="The same resume file to re-parse"),
+    force_textract: bool = Form(
+        False,
+        description="Skip Tesseract and use AWS Textract directly for any OCR this "
+                    "file needs. Useful when retrying a scan the tiered OCR misread.",
+    ),
     record: dict = Depends(get_api_key_record),
 ) -> RetryResponse:
     settings   = get_settings()
@@ -367,6 +383,7 @@ async def retry_parse(
     if not needs_async:
         result = await run_pipeline(PipelineInput(
             job_id=new_job_id, filename=filename, content=content, company_id=company_id,
+            force_textract=force_textract,
         ))
         db.write_audit_log(
             job_id=new_job_id, company_id=company_id,
@@ -388,6 +405,7 @@ async def retry_parse(
     await _dispatch_async(settings, background_tasks, {
         "job_id": new_job_id, "company_id": company_id, "s3_key": s3_key,
         "filename": filename, "file_size_bytes": len(content),
+        "force_textract": force_textract,
     })
     return RetryResponse(
         job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,

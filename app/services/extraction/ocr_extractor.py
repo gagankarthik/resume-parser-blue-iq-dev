@@ -28,13 +28,24 @@ _MIN_WIDTH_FOR_OCR    = 800  # upscale images narrower than this (px)
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def extract(content: bytes, filename: str) -> tuple[str, bool]:
+def extract(content: bytes, filename: str, force_textract: bool = False) -> tuple[str, bool]:
     """
     Returns (extracted_text, textract_used).
-    Tries Tesseract first; escalates to Textract on low confidence.
+
+    Default (tiered): tries Tesseract first; escalates to Textract on low
+    confidence. When ``force_textract`` is True — or the global
+    ``settings.force_textract`` flag is set — Tesseract is skipped and the scan
+    goes straight to Textract for maximum accuracy.
     """
+    force = force_textract or get_settings().force_textract
+
     images = _to_images(content, filename)
     preprocessed = [_preprocess(img) for img in images]
+
+    if force:
+        log.info("ocr_forced_textract", pages=len(images))
+        return _run_textract(content, filename, preprocessed), True
+
     text, confidence = _run_tesseract(preprocessed)
 
     if confidence >= _CONFIDENCE_THRESHOLD:

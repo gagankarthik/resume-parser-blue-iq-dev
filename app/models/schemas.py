@@ -760,10 +760,18 @@ class ParseUploadedRequest(BaseModel):
     """Request body for POST /api/v1/resume/parse-uploaded"""
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0"}}
+        json_schema_extra={
+            "example": {"job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0", "force_textract": False}
+        }
     )
 
     job_id: str = Field(..., description="The job_id returned by /resume/upload-url")
+    force_textract: bool = Field(
+        False,
+        description="Skip Tesseract and use AWS Textract directly for any OCR this "
+                    "file needs (scanned PDF/image, or a digital PDF with a broken "
+                    "text layer). Higher accuracy on hard scans, higher cost.",
+    )
 
     @field_validator("job_id")
     @classmethod

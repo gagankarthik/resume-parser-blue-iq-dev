@@ -133,11 +133,15 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     # ── Allied Health — Radiology & Cardiology ────────────────────────────────
     "ct tech": "CT Technologist (Computed Tomography)",
     "computed tomography tech": "CT Technologist (Computed Tomography)",
+    "computed tomography": "CT Technologist (Computed Tomography)",
     "ekg tech": "EKG Technician (Electrocardiography)",
     "ecg tech": "EKG Technician (Electrocardiography)",
+    "electrocardiography": "EKG Technician (Electrocardiography)",
     "eeg tech": "EEG Technician (Electroencephalography)",
+    "electroencephalography technician": "EEG Technician (Electroencephalography)",
     "mri tech": "MRI Technologist (Magnetic Resonance Imaging)",
     "magnetic resonance imaging tech": "MRI Technologist (Magnetic Resonance Imaging)",
+    "magnetic resonance imaging": "MRI Technologist (Magnetic Resonance Imaging)",
     "ir tech": "Interventional Radiology Tech",
     "x-ray tech": "X-Ray Technologist",
     "xray tech": "X-Ray Technologist",
@@ -148,6 +152,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "cardiac sonographer": "Echocardiography Technologist",
     "ultrasound tech - general ii": "Ultrasound Tech – General II",
     "eeg tech manager": "EEG Technician Manager",
+    "electroencephalography technician manager": "EEG Technician Manager",
     "cvor tech": "Cardiovascular Operating Room Tech",
     # ── Allied Health — Respiratory & Neuro ───────────────────────────────────
     "crt": "Certified Respiratory Therapist",
