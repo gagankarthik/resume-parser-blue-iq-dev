@@ -7,10 +7,12 @@ normalization now uses the healthcare_taxonomy module — see
 test_healthcare_normalizer.py for that coverage.
 """
 
+from app.models.schemas import ParsedResumeAI
 from app.services.normalization.normalizer import (
     _normalize_date,
     _normalize_skills,
     _strip_name_credentials,
+    normalize,
 )
 
 # ── Date normalization (MM/DD/YYYY; partial precision preserved) ──────────────
@@ -74,6 +76,66 @@ def test_strip_name_keeps_plain_name():
 def test_strip_name_preserves_last_first():
     # "Last, First" must survive — the tail is not credential-like.
     assert _strip_name_credentials("Smith, Jane") == "Smith, Jane"
+
+
+# ── Name credentials are PRESERVED, not just stripped ─────────────────────────
+
+def test_name_credentials_recovered_into_credentials_field():
+    # Post-nominals stripped from the name must land in personal_info.credentials
+    # (regression: "RN, BSN" were dropped entirely).
+    parsed = ParsedResumeAI.model_validate(
+        {"personal_info": {"full_name": "Stephanie Cinfio, RN, BSN"}}
+    )
+    normalize(parsed)
+    assert parsed.personal_info.full_name == "Stephanie Cinfio"
+    assert parsed.personal_info.credentials == ["RN", "BSN"]
+
+
+def test_name_credentials_merge_with_model_supplied_dedup():
+    parsed = ParsedResumeAI.model_validate(
+        {"personal_info": {"full_name": "Jane Driscoll MPH BSN RN CCRN",
+                           "credentials": ["RN"]}}
+    )
+    normalize(parsed)
+    assert parsed.personal_info.full_name == "Jane Driscoll"
+    # Model-supplied first, then recovered ones, case-insensitively de-duped.
+    assert parsed.personal_info.credentials == ["RN", "MPH", "BSN", "CCRN"]
+
+
+def test_plain_name_yields_no_credentials():
+    parsed = ParsedResumeAI.model_validate(
+        {"personal_info": {"full_name": "Maria Garcia"}}
+    )
+    normalize(parsed)
+    assert parsed.personal_info.credentials == []
+
+
+# ── Unknown / blank role backfill (travel-assignment sub-entries) ─────────────
+
+def test_unknown_role_backfilled_from_profession():
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "VT Psychiatric Care", "role": "", "profession": "RN"}]}
+    )
+    normalize(parsed)
+    # "" → "Unknown" by the schema validator → backfilled + expanded from profession.
+    assert parsed.experience[0].role == "Registered Nurse"
+
+
+def test_unknown_role_backfilled_from_agency_when_no_profession():
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "Brattleboro", "role": "Unknown",
+                         "agency_name": "Supplemental Healthcare"}]}
+    )
+    normalize(parsed)
+    assert parsed.experience[0].role == "Supplemental Healthcare"
+
+
+def test_known_role_not_overwritten():
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "RN - ICU", "profession": "RN"}]}
+    )
+    normalize(parsed)
+    assert parsed.experience[0].role == "Registered Nurse - Intensive Care Unit"
 
 
 # ── Skill dedup (case-insensitive) ────────────────────────────────────────────

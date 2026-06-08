@@ -69,12 +69,19 @@ async def process_resume_async(
             {
                 "data": result.parsed.model_dump(),
                 "confidence": result.confidence.model_dump(),
+                "partial": result.partial,
+                "warnings": result.warnings,
             },
         )
 
         await _safe_deliver(
             company_id, "parse.completed",
-            {"job_id": job_id, "data": result.parsed.model_dump()},
+            {
+                "job_id": job_id,
+                "data": result.parsed.model_dump(),
+                "partial": result.partial,
+                "warnings": result.warnings,
+            },
         )
 
     except Exception as exc:
@@ -88,38 +95,50 @@ async def process_resume_async(
         )
 
     finally:
+        # Everything below is best-effort cleanup/bookkeeping. It MUST NOT raise:
+        # under an async Lambda (InvocationType="Event") a propagated exception
+        # makes AWS retry the entire invocation, re-running the pipeline and
+        # re-emitting a byte-identical parse.completed webhook + job write
+        # (duplicate output). Swallow and log instead.
         _s3_delete(s3_key)
 
-        db.write_audit_log(
-            job_id=job_id,
-            company_id=company_id,
-            file_type=result.file_type if result else "unknown",
-            file_size_bytes=file_size_bytes,
-            status=status,
-            duration_ms=result.duration_ms if result else 0,
-            ocr_used=result.ocr_used if result else False,
-            ai_tokens_used=result.ai_tokens_used if result else 0,
-            error_code=error_code,
-        )
+        try:
+            db.write_audit_log(
+                job_id=job_id,
+                company_id=company_id,
+                file_type=result.file_type if result else "unknown",
+                file_size_bytes=file_size_bytes,
+                status=status,
+                duration_ms=result.duration_ms if result else 0,
+                ocr_used=result.ocr_used if result else False,
+                ai_tokens_used=result.ai_tokens_used if result else 0,
+                error_code=error_code,
+            )
+        except Exception as exc:
+            log.error("audit_log_failed", job_id=job_id, error=str(exc))
 
         if batch_id:
-            batch_done = db.increment_batch_counter(
-                batch_id=batch_id,
-                field="completed" if status == "completed" else "failed",
-            )
-            if batch_done:
-                batch = db.get_batch(batch_id)
-                if batch:
-                    await _safe_deliver(
-                        company_id,
-                        "batch.completed",
-                        {
-                            "batch_id": batch_id,
-                            "total":     int(batch.get("total", 0)),
-                            "completed": int(batch.get("completed", 0)),
-                            "failed":    int(batch.get("failed", 0)),
-                        },
-                    )
+            try:
+                batch_done = db.increment_batch_counter(
+                    batch_id=batch_id,
+                    field="completed" if status == "completed" else "failed",
+                )
+                if batch_done:
+                    batch = db.get_batch(batch_id)
+                    if batch:
+                        await _safe_deliver(
+                            company_id,
+                            "batch.completed",
+                            {
+                                "batch_id": batch_id,
+                                "total":     int(batch.get("total", 0)),
+                                "completed": int(batch.get("completed", 0)),
+                                "failed":    int(batch.get("failed", 0)),
+                            },
+                        )
+            except Exception as exc:
+                log.error("batch_bookkeeping_failed", job_id=job_id,
+                          batch_id=batch_id, error=str(exc))
 
         log.info("job_done", job_id=job_id, status=status, batch_id=batch_id)
 

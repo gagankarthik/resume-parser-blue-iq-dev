@@ -135,7 +135,8 @@ async def parse_resume(
         )
         return ParseResponse(job_id=job_id, status="completed",
                              data=result.parsed, confidence=result.confidence,
-                             skills_validation=validate_skills(result.parsed))
+                             skills_validation=validate_skills(result.parsed),
+                             partial=result.partial, warnings=result.warnings)
 
     s3_key = s3_client.upload_temp_file(job_id, filename, content)
     db.create_job(job_id, company_id)
@@ -263,6 +264,8 @@ async def parse_uploaded(
         db.update_job_completed(payload.job_id, {
             "data": result.parsed.model_dump(),
             "confidence": result.confidence.model_dump(),
+            "partial": result.partial,
+            "warnings": result.warnings,
         })
         db.write_audit_log(
             job_id=payload.job_id, company_id=company_id,
@@ -273,7 +276,8 @@ async def parse_uploaded(
         s3_client.delete_file(s3_key)
         return ParseResponse(job_id=payload.job_id, status="completed",
                              data=result.parsed, confidence=result.confidence,
-                             skills_validation=validate_skills(result.parsed))
+                             skills_validation=validate_skills(result.parsed),
+                             partial=result.partial, warnings=result.warnings)
 
     # Async: the file is already in S3; the worker downloads and deletes it.
     await _dispatch_async(settings, background_tasks, {
@@ -314,15 +318,20 @@ async def get_job_status(
     parsed_data: ParsedResumeAI | None   = None
     confidence:  ConfidenceScores | None = None
     skills_validation: SkillsValidation | None = None
+    partial  = False
+    warnings: list[str] = []
 
     if raw_result and status == "completed":
         parsed_data = ParsedResumeAI.model_validate(raw_result.get("data", {}))
         confidence  = ConfidenceScores.model_validate(raw_result.get("confidence", {}))
         skills_validation = validate_skills(parsed_data)
+        partial  = bool(raw_result.get("partial", False))
+        warnings = list(raw_result.get("warnings", []))
 
     return JobStatusResponse(
         job_id=job_id, status=status, data=parsed_data,
         confidence=confidence, skills_validation=skills_validation,
+        partial=partial, warnings=warnings,
         error=job.get("error"),
     )
 
@@ -394,11 +403,14 @@ async def retry_parse(
         db.update_job_completed(new_job_id, {
             "data": result.parsed.model_dump(),
             "confidence": result.confidence.model_dump(),
+            "partial": result.partial,
+            "warnings": result.warnings,
         })
         return RetryResponse(
             job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
             status="completed", data=result.parsed, confidence=result.confidence,
             skills_validation=validate_skills(result.parsed),
+            partial=result.partial, warnings=result.warnings,
         )
 
     s3_key = s3_client.upload_temp_file(new_job_id, filename, content)

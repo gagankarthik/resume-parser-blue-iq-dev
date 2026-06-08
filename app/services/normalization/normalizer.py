@@ -54,9 +54,11 @@ _NAME_CREDENTIALS: set[str] = {
     "rnfa", "msn", "bsn", "adn", "dnp", "cnm", "cns",
     # Degrees / honorifics
     "md", "do", "phd", "edd", "mba", "bs", "ba", "ms", "ma", "bsc", "msc",
-    "faan", "facep", "facp",
+    "mph", "mha", "mhsa", "msph", "faan", "facep", "facp",
     # Respiratory / therapy
     "crt", "rrt", "ot", "otr", "cota", "pt", "dpt", "pta", "slp", "slpa", "ccc",
+    # Imaging / allied health
+    "rt", "arrt", "rdms", "rdcs", "rvt", "cnmt", "nmtcb",
     # Social work
     "csw", "lcsw", "licsw", "lmsw", "msw",
     # Common clinical certs that get appended to names
@@ -76,7 +78,58 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
 
 def _normalize_personal(personal: PersonalInfo) -> None:
     if personal.full_name:
+        # Capture any trailing credentials BEFORE stripping them off the name, so
+        # post-nominals like "RN, BSN" are never silently lost. Merge with any
+        # credentials the model already supplied (case-insensitive dedup, order
+        # preserved: model-supplied first, then newly recovered).
+        recovered = _extract_name_credentials(personal.full_name)
+        if recovered:
+            personal.credentials = _dedup_preserve_order(
+                [*personal.credentials, *recovered]
+            )
         personal.full_name = _strip_name_credentials(personal.full_name)
+    elif personal.credentials:
+        personal.credentials = _dedup_preserve_order(personal.credentials)
+
+
+def _dedup_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for v in values:
+        token = v.strip()
+        key = token.strip(".").lower()
+        if token and key not in seen:
+            seen.add(key)
+            result.append(token)
+    return result
+
+
+def _extract_name_credentials(name: str) -> list[str]:
+    """Return the trailing credential tokens of a name, in original case.
+
+    Mirrors `_strip_name_credentials` so exactly the tokens that get removed from
+    the name are the ones recovered into personal_info.credentials. Returns [] for
+    a genuine "Last, First" name (nothing credential-like to strip).
+    """
+    def _is_cred(token: str) -> bool:
+        return token.strip(".").lower() in _NAME_CREDENTIALS
+
+    recovered: list[str] = []
+
+    head, sep, tail = name.partition(",")
+    if sep:
+        tail_tokens = [t for t in re.split(r"[,\s]+", tail.strip()) if t]
+        if tail_tokens and all(_is_cred(t) for t in tail_tokens):
+            recovered.extend(t.strip(".") for t in tail_tokens)
+            name = head
+
+    tokens = name.split()
+    trailing: list[str] = []
+    while len(tokens) > 1 and _is_cred(tokens[-1]):
+        trailing.append(tokens.pop().strip(".,"))
+    recovered.extend(reversed(trailing))
+
+    return recovered
 
 
 def _strip_name_credentials(name: str) -> str:
@@ -139,6 +192,15 @@ def _normalize_education(edu: EducationItem) -> None:
 
 
 def _normalize_experience(exp: ExperienceItem) -> None:
+    # Backfill a missing/Unknown role from the most specific signal available
+    # (the role-level profession or agency) before expansion, so a travel-
+    # assignment sub-entry that lost its title isn't left as a bare "Unknown".
+    if (not exp.role) or exp.role.strip().lower() == "unknown":
+        if exp.profession:
+            exp.role = exp.profession
+        elif exp.agency_name:
+            exp.role = exp.agency_name
+
     # Expand credential abbreviations in role titles
     if exp.role:
         exp.role = _expand_role_credentials(exp.role)

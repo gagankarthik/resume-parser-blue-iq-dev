@@ -75,6 +75,23 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     openai_max_tokens: int = 4096
 
+    # Multi-agent parser
+    # When True, resumes are parsed by the multi-agent orchestrator (structure →
+    # per-role work extraction → parallel section agents → bullet-count validation)
+    # instead of one single-shot LLM call. Higher accuracy on long / travel-nurse
+    # résumés at the cost of more LLM calls; the single-shot parser remains the
+    # automatic fallback if the orchestrator fails.
+    use_multi_agent: bool = True
+    # Cap on concurrent in-flight LLM calls across the whole pipeline (Stage-2
+    # agents + per-role WorkAgent calls) so long résumés don't trip the TPM ceiling.
+    multi_agent_max_concurrency: int = 4
+    # Complexity gate: résumés with at least this many cleaned characters use the
+    # multi-agent orchestrator; shorter/simpler ones use the fast single-shot
+    # parser. This keeps the synchronous path snappy for one-page résumés while
+    # reserving the costlier multi-agent accuracy for long / travel-nurse CVs that
+    # actually benefit. Set to 0 to always use multi-agent (when enabled).
+    multi_agent_min_chars: int = 3500
+
     # Processing limits
     # The direct multipart endpoint (POST /resume/parse) is still bounded by the
     # Lambda Function URL's ~6 MB request cap, so files larger than that must use

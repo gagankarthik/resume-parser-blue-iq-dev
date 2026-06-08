@@ -1,915 +1,367 @@
 # Resume Parser API
 
-Enterprise-grade resume parsing service that converts PDF, DOCX, and image resumes into structured JSON. Built for a single-tenant client API with zero resume data retention.
+**Enterprise resume parsing for healthcare staffing.** A privacy-first HTTP API that converts
+nursing and allied-health résumés — PDF, DOCX, or scanned images — into structured, validated,
+taxonomy-normalized JSON that maps directly onto candidate profile and Work History forms.
+
+Built for a single enterprise client (BlueIQ) and delivered as a managed API: upload a résumé,
+receive a complete candidate record with per-field confidence scores, credential/licence capture,
+and 350+ clinical specialties resolved to canonical names.
 
 ---
 
-## Table of Contents
+## Why it exists
 
-- [Overview](#overview)
-- [Documentation](#documentation)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [API Reference](#api-reference)
-- [Authentication](#authentication)
-- [Webhooks](#webhooks)
-- [Processing Pipeline](#processing-pipeline)
-- [Data Privacy](#data-privacy)
-- [Local Development](#local-development)
-- [Environment Variables](#environment-variables)
-- [Deployment](#deployment)
-- [Running Tests](#running-tests)
-- [DynamoDB Tables](#dynamodb-tables)
-- [Output Schema](#output-schema)
-- [Confidence Scores](#confidence-scores)
-- [Error Handling](#error-handling)
+Healthcare staffing teams re-key candidate data from résumés into placement systems by hand —
+slow, error-prone, and inconsistent. This service automates that step with healthcare-aware
+extraction: it understands the difference between a certification and a state licence, preserves
+credential post-nominals, keeps travel-assignment history intact, and normalizes free-text
+specialties to a controlled vocabulary the placement platform can match on.
 
 ---
 
-## Overview
+## Capabilities at a glance
 
-The Resume Parser API accepts resume files via HTTP, extracts and semantically parses the content using a hybrid rule-based + AI pipeline, and returns clean structured JSON ready to auto-fill candidate forms or populate a database.
-
-**Key design decisions:**
-
-- **Zero data retention** — resume content is never stored. Raw files are deleted from S3 immediately after processing (in a `finally` block, even on failure). Only audit logs (metadata, no content) are kept.
-- **No Redis / no Celery** — FastAPI BackgroundTasks handles async processing. DynamoDB handles job tracking.
-- **Single tenant** — built for one company. Auth is API key scoped to `company_id`.
-- **Sync/async split** — digital PDFs and DOCX files are processed synchronously and return results immediately. Scanned PDFs and images run asynchronously (OCR is slow) and deliver results via webhook + polling.
-
----
-
-## Documentation
-
-Full documentation lives in [`docs/`](./docs/) — see [`docs/README.md`](./docs/README.md) for the index.
-
-| Document | What's inside |
-| --- | --- |
-| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Enterprise architecture: design principles, compute model, data layer, security, scalability, CI/CD. |
-| [`docs/CLIENT_INTEGRATION_GUIDE.md`](./docs/CLIENT_INTEGRATION_GUIDE.md) | Step-by-step API integration with Python/Node examples and a checklist. |
-| [`docs/ocean-blue-integration-flow.md`](./docs/ocean-blue-integration-flow.md) | End-to-end integration flow diagram (frontend → backend → API). |
-
----
-
-## Architecture
-
-```
-Client
-  │
-  ▼
-POST /api/v1/resume/parse
-  │
-  ├── API Key auth      (DynamoDB lookup)
-  ├── File validation   (type, size)
-  │
-  ├── [Digital PDF / DOCX] ────────────────────────────────────────────┐
-  │     Synchronous:                                                    │
-  │     Extract → Clean → Detect Sections → Rule Parse → AI Parse      │
-  │     → Validate → Normalize → Score → Return JSON                   │
-  │     → Write audit log → (no file stored)                           │
-  │                                                                     │
-  └── [Scanned PDF / Image] ───────────────────────────────────────────┤
-        Returns job_id immediately                                      │
-        BackgroundTask:                                                  │
-        Upload to S3 → Tesseract → Textract → Parse → Score            │
-        → Store result in DynamoDB (TTL 1h) → Fire webhook             │
-        → Write audit log → Delete S3 file                             │
-                                                                        ▼
-                                                              Structured JSON
-```
-
-### Scalability
-
-The app is stateless — S3 and DynamoDB handle all shared state. Scale horizontally by running multiple FastAPI containers behind a load balancer.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
+| Area | What you get |
 |---|---|
-| Backend API | FastAPI + Python 3.12 |
-| AI Parsing | OpenAI GPT-4o (structured outputs) |
-| PDF Extraction | PyMuPDF |
-| DOCX Extraction | python-docx |
-| OCR | Tesseract (primary) → Amazon Textract (fallback) |
-| Validation | Pydantic v2 |
-| Auth | API Keys + DynamoDB |
-| Job Tracking | DynamoDB (TTL 1 hour) |
-| File Storage | Amazon S3 (temp, auto-deleted) |
-| Webhook Delivery | HTTPX async + HMAC-SHA256 |
-| Audit Logs | DynamoDB (no resume content) |
-| Containerization | Docker + Docker Compose |
-| Local Dev | LocalStack (S3 + DynamoDB) |
+| **Formats** | Digital PDF, DOCX, and scanned PDF / PNG / JPG / TIFF / WEBP (OCR) |
+| **Accuracy** | Multi-agent extraction with per-role work history and bullet-count verification |
+| **Healthcare domain** | 350+ specialty taxonomy, credential & state-licence capture, Work History field mapping |
+| **Resilience** | Three-tier graceful degradation — never returns "nothing" on a hard résumé |
+| **Confidence** | Per-section 0–1 confidence scores to route low-quality records to human review |
+| **Integration** | Synchronous parse, async (OCR) jobs, batch, webhooks, and a correction-feedback loop |
+| **Security** | API-key + session auth, magic-byte validation, SSRF-guarded webhooks, zero content storage |
+| **Observability** | Structured request logs, content-free audit trail, and per-company token/usage accounting |
 
 ---
 
-## Project Structure
+## System architecture
+
+A single AWS Lambda serves the HTTP API and, via asynchronous self-invocation, also runs the
+OCR worker. State lives in DynamoDB; résumé bytes touch S3 only transiently and are deleted
+immediately after processing.
 
 ```
-resume-parser/
-├── app/
-│   ├── main.py                          # FastAPI app factory + lifespan
-│   ├── api/
-│   │   ├── dependencies.py              # Auth DI
-│   │   └── v1/
-│   │       ├── router.py
-│   │       └── endpoints/
-│   │           ├── resume.py            # POST /parse, GET /job/{id}
-│   │           ├── webhooks.py          # Webhook CRUD
-│   │           └── health.py            # GET /health
-│   ├── core/
-│   │   ├── config.py                    # Pydantic settings (env-based)
-│   │   ├── security.py                  # API key hashing, HMAC signing
-│   │   ├── logging.py                   # Structured logging (structlog)
-│   │   └── exceptions.py               # Domain exceptions + HTTP helpers
-│   ├── db/
-│   │   └── dynamodb.py                  # All DynamoDB operations
-│   ├── storage/
-│   │   └── s3_client.py                 # Temp upload + guaranteed delete
-│   ├── services/
-│   │   ├── pipeline.py                  # Full pipeline orchestrator
-│   │   ├── extraction/
-│   │   │   ├── classifier.py            # File type + strategy detection
-│   │   │   ├── pdf_extractor.py         # PyMuPDF (digital PDFs)
-│   │   │   ├── docx_extractor.py        # python-docx
-│   │   │   └── ocr_extractor.py         # Tesseract → Textract
-│   │   ├── parsing/
-│   │   │   ├── rule_parser.py           # Regex: email, phone, URLs
-│   │   │   ├── section_detector.py      # Header-based section segmentation
-│   │   │   └── ai_parser.py             # GPT-4o structured output
-│   │   ├── normalization/
-│   │   │   └── normalizer.py            # Skills, dates, degrees
-│   │   └── scoring/
-│   │       └── confidence_scorer.py     # Per-field 0.0–1.0 confidence
-│   ├── workers/
-│   │   ├── background.py                # FastAPI BackgroundTasks handler
-│   │   └── webhook_sender.py            # HMAC-signed delivery + retry
-│   └── models/
-│       └── schemas.py                   # All Pydantic models
-├── tests/
-│   ├── unit/                            # rule_parser, normalizer, classifier, scorer
-│   └── integration/                     # health, auth rejection tests
-├── scripts/
-│   └── localstack_init.sh               # Creates tables + S3 bucket in LocalStack
-├── Dockerfile
-├── docker-compose.yml
-├── pyproject.toml
-└── .env.example
+                              ┌─────────────────────────────────────────────┐
+                              │                 Clients                       │
+                              │  Staffing platform · UAT tool · Batch jobs    │
+                              └───────────────┬──────────────────────────────┘
+                                              │  HTTPS · X-API-Key / Bearer
+                                              ▼
+              ┌──────────────────────────────────────────────────────────────┐
+              │                    Resume Parser API (AWS Lambda)             │
+              │                                                                │
+              │   Auth ─ Validation ─ Pipeline ─ Normalization ─ Scoring      │
+              │     │         │           │            │            │          │
+              └─────┼─────────┼───────────┼────────────┼────────────┼─────────┘
+                    │         │           │            │            │
+        ┌───────────┘    ┌────┘      ┌────┴─────┐  ┌───┘       ┌────┘
+        ▼                ▼           ▼          ▼   ▼           ▼
+   ┌─────────┐    ┌────────────┐ ┌──────┐ ┌─────────┐  ┌──────────────┐
+   │DynamoDB │    │  S3 (temp) │ │OpenAI│ │ Textract │  │  Webhooks    │
+   │ 7 tables│    │ auto-purge │ │GPT-4o│ │  (OCR)   │  │ (HMAC-signed)│
+   └─────────┘    └────────────┘ └──────┘ └─────────┘  └──────────────┘
 ```
+
+**DynamoDB tables:** API keys · jobs · batches · webhooks · audit logs · companies · feedback.
+No résumé content is ever persisted to any of them.
 
 ---
 
-## API Reference
+## Request lifecycle
 
-Base URL: `https://your-domain.com/api/v1`
+The API picks a processing mode from the file type. Text-bearing documents return results in the
+same HTTP response; scanned documents that need OCR are processed asynchronously and delivered by
+webhook and polling.
 
-All endpoints require `X-API-Key` header.
-
----
-
-### Parse a Resume
-
-```http
-POST /api/v1/resume/parse
+```
+ Upload ─► Authenticate ─► Size + magic-byte validation ─► Classify file
+                                                               │
+                          ┌────────────────────────────────────┴───────────────────────┐
+                          ▼                                                              ▼
+                Digital PDF / DOCX                                          Scanned PDF / image
+                  (synchronous)                                                (asynchronous)
+                          │                                                              │
+                          │                                              store in S3 ─► return job_id
+                          │                                                              │
+                          ▼                                                              ▼
+                 ┌──────────────────────────── Parsing pipeline ───────────────────────────┐
+                 │  Extract text ─► Clean ─► Detect sections ─► Parse ─► Normalize ─► Score   │
+                 └──────────────────────────────────────────────────────────────────────────┘
+                          │                                                              │
+                          ▼                                                              ▼
+                 Structured JSON in response                       Webhook  +  GET /resume/job/{id}
 ```
 
-**Headers**
+### Tiered text extraction
 
-| Header | Required | Description |
-|---|---|---|
-| `X-API-Key` | Yes | Your API key (`rp_live_...`) |
-| `Content-Type` | Yes | `multipart/form-data` |
+The classifier inspects each file and routes it to the cheapest extractor that will produce
+clean text, falling back automatically when quality is poor:
 
-**Body**
-
-| Field | Type | Description |
-|---|---|---|
-| `file` | File | Resume file (PDF, DOCX, PNG, JPG, TIFF) |
-
-**Supported file types:** `.pdf`, `.docx`, `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.webp`
-
-**Max file size:** 10 MB (configurable via `MAX_FILE_SIZE_MB`). This multipart endpoint
-is fronted by a Lambda Function URL that caps requests at ~6 MB at the AWS edge — for files
-above that, use the [presigned upload flow](#large-file-upload-over-6-mb).
-
-**Response — Synchronous (digital PDF / DOCX)**
-
-```json
-{
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "status": "completed",
-  "data": {
-    "personal_info": { ... },
-    "experience": [ ... ],
-    "education": [ ... ],
-    "skills": [ ... ],
-    "certifications": [ ... ],
-    "projects": [ ... ],
-    "languages": [ ... ]
-  },
-  "confidence": {
-    "overall": 0.87,
-    "personal_info": 0.92,
-    "experience": 0.85,
-    "education": 0.90,
-    "skills": 1.0
-  },
-  "poll_url": null
-}
+```
+ PDF ─► digital text layer?  ── yes ─► layout-aware extract (multi-column reading order)
+   │                            │
+   │                            └──► low-quality / garbled?  ── yes ─► OCR fallback
+   │
+ Image / scanned PDF ─────────────────────────────────────────► OCR
+                                                                  │
+                            preprocess (deskew · denoise · contrast · binarise)
+                                                                  │
+                                  Tesseract  ── confident? ── no ─► AWS Textract
+                                       │                              │
+                                       └──────────── text ───────────┘
 ```
 
-**Response — Asynchronous (scanned PDF / image)**
+Callers can force Textract per request (`force_textract`) for maximum accuracy on hard scans.
 
-```json
-{
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "status": "processing",
-  "data": null,
-  "confidence": null,
-  "poll_url": "/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0"
-}
+### Three-tier accuracy & graceful degradation
+
+A résumé that defeats one stage falls through to the next, so the API **never returns an empty
+or error-only response** when any usable data can be recovered. Records that degraded are flagged
+`partial: true` with human-readable `warnings`.
+
+```
+ Tier 1  Multi-agent orchestrator        — highest accuracy (long / complex résumés)
+            │  on failure ▼
+ Tier 2  Single-shot structured parse     — fast, robust default
+            │  on failure ▼
+ Tier 3  Anchor-only partial record       — contact details recovered, flagged for review
 ```
 
 ---
 
-### Large-file upload (over ~6 MB)
+## Multi-agent extraction
 
-The standard `/resume/parse` endpoint is bounded by the Lambda Function URL's ~6 MB request
-limit. For files up to the full `MAX_FILE_SIZE_MB`, upload directly to S3 with a presigned URL,
-then parse by reference. Three steps:
+For long and complex résumés (e.g. multi-employer travel-nurse CVs), the parser runs a
+coordinated multi-agent pipeline that extracts each role independently and cross-checks the
+result, rather than asking one model call to do everything at once. Short résumés take the fast
+single-shot path; the orchestrator is reserved for documents that benefit from it.
 
-**1. Request an upload URL**
+```
+ Stage 1   Structure Agent      Map every role + exact responsibility-bullet counts;
+   (sequential)                 decompose travel/agency assignments into per-facility roles
 
-```http
-POST /api/v1/resume/upload-url
-X-API-Key: rp_live_...
-Content-Type: application/json
+ Stage 2   Parallel section agents
+   (concurrent)     ┌─ Personal      name · post-nominal credentials · contact · summary
+                    ├─ Work          one focused extraction per mapped role
+                    ├─ Education     degrees · institutions · in-progress study
+                    ├─ Credentials   skills · certifications · STATE LICENSES (kept separate)
+                    └─ Supplemental  references · awards · publications · languages
 
-{ "filename": "jane_smith_rn.pdf" }
+ Stage 3   Validator Agent      Reconcile extracted bullet counts against the structure map;
+   (sequential)                 re-extract any role that lost detail
 ```
 
-```json
-{
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "upload_url": "https://resume-parser-blue-iq-temp.s3.amazonaws.com/",
-  "fields": { "key": "temp/01J3.../jane_smith_rn.pdf", "x-amz-server-side-encryption": "AES256", "policy": "...", "x-amz-signature": "..." },
-  "s3_key": "temp/01J3.../jane_smith_rn.pdf",
-  "max_file_size_mb": 10,
-  "expires_in_seconds": 900,
-  "parse_url": "/api/v1/resume/parse-uploaded"
-}
-```
+**Why this is more accurate**
 
-**2. Upload the file straight to S3** — POST it as `multipart/form-data` to `upload_url`,
-including every key in `fields` and then a `file` field with the bytes. (S3 enforces the size
-limit and rejects anything larger.) A successful upload returns HTTP 204.
+- **No dropped employers.** A structure map pins the role count up front, so a 10-employer
+  résumé yields 10 records — not a truncated subset.
+- **Travel assignments stay intact.** Each facility under a travel/agency umbrella becomes its
+  own entry that inherits the profession and agency — never a stray "Unknown" role.
+- **Verifiable completeness.** Responsibility bullets are counted, extracted, and re-checked;
+  mismatches are re-extracted and any residual gap is surfaced as a warning.
+- **Per-section isolation.** One section failing degrades only that section — the rest of the
+  record still returns.
 
-**3. Parse it**
-
-```http
-POST /api/v1/resume/parse-uploaded
-X-API-Key: rp_live_...
-Content-Type: application/json
-
-{ "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0" }
-```
-
-The response is identical to `/resume/parse` — digital PDF/DOCX return the parsed JSON
-synchronously; scanned PDFs/images return `status: "processing"` with a `poll_url`.
+Every model call uses **structured outputs** (schema-enforced JSON), so malformed responses can't
+corrupt a record regardless of which path produced it.
 
 ---
 
-### Poll Async Job Status
+## Healthcare normalization & mapping
 
-```http
-GET /api/v1/resume/job/{job_id}
+After extraction, every record is normalized so downstream forms receive consistent, matchable
+values:
+
+- **Specialty taxonomy** — 350+ clinical specialties and abbreviations resolved to canonical
+  names (e.g. *Med Surg / Tele*, *Intensive Care Unit*), punctuation- and synonym-tolerant.
+- **Credential expansion** — role credentials expanded in titles (RN → Registered Nurse) while
+  raw abbreviations are preserved where they belong.
+- **Post-nominal capture** — credentials trailing a name (RN, BSN, MPH, CCRN) are lifted into a
+  dedicated field instead of being discarded.
+- **Licences vs certifications** — state licences (with number, state, and status) are captured
+  separately from time-limited certifications.
+- **Date fidelity** — dates are normalized to a single format while preserving the stated
+  precision; a missing day or month is never invented.
+- **Work History field mapping** — facility location, profession, specialties, shift, charting
+  system, ratios, and facility flags map straight onto the platform's Work History form.
+
+---
+
+## Output record
+
+A parsed record is a single JSON document. High-level shape:
+
+```
+personal_information   name · credentials[] · email · phone · full address · summary
+work_experience[]      per-role: facility · title · dates · location · profession ·
+                       specialties[] · shift · charting system · ratios · facility flags ·
+                       responsibilities[] · achievements[] · agency
+education[]            institution · degree · field · years
+skills[]               clinical specialties & competencies (taxonomy-normalized)
+certifications[]       BLS · ACLS · CCRN … (issuer + dates)
+licenses[]             state licences with number, state, status, compact flag
+references[] · awards[] · publications[] · projects[] · languages[]
+─────────────────────────────────────────────────────────────────────────────
+confidence             per-section + overall 0–1 scores
+skills_validation      taxonomy match ratio + recognized / unrecognized split
+partial · warnings     degradation flag + reviewer notes
 ```
 
-**Path Parameters**
+---
 
-| Parameter | Description |
+## Security & compliance
+
+| Control | Implementation |
 |---|---|
-| `job_id` | Job ID returned from `/parse` |
-
-**Response**
-
-```json
-{
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "status": "completed",
-  "data": { ... },
-  "confidence": { ... },
-  "error": null
-}
-```
-
-**Job statuses:** `pending` → `processing` → `completed` | `failed`
-
-Job results are retained in DynamoDB for **1 hour** then auto-deleted.
+| **Privacy by design** | Résumé content is never stored. S3 holds bytes only transiently and deletes them in a guaranteed cleanup step after processing. |
+| **Authentication** | Per-company API keys (`X-API-Key`, SHA-256 hashed at rest), self-serve session tokens (Bearer), and a separate admin token for management endpoints. |
+| **File validation** | Magic-byte signature checks reject type-spoofed or corrupted uploads before any processing; size caps enforced on every entry path. |
+| **SSRF protection** | Webhook URLs are validated against private/loopback/metadata ranges at registration **and** re-checked at delivery to defeat DNS rebinding. |
+| **Transport & headers** | HTTPS-only in production, HSTS, `X-Content-Type-Options`, `X-Frame-Options`, strict referrer policy. CORS denies cross-origin by default unless explicitly allow-listed. |
+| **Tenant isolation** | Every job, webhook, and feedback record is scoped to a `company_id`; cross-tenant access is rejected. |
+| **Encryption** | Server-side encryption on S3; encryption at rest on DynamoDB. |
+| **Surface reduction** | Interactive API docs are disabled in production. |
 
 ---
 
-### Register a Webhook
+## Observability
 
-```http
-POST /api/v1/webhooks
+### Structured request logging
+Every request emits a structured log line with method, path, status, duration, and a
+correlatable `X-Request-ID` (returned on every response) — **never any résumé content**.
+
+### Content-free audit trail
+Each parse writes an audit record to DynamoDB capturing the operational facts needed for billing,
+debugging, and capacity planning — and nothing sensitive:
+
+```
+job_id · company_id · file_type · file_size · status · duration_ms ·
+ocr_used · ai_tokens_used · error_code · timestamp
 ```
 
-**Body**
+### Token & usage accounting
+LLM token consumption is metered across **every** model call — including each agent in the
+multi-agent path — aggregated per job, and recorded on the audit log. Per-company usage and token
+totals are queryable through the usage endpoints, giving a precise, tenant-level cost view.
 
-```json
-{
-  "url": "https://your-server.com/hooks/resume",
-  "events": ["parse.completed", "parse.failed"]
-}
-```
-
-**Available events:** `parse.completed`, `parse.failed`
-
-**Response** (`201 Created`)
-
-```json
-{
-  "webhook_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "url": "https://your-server.com/hooks/resume",
-  "events": ["parse.completed", "parse.failed"],
-  "hmac_secret": "a3f8d2e1c9b7...",
-  "status": "active",
-  "created_at": "2026-06-01T10:00:00"
-}
-```
-
-> **Important:** The `hmac_secret` is only returned on creation. Store it securely — it cannot be retrieved again.
+### Correction feedback loop
+After a reviewer edits a parsed record, the original and corrected JSON can be submitted back to
+the API. Feedback is stored per company with a computed field-level diff and a retention TTL,
+forming a labeled dataset for measuring and improving accuracy over time.
 
 ---
 
-### List Webhooks
+## API surface
 
-```http
-GET /api/v1/webhooks
-```
+All endpoints are under `/api/v1`. Parsing endpoints authenticate with `X-API-Key`.
 
-**Response**
+### Parsing
+| Method & path | Purpose |
+|---|---|
+| `POST /resume/parse` | Parse one résumé. Digital files return JSON synchronously; scans return a `job_id`. |
+| `POST /resume/upload-url` | Get a presigned S3 URL for large files (bypasses the request-size cap). |
+| `POST /resume/parse-uploaded` | Parse a file previously uploaded via the presigned URL. |
+| `GET /resume/job/{job_id}` | Poll an asynchronous (OCR) job for status and results. |
+| `POST /resume/{job_id}/retry` | Re-run the full pipeline on a résumé whose result was unsatisfactory. |
+| `POST /resume/{job_id}/feedback` | Submit original + corrected JSON after human review. |
 
-```json
-[
-  {
-    "webhook_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-    "url": "https://your-server.com/hooks/resume",
-    "events": ["parse.completed"],
-    "status": "active",
-    "created_at": "2026-06-01T10:00:00"
-  }
-]
-```
+### Batch
+| Method & path | Purpose |
+|---|---|
+| `POST /resume/batch` | Submit many résumés in one request; results via webhook + polling. |
+| `GET /resume/batch/{batch_id}` | Aggregate batch progress (completed / failed / processing). |
 
----
+### Webhooks
+| Method & path | Purpose |
+|---|---|
+| `POST /webhooks` | Register an HMAC-signed webhook for `parse.completed` / `parse.failed` / `batch.completed`. |
+| `GET /webhooks` | List registered webhooks. |
+| `DELETE /webhooks/{webhook_id}` | Remove a webhook. |
 
-### Delete a Webhook
+### Accounts & administration
+| Method & path | Auth | Purpose |
+|---|---|---|
+| `POST /signup` · `POST /login` · `GET /me` | — / Bearer | Self-serve account creation and session. |
+| `GET/POST /keys` · `POST /keys/{hash}/revoke` · `GET /usage` | Bearer | Self-serve key management and usage stats. |
+| `POST/GET /companies` · `/companies/{id}/keys` · `/companies/{id}/usage` · `/companies/{id}/webhooks` | Admin token | Company onboarding, key issuance, usage, and webhook management for the product platform. |
 
-```http
-DELETE /api/v1/webhooks/{webhook_id}
-```
-
-**Response:** `204 No Content`
-
----
-
-### Health Check
-
-```http
-GET /api/v1/health
-```
-
-No authentication required.
-
-**Response**
-
-```json
-{
-  "status": "ok",
-  "version": "1.0.0",
-  "environment": "production"
-}
-```
+### Service
+| Method & path | Purpose |
+|---|---|
+| `GET /health` | Liveness + dependency probe (`ok` / `degraded`). |
 
 ---
 
-## Authentication
+## File format support
 
-API keys follow the format `rp_live_{random_44_chars}`.
+| Format | Path | Notes |
+|---|---|---|
+| PDF (digital) | Synchronous | Layout-aware, multi-column reading order |
+| DOCX | Synchronous | Paragraphs + table cells in document order |
+| PDF (scanned) | Asynchronous | Tiered OCR with automatic Textract escalation |
+| PNG · JPG · TIFF · WEBP | Asynchronous | Image preprocessing + OCR; multi-page TIFF supported |
 
-Include the key in every request via the `X-API-Key` header:
+> Magic-byte validation runs on every upload regardless of extension.
+
+---
+
+## Asynchronous delivery
+
+For OCR jobs and batches, results are delivered two ways so integrators can choose push or pull:
+
+- **Webhooks** — HMAC-SHA256 signed `POST` to your endpoint on `parse.completed`, `parse.failed`,
+  or `batch.completed`, with automatic retries.
+- **Polling** — `GET /resume/job/{job_id}` until `completed` or `failed`.
 
 ```
-X-API-Key: rp_live_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcd
-```
-
-**How it works:**
-1. The raw key is never stored — only a SHA-256 hash is kept in DynamoDB.
-2. On each request, the incoming key is hashed and looked up in DynamoDB.
-3. If the key is not found or has status `revoked`, a `401` or `403` is returned.
-
-**Provisioning keys** (currently manual — add to DynamoDB `api_keys` table):
-
-```bash
-# Generate a key hash
-echo -n "rp_live_your_key_here" | sha256sum
-
-# Insert via AWS CLI
-aws dynamodb put-item \
-  --table-name resume-parser-api-keys \
-  --item '{
-    "key_hash": {"S": "<hash>"},
-    "key_prefix": {"S": "rp_live_abc…"},
-    "company_id": {"S": "your-company"},
-    "status": {"S": "active"},
-    "created_at": {"S": "2026-06-01T00:00:00Z"}
-  }'
+ Async parse ─► job: pending ─► processing ─► completed ──► webhook  ─►  your server
+                                          └─► failed    ──► (also retrievable via polling)
 ```
 
 ---
 
-## Webhooks
+## Configuration
 
-### Delivery
+Key settings (full list in `.env.example`):
 
-When a job completes or fails, the API fires a POST request to all registered webhook URLs subscribed to that event.
-
-**Payload — `parse.completed`**
-
-```json
-{
-  "event": "parse.completed",
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "data": {
-    "personal_info": { ... },
-    "experience": [ ... ],
-    "education": [ ... ],
-    "skills": [ ... ]
-  }
-}
-```
-
-**Payload — `parse.failed`**
-
-```json
-{
-  "event": "parse.failed",
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "error": "Textract failed: ..."
-}
-```
-
-### Signature Verification
-
-Every webhook delivery includes two headers:
-
-```
-X-Signature: sha256=<hex_digest>
-X-Timestamp:  <unix_timestamp>
-```
-
-Verify on your server:
-
-```python
-import hmac, hashlib, time
-
-def verify(secret: str, timestamp: str, body: bytes, signature: str) -> bool:
-    # Reject requests older than 5 minutes
-    if abs(time.time() - int(timestamp)) > 300:
-        return False
-    message = f"{timestamp}.".encode() + body
-    expected = "sha256=" + hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
-```
-
-### Retry Policy
-
-Failed deliveries (5xx response or connection error) are retried **3 times** with delays of 2s, 5s, and 10s. 4xx responses are not retried.
-
----
-
-## Processing Pipeline
-
-```
-File Upload
-    │
-    ▼
-Classifier
-    Detects: PDF (digital) / PDF (scanned) / DOCX / Image
-    Decides: sync or async path
-    │
-    ▼
-Extractor
-    PDF (digital)  → PyMuPDF       (preserves layout, handles multi-column)
-    DOCX           → python-docx   (paragraphs + tables)
-    Scanned/Image  → Tesseract     (local OCR, free)
-                   → Textract      (AWS, fallback when Tesseract confidence < 60%)
-    │
-    ▼
-Text Cleaning
-    Remove non-printable chars, normalize whitespace, collapse blank lines
-    │
-    ▼
-Rule Parser (runs first, before AI)
-    Extracts: email, phone, LinkedIn URL, GitHub URL, portfolio URL
-    These are passed as anchors to the AI — avoids hallucination on contact info
-    │
-    ▼
-Section Detector
-    Identifies: summary, experience, education, skills, projects,
-                certifications, achievements, languages
-    Segments text into labeled sections → reduces AI token count
-    │
-    ▼
-AI Parser (OpenAI GPT-4o)
-    Structured output — guaranteed schema-valid JSON
-    Temperature: 0 (deterministic)
-    Retry: 1 automatic retry on failure
-    │
-    ▼
-Pydantic Validation
-    Schema enforcement, type coercion
-    │
-    ▼
-Normalizer
-    Skills:  nodejs → Node.js, JS → JavaScript, postgres → PostgreSQL
-    Degrees: MSc → Master of Science, BTech → Bachelor of Technology
-    Dates:   Jan 2023 / 01-2023 / 2023/01 → 2023-01 (ISO YYYY-MM)
-    │
-    ▼
-Confidence Scorer
-    Per-field scores (0.0–1.0) based on completeness and validity
-    │
-    ▼
-Structured JSON Response
-```
-
----
-
-## Data Privacy
-
-- **Raw files** — uploaded to S3 as `temp/{job_id}/{filename}` with server-side AES-256 encryption. Deleted immediately after processing in a `finally` block — deletion happens even if parsing fails.
-- **Parsed content** — for async jobs only, the result is stored in DynamoDB with a **1-hour TTL**. After TTL, DynamoDB auto-deletes it. For sync jobs, result is returned directly and never stored.
-- **Audit logs** — stored permanently in DynamoDB. Contain: `job_id`, `company_id`, `file_type`, `file_size_bytes`, `status`, `duration_ms`, `ocr_used`, `ai_tokens_used`, `error_code`. **No resume content, no PII.**
-- **OpenAI** — resume text is sent to the OpenAI API for parsing. Review OpenAI's data processing agreement for your compliance requirements.
-
----
-
-## Local Development
-
-### Prerequisites
-
-- Docker + Docker Compose
-- (Optional) Python 3.12 + Poetry for running tests locally
-
-### Start
-
-```bash
-# Clone and configure
-cp .env.example .env
-# Add your OPENAI_API_KEY to .env
-
-# Start app + LocalStack
-docker-compose up
-```
-
-The app starts at `http://localhost:8000`.  
-LocalStack starts at `http://localhost:4566`.  
-Swagger UI: `http://localhost:8000/docs`
-
-On first startup, `scripts/localstack_init.sh` auto-creates all DynamoDB tables, the S3 bucket, and seeds a dev API key:
-
-```
-rp_live_devkey00000000000000000000000000000000
-```
-
-### Example Request
-
-```bash
-curl -X POST http://localhost:8000/api/v1/resume/parse \
-  -H "X-API-Key: rp_live_devkey00000000000000000000000000000000" \
-  -F "file=@/path/to/resume.pdf"
-```
-
-### Register a Webhook (local testing)
-
-Use [webhook.site](https://webhook.site) to get a free test URL:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/webhooks \
-  -H "X-API-Key: rp_live_devkey00000000000000000000000000000000" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://webhook.site/your-uuid", "events": ["parse.completed", "parse.failed"]}'
-```
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env` and fill in values.
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `ENVIRONMENT` | No | `development` | `development` or `production` |
-| `DEBUG` | No | `false` | Enable debug logging |
-| `AWS_REGION` | Yes | `us-east-1` | AWS region |
-| `AWS_ACCESS_KEY_ID` | Yes* | — | AWS credentials (*not needed with IAM roles) |
-| `AWS_SECRET_ACCESS_KEY` | Yes* | — | AWS credentials |
-| `DYNAMODB_ENDPOINT_URL` | No | — | Set to `http://localstack:4566` for local dev |
-| `S3_ENDPOINT_URL` | No | — | Set to `http://localstack:4566` for local dev |
-| `DYNAMODB_TABLE_API_KEYS` | No | `resume-parser-api-keys` | DynamoDB table name |
-| `DYNAMODB_TABLE_JOBS` | No | `resume-parser-jobs` | DynamoDB table name |
-| `DYNAMODB_TABLE_WEBHOOKS` | No | `resume-parser-webhooks` | DynamoDB table name |
-| `DYNAMODB_TABLE_AUDIT_LOGS` | No | `resume-parser-audit-logs` | DynamoDB table name |
-| `S3_BUCKET_NAME` | No | `resume-parser-temp` | S3 bucket for temp files |
-| `OPENAI_API_KEY` | Yes | — | OpenAI API key |
-| `OPENAI_MODEL` | No | `gpt-4o` | OpenAI model ID |
-| `OPENAI_MAX_TOKENS` | No | `4096` | Max tokens for AI parsing |
-| `MAX_FILE_SIZE_MB` | No | `10` | Maximum upload size |
-| `JOB_RESULT_TTL_SECONDS` | No | `3600` | How long async results live in DynamoDB |
-| `WEBHOOK_TIMEOUT_SECONDS` | No | `10` | Timeout per webhook delivery attempt |
-| `WEBHOOK_MAX_RETRIES` | No | `3` | Max retries per webhook |
-
-**Production notes:**
-- Use IAM roles instead of `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`
-- `ENVIRONMENT=production` disables Swagger UI (`/docs`, `/redoc`) and enforces HTTPS on webhook URLs
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_MODEL` | `gpt-4o` | Extraction model |
+| `USE_MULTI_AGENT` | `true` | Enable the high-accuracy multi-agent path |
+| `MULTI_AGENT_MIN_CHARS` | `3500` | Length gate — shorter résumés use the fast single-shot path |
+| `MULTI_AGENT_MAX_CONCURRENCY` | `4` | Cap on concurrent in-flight model calls |
+| `FORCE_TEXTRACT` | `false` | Skip Tesseract; always use Textract for OCR |
+| `MAX_FILE_SIZE_MB` | `10` | Upload size limit |
+| `JOB_RESULT_TTL_SECONDS` | `3600` | How long async results are retained |
+| `FEEDBACK_RETENTION_DAYS` | `90` | Feedback record retention |
+| `CORS_ALLOWED_ORIGINS` | _(empty)_ | Allow-listed browser origins (prod denies by default) |
 
 ---
 
 ## Deployment
 
-### AWS (Recommended)
-
-```
-Route 53
-    └── Load Balancer (ALB)
-            └── ECS Fargate (FastAPI containers)
-                    ├── DynamoDB (5 tables)
-                    ├── S3 (resume-parser-temp bucket)
-                    └── Amazon Textract (on-demand)
-```
-
-**ECS Task Role permissions needed:**
-
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-    "dynamodb:DeleteItem", "dynamodb:Query",
-    "s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:ListBucket",
-    "textract:DetectDocumentText"
-  ],
-  "Resource": "*"
-}
-```
-
-### Docker (standalone)
-
-```bash
-docker build -t resume-parser .
-docker run -p 8000:8000 --env-file .env resume-parser
-```
+- **Compute** — a single AWS Lambda serves HTTP and, via async self-invocation, the OCR worker.
+- **Infrastructure as code** — Terraform provisions Lambda, IAM, DynamoDB, S3, and the function URL.
+- **CI/CD** — GitHub Actions lints, type-checks, runs the test suite, and deploys on merge.
+- **Storage** — DynamoDB (operational state) and S3 (transient résumé bytes, auto-purged).
 
 ---
 
-## Running Tests
+## Quality & testing
 
-```bash
-# Install dev dependencies
-poetry install
+The codebase is covered by an automated suite spanning schema validation, healthcare
+normalization, taxonomy mapping, confidence scoring, the multi-agent orchestrator, graceful
+degradation, and API integration — run on every change alongside static type-checking and linting.
 
-# Unit tests only (no AWS needed)
-pytest tests/unit/ -v
+---
 
-# Integration tests (no AWS needed — mocked)
-pytest tests/integration/ -v
+## Limits
 
-# All tests
-pytest -v
-```
-
-**Unit test coverage:**
-
-| Test file | What it tests |
+| Limit | Value |
 |---|---|
-| `test_rule_parser.py` | Email, phone, URL regex extraction |
-| `test_section_detector.py` | Section header detection + fallback |
-| `test_normalizer.py` | Date formats, skill aliases, deduplication |
-| `test_classifier.py` | File type detection, unsupported file rejection |
-| `test_confidence_scorer.py` | Score calculation for complete/empty resumes |
-| `test_health.py` | `/health` endpoint |
-| `test_auth.py` | 401 on missing key, 401 on invalid key |
-
----
-
-## DynamoDB Tables
-
-### `resume-parser-api-keys`
-
-| Attribute | Type | Description |
-|---|---|---|
-| `key_hash` (PK) | String | SHA-256 of the raw API key |
-| `key_prefix` | String | First 12 chars + `…` for display |
-| `company_id` | String | Owning company |
-| `status` | String | `active` or `revoked` |
-| `created_at` | String | ISO timestamp |
-
-### `resume-parser-jobs`
-
-| Attribute | Type | Description |
-|---|---|---|
-| `job_id` (PK) | String | ULID |
-| `company_id` | String | Owning company |
-| `status` | String | `pending` / `processing` / `completed` / `failed` |
-| `result` | Map | Parsed data + confidence (only when completed) |
-| `error` | String | Error message (only when failed) |
-| `created_at` | String | ISO timestamp |
-| `started_at` | String | ISO timestamp |
-| `completed_at` | String | ISO timestamp |
-| `ttl` | Number | Unix timestamp — auto-deleted after 1 hour |
-
-### `resume-parser-webhooks`
-
-| Attribute | Type | Description |
-|---|---|---|
-| `company_id` (PK) | String | Owning company |
-| `webhook_id` (SK) | String | ULID |
-| `url` | String | Delivery URL |
-| `hmac_secret` | String | Signing secret (treat as sensitive) |
-| `events` | List | Subscribed event names |
-| `status` | String | `active` |
-| `created_at` | String | ISO timestamp |
-
-### `resume-parser-audit-logs`
-
-| Attribute | Type | Description |
-|---|---|---|
-| `job_id` (PK) | String | ULID |
-| `timestamp` (SK) | String | ISO timestamp |
-| `company_id` | String | Owning company |
-| `file_type` | String | `pdf` / `docx` / `ocr` |
-| `file_size_bytes` | Number | — |
-| `status` | String | `completed` / `failed` |
-| `duration_ms` | Number | End-to-end processing time |
-| `ocr_used` | Boolean | Whether Textract was invoked |
-| `ai_tokens_used` | Number | OpenAI tokens consumed |
-| `error_code` | String | Exception class name on failure |
-
----
-
-## Output Schema
-
-```json
-{
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "status": "completed",
-  "data": {
-    "personal_info": {
-      "full_name": "Jane Smith",
-      "email": "jane.smith@email.com",
-      "phone": "+1 555 234 5678",
-      "location": "San Francisco, CA",
-      "linkedin_url": "linkedin.com/in/janesmith",
-      "github_url": "github.com/janesmith",
-      "portfolio_url": "janesmith.dev",
-      "summary": "Senior software engineer with 8 years of experience..."
-    },
-    "experience": [
-      {
-        "company": "Acme Corporation",
-        "role": "Senior Software Engineer",
-        "start_date": "2021-03",
-        "end_date": "Present",
-        "is_current": true,
-        "location": "San Francisco, CA",
-        "description": "Led backend architecture for core platform...",
-        "achievements": [
-          "Reduced API latency by 40% through query optimization",
-          "Mentored team of 4 junior engineers"
-        ]
-      }
-    ],
-    "education": [
-      {
-        "institution": "State University",
-        "degree": "Bachelor of Science",
-        "field_of_study": "Computer Science",
-        "start_year": 2012,
-        "graduation_year": 2016,
-        "gpa": "3.8"
-      }
-    ],
-    "skills": [
-      "Python", "FastAPI", "PostgreSQL", "AWS", "Docker",
-      "Kubernetes", "React", "TypeScript"
-    ],
-    "certifications": [
-      {
-        "name": "AWS Solutions Architect Associate",
-        "issuer": "Amazon Web Services",
-        "issued_date": "2023-06",
-        "expiry_date": "2026-06",
-        "credential_id": "ABC123"
-      }
-    ],
-    "projects": [
-      {
-        "name": "OpenSearch Dashboard",
-        "description": "Real-time analytics dashboard for log aggregation",
-        "technologies": ["React", "Node.js", "Elasticsearch"],
-        "url": "github.com/janesmith/opensearch-dashboard"
-      }
-    ],
-    "languages": ["English", "Spanish"],
-    "references": [
-      {
-        "name": "Dr. Maria Alvarez",
-        "relationship": "ICU Nurse Manager",
-        "company": "Memorial Hermann Hospital",
-        "email": "m.alvarez@example.com",
-        "phone": "+1 555 010 2233"
-      }
-    ],
-    "awards": ["DAISY Award (2023)", "Employee of the Year (2021)"],
-    "publications": [
-      "Smith J. (2022). Reducing CLABSI rates in the MICU. J Nursing Care, 14(2)."
-    ]
-  },
-  "confidence": {
-    "overall": 0.91,
-    "personal_info": 0.96,
-    "experience": 0.88,
-    "education": 0.90,
-    "skills": 1.0
-  },
-  "skills_validation": {
-    "total": 5,
-    "recognized_count": 4,
-    "unrecognized_count": 1,
-    "recognized_ratio": 0.8,
-    "recognized": ["Intensive Care Unit", "Neonatal Intensive Care Unit", "Registered Nurse", "ACLS"],
-    "unrecognized": ["Patient Advocacy"],
-    "groups": {
-      "Intensive Care Unit": "ICU",
-      "Neonatal Intensive Care Unit": "Nursery"
-    }
-  }
-}
-```
-
-All fields are nullable — missing information is `null`, not omitted.
-
-`skills_validation` checks each parsed skill against the healthcare taxonomy: `recognized`
-skills map to a canonical specialty, profession/credential, or known certification (with their
-`groups`); `unrecognized` skills are free-form. Use `recognized_ratio` to flag records for review.
-
----
-
-## Confidence Scores
-
-Each score is `0.0` to `1.0`. Use them to surface records that need human review.
-
-| Score | Meaning |
-|---|---|
-| `0.9 – 1.0` | High confidence — all expected fields present and valid |
-| `0.7 – 0.89` | Good — minor gaps (e.g. no LinkedIn URL) |
-| `0.5 – 0.69` | Partial — some key fields missing or unverifiable |
-| `< 0.5` | Low — significant information missing, recommend human review |
-
-**Scoring weights (overall):**
-
-| Section | Weight |
-|---|---|
-| Personal info | 35% |
-| Experience | 35% |
-| Education | 20% |
-| Skills | 10% |
-
----
-
-## Error Handling
-
-| Status | Cause |
-|---|---|
-| `401 Unauthorized` | Missing or invalid API key |
-| `403 Forbidden` | API key revoked |
-| `413 Request Entity Too Large` | File exceeds `MAX_FILE_SIZE_MB` |
-| `415 Unsupported Media Type` | File extension not supported |
-| `422 Unprocessable Entity` | Invalid webhook event name or non-HTTPS URL |
-| `404 Not Found` | Job ID not found or belongs to different company |
-| `500 Internal Server Error` | Unhandled pipeline error |
-
-All errors return:
-
-```json
-{
-  "detail": "Human-readable error description"
-}
-```
-
-Failed async jobs are surfaced via the job status endpoint and via the `parse.failed` webhook event.
+| Max file size (direct) | ~6 MB request cap → use presigned upload for larger |
+| Max file size (presigned) | 10 MB |
+| Max batch size | 200 files |
+| Async result retention | 1 hour |
+| Rate limiting | Not enforced at the API layer; control via deployment concurrency |

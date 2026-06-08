@@ -189,6 +189,7 @@ class PersonalInfo(BaseModel):
         json_schema_extra={
             "example": {
                 "full_name": "Jane Smith",
+                "credentials": ["RN", "BSN", "CCRN"],
                 "email": "jane.smith@email.com",
                 "phone": "+1 555 234 5678",
                 "location": "Houston, TX",
@@ -201,9 +202,10 @@ class PersonalInfo(BaseModel):
     )
 
     full_name:      str | None = Field(None, description="Candidate's name ONLY — exclude trailing credential/licence/degree suffixes (e.g. 'Jane Smith', not 'Jane Smith, RN BSN')")
+    credentials:    list[str]    = Field(default_factory=list, description="Post-nominal credentials that follow the candidate's name (e.g. 'RN', 'BSN', 'MPH', 'CCRN'), each as a separate item, in the order written. These are stripped from full_name and MUST be preserved here — never drop them.")
     email:          str | None = Field(None, description="Primary email address")
     phone:          str | None = Field(None, description="Primary phone number in original format")
-    location:       str | None = Field(None, description="City, state and/or country")
+    location:       str | None = Field(None, description="The candidate's FULL address line exactly as written, including street/number if present (e.g. '135 Brush Hill Road, Milton, MA 02186'). Do NOT shorten it to just city/state/zip.")
     linkedin_url:   str | None = Field(None, description="LinkedIn profile URL")
     github_url:     str | None = Field(None, description="GitHub profile URL")
     portfolio_url:  str | None = Field(None, description="Personal website or portfolio URL")
@@ -213,6 +215,12 @@ class PersonalInfo(BaseModel):
     @classmethod
     def sanitize_strings(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
+
+    @field_validator("credentials", mode="before")
+    @classmethod
+    def coerce_credentials(cls, v: object) -> list[str]:
+        items = _coerce_list(v)
+        return [s for i in items if isinstance(i, str) and (s := i.strip())]
 
     @field_validator("email", mode="before")
     @classmethod
@@ -464,6 +472,67 @@ class CertificationItem(BaseModel):
         return _sanitize_date(str(v)) if isinstance(v, str) else None
 
 
+class LicenseItem(BaseModel):
+    """
+    A professional license — distinct from a certification.
+
+    State nursing/allied-health licenses ("Active FL RN License #RN9411204",
+    "New York State Registered Nurse License", compact/multistate licenses) are a
+    licence, not a certification (BLS/ACLS/CCRN…). They are captured here so a
+    state licence number is never lost or mislabeled as a cert.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Registered Nurse License",
+                "license_type": "RN",
+                "state": "FL",
+                "license_number": "RN9411204",
+                "issued_date": None,
+                "expiry_date": None,
+                "is_compact": False,
+                "status": "Active",
+            }
+        }
+    )
+
+    name:           str           = Field(..., description="License name as written (e.g. 'Registered Nurse License', 'Radiologic Technologist License')")
+    license_type:   str | None = Field(None, description="Credential/profession the licence is for, as written (e.g. 'RN', 'LPN', 'RT'); do NOT expand")
+    state:          str | None = Field(None, description="Issuing US state/territory, as written (keep 'NY' — do NOT expand to 'New York'). Null if not stated.")
+    license_number: str | None = Field(None, description="License/permit number exactly as written, including any letter prefix (e.g. 'RN9411204'). Null if not stated.")
+    issued_date:    str | None = Field(None, description="Issue date — only if stated. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
+    expiry_date:    str | None = Field(None, description="Expiry/renewal date — only if stated. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
+    is_compact:     bool          = Field(False, description="True only if the résumé explicitly calls it a compact/multistate/eNLC licence")
+    status:         str | None = Field(None, description="Licence status if stated (e.g. 'Active', 'Inactive', 'In progress')")
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def required_name(cls, v: object) -> str:
+        if not isinstance(v, str) or not v.strip():
+            return "Unknown License"
+        return v.strip()
+
+    @field_validator("license_type", "state", "license_number", "status", mode="before")
+    @classmethod
+    def sanitize_optional(cls, v: object) -> str | None:
+        return _sanitize_str(str(v)) if isinstance(v, str) else None
+
+    @field_validator("issued_date", "expiry_date", mode="before")
+    @classmethod
+    def sanitize_dates(cls, v: object) -> str | None:
+        return _sanitize_date(str(v)) if isinstance(v, str) else None
+
+    @field_validator("is_compact", mode="before")
+    @classmethod
+    def coerce_bool(cls, v: object) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in {"yes", "y", "true", "compact", "multistate"}
+        return False
+
+
 class ProjectItem(BaseModel):
     name:          str           = Field(..., description="Project name")
     description:   str | None = Field(None, description="Brief description of the project")
@@ -566,6 +635,10 @@ class ParsedResumeAI(BaseModel):
                 "certifications": [
                     {"name": "ACLS", "issuer": "American Heart Association", "expiry_date": "06/2025"}
                 ],
+                "licenses": [
+                    {"name": "Registered Nurse License", "license_type": "RN", "state": "FL",
+                     "license_number": "RN9411204", "status": "Active"}
+                ],
                 "projects": [],
                 "languages": ["English", "Spanish"],
                 "references": [
@@ -589,14 +662,15 @@ class ParsedResumeAI(BaseModel):
     experience:      list[ExperienceItem]  = Field(default_factory=list, description="Work experience entries, most recent first")
     education:       list[EducationItem]   = Field(default_factory=list, description="Education history")
     skills:          list[str]             = Field(default_factory=list, description="Clinical specialties, credentials, and skills (e.g. ICU, NICU, BLS, ACLS)")
-    certifications:  list[CertificationItem] = Field(default_factory=list, description="Professional certifications and licenses")
+    certifications:  list[CertificationItem] = Field(default_factory=list, description="Professional certifications (BLS, ACLS, CCRN, NRP…) — NOT state licenses")
+    licenses:        list[LicenseItem]     = Field(default_factory=list, description="State/professional licenses (e.g. state RN/LPN/RT license with its number), kept separate from certifications")
     projects:        list[ProjectItem]     = Field(default_factory=list, description="Notable projects")
     languages:       list[str]             = Field(default_factory=list, description="Spoken/written languages")
     references:      list[ReferenceItem]   = Field(default_factory=list, description="Professional references, if explicitly listed (not 'available upon request')")
     awards:          list[str]             = Field(default_factory=list, description="Awards, honors, and recognitions (e.g. 'DAISY Award 2023', 'Employee of the Year')")
     publications:    list[str]             = Field(default_factory=list, description="Publications, posters, or research contributions, each as a single citation string")
 
-    @field_validator("experience", "education", "certifications", "projects", "references", mode="before")
+    @field_validator("experience", "education", "certifications", "licenses", "projects", "references", mode="before")
     @classmethod
     def coerce_lists(cls, v: object) -> list:
         return _coerce_list(v)
@@ -695,6 +769,8 @@ class ParseResponse(BaseModel):
     data:              ParsedResumeAI | None   = Field(None, description="Parsed resume data — present when status is 'completed'")
     confidence:        ConfidenceScores | None = Field(None, description="Per-section confidence scores — present when status is 'completed'")
     skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — present when status is 'completed'")
+    partial:           bool                       = Field(False, description="True when parsing degraded — `data` holds only what could be recovered (e.g. contact anchors) and needs human review. See `warnings`.")
+    warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing (e.g. AI parse failed and a partial record was returned). Empty on a clean parse.")
     poll_url:          str | None              = Field(None, description="Polling URL — present when status is 'processing'")
 
 
@@ -802,6 +878,8 @@ class JobStatusResponse(BaseModel):
     data:              ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is 'completed'")
     confidence:        ConfidenceScores | None = Field(None, description="Confidence scores — set when status is 'completed'")
     skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — set when status is 'completed'")
+    partial:           bool                       = Field(False, description="True when parsing degraded — `data` holds only what could be recovered and needs human review. See `warnings`.")
+    warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing. Empty on a clean parse.")
     error:             str | None              = Field(None, description="Error description — set when status is 'failed'")
 
 
@@ -907,6 +985,8 @@ class RetryResponse(BaseModel):
     data:              ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is completed")
     confidence:        ConfidenceScores | None = Field(None, description="Confidence scores — set when status is completed")
     skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — set when status is completed")
+    partial:           bool                       = Field(False, description="True when parsing degraded — `data` holds only what could be recovered and needs human review. See `warnings`.")
+    warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing. Empty on a clean parse.")
     poll_url:          str | None              = Field(None, description="Polling URL — set for async retries")
 
 

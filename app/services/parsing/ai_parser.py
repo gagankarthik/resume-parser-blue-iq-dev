@@ -67,13 +67,19 @@ def _build_prompt(sections: dict[str, str], anchors: RuleExtracted) -> str:
         if v.strip()
     )
 
-    return f"""You are an expert healthcare resume parser specialising in nursing and allied health professions.
+    return f"""You are an expert healthcare resume parser. You handle EVERY healthcare profession
+equally well — registered/licensed nurses AND allied health: radiologic / CT / MRI / mammography
+technologists, respiratory therapists, OT/PT/SLP, surgical techs, lab/imaging, social work, etc.
+This is NOT a nurse-only schema: parse a Radiologic Technologist, a Respiratory Therapist, or a
+CT/Mammography Tech with the same fields you would use for an RN (profession, specialties, licenses).
+NEVER return an empty result just because the candidate is not a nurse.
 Extract structured information from the resume text below.
 
 EXTRACTION RULES:
 - Extract ONLY what is explicitly stated. NEVER infer, guess, expand, or hallucinate. If a value is not written on the résumé, use null.
 - Use null for any field not present in the text.
-- full_name: the candidate's name ONLY. Do NOT include trailing credential, licence, or degree suffixes (e.g. "Jane Smith, RN BSN" → "Jane Smith"). Keep those in skills[]/certifications[] instead.
+- full_name: the candidate's name ONLY. Do NOT include trailing credential, licence, or degree suffixes (e.g. "Jane Smith, RN BSN" → "Jane Smith").
+- personal_info.credentials: the post-nominal credentials that follow the name (e.g. "Jane Smith, RN, BSN, MPH, CCRN" → ["RN", "BSN", "MPH", "CCRN"]), each as a SEPARATE item in the order written. These are stripped from full_name and MUST be captured here — never drop them. Also list the same credentials/certs in skills[]/certifications[] where they belong.
 - Dates — keep exactly the precision written; never invent a missing day or month:
   • Full date  → MM/DD/YYYY   (e.g. "2/16/2024" → "02/16/2024", "July 21, 2019" → "07/21/2019")
   • Month+year → MM/YYYY      (e.g. "August 2018" → "08/2018", "9/2019" → "09/2019") — do NOT add a day.
@@ -82,8 +88,9 @@ EXTRACTION RULES:
   For a range like "August 2018 - April 19", output start "08/2018" and end "04/2019" (do NOT fabricate days).
 - description: an ARRAY where each item is ONE bullet/line copied as written. If a single bullet contains multiple sentences, keep them together in that one item — do NOT split a bullet into several items, and do NOT merge separate bullets.
 - Separate each role/assignment as its own experience entry (important for travel nurses).
+- TRAVEL / AGENCY ASSIGNMENTS (critical — do not flatten): when a single travel or agency role lists several facilities/sites underneath it (often indented bullets under one heading like "Travel RN — Supplemental Healthcare"), output ONE experience entry PER facility. Each such entry MUST carry the SAME profession/role as the umbrella heading (e.g. role "Travel RN", profession "RN") and set agency_name to the staffing agency. NEVER emit a facility as an entry with role "Unknown" or a blank role — if a sub-site has no title of its own, inherit the umbrella role. Keep each facility's own city/state/dates.
 - For each experience entry, also fill these ONLY when explicitly stated (else null/empty — never guess or infer):
-  • location — the FULL address line exactly as written, including street/suite if present (e.g. "500 J Clyde Morris Blvd, Newport News, VA 23601"). Do NOT shorten it to just city/state.
+  • location — the FULL address line exactly as written, including street/suite/number if present (e.g. "135 Brush Hill Road, Milton, MA 02186"). Copy the WHOLE line. Do NOT drop the street and keep only city/state/zip.
   • city, state, country, zip_code — copy the parts that appear, verbatim. Keep state as written ("NY", "VA" — do NOT expand to "New York"/"Virginia"). Leave country null unless the résumé literally names a country (do NOT assume "United States"). Never guess a ZIP from the city.
   • profession — the credential for that role as written (e.g. "RN", "LPN", "CRT"); do NOT expand it.
   • specialties — the clinical units/specialties for that role (e.g. "Med Surg/Tele", "ICU"), as a list.
@@ -93,9 +100,15 @@ EXTRACTION RULES:
 - Skills: individual items only — not sentences. Include clinical specialties AND credentials separately.
 - Certifications (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN…) → certifications[] not skills[].
 - Certification dates: a bare date next to a cert (e.g. "BLS: 12/2024") is AMBIGUOUS — do NOT assume it is an expiry. Put it in the neutral `date` field. Only use `issued_date` when the résumé labels it issued/awarded/completed, and `expiry_date` only when labeled expires/valid through/renewal.
-- Preserve credential abbreviations exactly (RN, LPN, CRT, RRT, OT, PT, SLP…). Do NOT expand them.
-- Float pool / per-diem / agency assignments: list each separately in experience[].
-- References: extract any listed referees into references[] (name, relationship/title, company, email, phone). If the resume only says "References available upon request", leave references[] empty.
+- LICENSES vs certifications — a STATE professional license is NOT a certification; put it in licenses[], never certifications[] or skills only:
+  • Any state RN/LPN/RT/etc. licence, e.g. "Florida RN License #RN9411204", "Active New York State Registered Nurse License", "Compact/Multistate RN License", "Radiologic Technologist License (TX)".
+  • Capture: name (as written), license_type (the credential, e.g. "RN"/"RT" — do NOT expand), state (as written, keep "NY"), license_number (verbatim, INCLUDING any letter prefix like "RN9411204" — never drop the number), status ("Active"/"In progress"…), and issued/expiry dates only if stated.
+  • Set is_compact=true ONLY if the résumé literally says compact/multistate/eNLC.
+  • A licence in progress / pending (e.g. "MSN in progress", "license pending") is still captured with status reflecting that — never omit it.
+- Preserve credential abbreviations exactly (RN, LPN, CRT, RRT, OT, PT, SLP, RT(R), RT(CT), RT(M), ARRT…). Do NOT expand them.
+- Float pool / per-diem / agency / travel assignments: list each as its OWN experience[] entry.
+- personal_info.location: the candidate's FULL home address line exactly as written, including the street/number if present (e.g. "135 Brush Hill Road, Milton, MA 02186"). Do NOT shorten it to just city/state/zip.
+- References: extract any listed referees into references[] (name, relationship/title, company, email, phone). Capture each referee's own credentials within their name/title if written (e.g. "Jane Doe, RN, BSN" — keep "RN, BSN"). If the resume only says "References available upon request", leave references[] empty.
 - Awards/honors: extract each award, honor, or recognition into awards[] as a short string (include the year in parentheses if stated). Do NOT put awards in skills[] or experience[].
 - Publications: extract each publication, poster, or research contribution into publications[] as a single citation string. Do NOT put publications in experience[] or projects[].
 - Multi-column resumes: text may be extracted left-column-first; treat it as sequential.
@@ -105,8 +118,8 @@ HEALTHCARE CREDENTIAL ABBREVIATIONS — preserve as-is in output:
   Respiratory: CRT, RRT
   Therapy:     OT, COTA, PT, PTA, SLP, SLPA
   Social Work: CSW, LCSW, LICSW, LMSW, MSW
-  Imaging:     CT Tech, MRI Tech, X-Ray Tech, Echo Tech, EKG Tech
-  Surgical:    OR Tech, CST, SPT, CVOR Tech
+  Imaging:     Rad Tech, RT(R), RT(CT), RT(M), RT(MR), ARRT, CT Tech, MRI Tech, Mammography Tech, X-Ray Tech, Echo Tech, EKG Tech, Sonographer, RDMS
+  Surgical:    OR Tech, CST, SPT, CVOR Tech, Sterile Processing Tech
 
 PRE-EXTRACTED CONTACT ANCHORS — use these values directly, do not re-extract:
 {anchors_block}

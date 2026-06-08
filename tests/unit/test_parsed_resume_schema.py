@@ -192,3 +192,63 @@ def test_certification_bare_date_is_neutral_not_expiry():
     assert cert.date == "12/2024"
     assert cert.expiry_date is None
     assert cert.issued_date is None
+
+
+# ── State licenses (kept separate from certifications) ───────────────────────
+
+def test_state_license_round_trip():
+    parsed = ParsedResumeAI.model_validate(
+        {
+            "licenses": [
+                {
+                    "name": "Registered Nurse License",
+                    "license_type": "RN",
+                    "state": "FL",
+                    "license_number": "RN9411204",
+                    "status": "Active",
+                }
+            ]
+        }
+    )
+    lic = parsed.licenses[0]
+    assert lic.license_type == "RN"
+    assert lic.state == "FL"               # not expanded to "Florida"
+    assert lic.license_number == "RN9411204"   # letter prefix preserved
+    assert lic.is_compact is False
+    assert lic.status == "Active"
+
+
+def test_licenses_default_empty_and_null_coerced():
+    assert ParsedResumeAI.model_validate({"skills": []}).licenses == []
+    assert ParsedResumeAI.model_validate({"licenses": None}).licenses == []
+
+
+def test_license_compact_flag_coerced_from_string():
+    lic = ParsedResumeAI.model_validate(
+        {"licenses": [{"name": "RN License", "is_compact": "multistate"}]}
+    ).licenses[0]
+    assert lic.is_compact is True
+
+
+def test_license_missing_name_defaulted_not_dropped():
+    # A licence with a number but no explicit name must not be discarded.
+    lic = ParsedResumeAI.model_validate(
+        {"licenses": [{"name": "", "license_number": "9411204"}]}
+    ).licenses[0]
+    assert lic.name == "Unknown License"
+    assert lic.license_number == "9411204"
+
+
+# ── Post-nominal credentials on personal_info ────────────────────────────────
+
+def test_personal_credentials_coerced_and_trimmed():
+    p = ParsedResumeAI.model_validate(
+        {"personal_info": {"full_name": "Jane Smith",
+                           "credentials": ["  RN ", "", None, "BSN"]}}
+    ).personal_info
+    assert p.credentials == ["RN", "BSN"]
+
+
+def test_personal_credentials_default_empty():
+    p = ParsedResumeAI.model_validate({"personal_info": {"full_name": "Jane Smith"}}).personal_info
+    assert p.credentials == []

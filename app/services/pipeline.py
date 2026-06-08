@@ -18,15 +18,16 @@ Nothing is stored — raw content is never written to disk or database.
 import asyncio
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from app.core.config import get_settings
 from app.core.exceptions import AIParsingError, ExtractionError
 from app.core.logging import get_logger
-from app.models.schemas import ConfidenceScores, ParsedResumeAI
+from app.models.schemas import ConfidenceScores, ParsedResumeAI, PersonalInfo
 from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
 from app.services.normalization.normalizer import normalize
-from app.services.parsing import ai_parser, rule_parser, section_detector
+from app.services.parsing import ai_parser, orchestrator, rule_parser, section_detector
 from app.services.scoring.confidence_scorer import score
 
 log = get_logger(__name__)
@@ -57,6 +58,11 @@ class PipelineResult:
     ocr_used:       bool
     ai_tokens_used: int
     duration_ms:    int
+    # Graceful-degradation flags. `partial` is True when the AI parse failed and
+    # `parsed` holds only what rule-based extraction could recover (contact
+    # anchors). `warnings` carries human-readable notes for review.
+    partial:        bool = False
+    warnings:       list[str] = field(default_factory=list)
 
 
 async def run(inp: PipelineInput) -> PipelineResult:
@@ -126,15 +132,49 @@ async def run(inp: PipelineInput) -> PipelineResult:
     sections = section_detector.detect(cleaned)
 
     # ── 6. AI parsing (with per-call timeout) ────────────────────────────────
-    try:
-        parsed_ai, tokens = await asyncio.wait_for(
-            ai_parser.parse(sections, anchors),
-            timeout=_TIMEOUT_AI_PARSE,
-        )
-    except TimeoutError as exc:
-        raise AIParsingError(
-            f"AI parsing timed out after {_TIMEOUT_AI_PARSE}s"
-        ) from exc
+    # Three tiers, most accurate first, each degrading into the next so a failure
+    # never produces a silent total failure:
+    #   1. Multi-agent orchestrator (structure → per-role → validate) — most accurate
+    #   2. Single-shot structured-output parser — fast, robust fallback
+    #   3. Partial record built from rule-based contact anchors — last resort, flagged
+    settings  = get_settings()
+    warnings: list[str] = []
+    partial   = False
+    tokens    = 0
+    parsed_ai = None
+
+    use_orchestrator = (
+        settings.use_multi_agent and len(cleaned) >= settings.multi_agent_min_chars
+    )
+    if use_orchestrator:
+        try:
+            parsed_ai, tokens, warnings = await asyncio.wait_for(
+                orchestrator.parse(cleaned, anchors),
+                timeout=_TIMEOUT_AI_PARSE,
+            )
+        except (AIParsingError, TimeoutError) as exc:
+            log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))
+            warnings = []  # discard partial orchestrator warnings; single-shot is authoritative
+
+    if parsed_ai is None:
+        try:
+            parsed_ai, tokens = await asyncio.wait_for(
+                ai_parser.parse(sections, anchors),
+                timeout=_TIMEOUT_AI_PARSE,
+            )
+        except (AIParsingError, TimeoutError) as exc:
+            reason = (
+                f"AI parsing timed out after {_TIMEOUT_AI_PARSE}s"
+                if isinstance(exc, TimeoutError)
+                else f"AI parsing failed: {exc}"
+            )
+            log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
+            parsed_ai = _fallback_from_anchors(anchors)
+            partial = True
+            warnings.append(
+                "AI parsing did not complete; returned a partial record built from "
+                f"detected contact details only. This record needs human review. ({reason})"
+            )
 
     # ── 7–9. Normalize + score ────────────────────────────────────────────────
     normalized = normalize(parsed_ai)
@@ -150,6 +190,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
         ocr_used=ocr_used,
         file_type=file_type,
         overall_confidence=confidence.overall,
+        partial=partial,
     )
 
     return PipelineResult(
@@ -159,7 +200,26 @@ async def run(inp: PipelineInput) -> PipelineResult:
         ocr_used=ocr_used,
         ai_tokens_used=tokens,
         duration_ms=duration_ms,
+        partial=partial,
+        warnings=warnings,
     )
+
+
+def _fallback_from_anchors(anchors: rule_parser.RuleExtracted) -> ParsedResumeAI:
+    """Build a minimal ParsedResumeAI from rule-extracted contact anchors.
+
+    Used when the AI parser fails so the caller still receives a structured,
+    if sparse, record instead of nothing. Only high-confidence regex anchors are
+    populated — never invented data.
+    """
+    personal = PersonalInfo(
+        email=anchors.emails[0] if anchors.emails else None,
+        phone=anchors.phones[0] if anchors.phones else None,
+        linkedin_url=anchors.linkedin_urls[0] if anchors.linkedin_urls else None,
+        github_url=anchors.github_urls[0] if anchors.github_urls else None,
+        portfolio_url=anchors.portfolio_urls[0] if anchors.portfolio_urls else None,
+    )
+    return ParsedResumeAI(personal_info=personal)
 
 
 # A digital PDF must clear this many usable characters before we trust its text
