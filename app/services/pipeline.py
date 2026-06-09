@@ -35,7 +35,13 @@ log = get_logger(__name__)
 # Per-step timeouts (seconds)
 _TIMEOUT_EXTRACTION = 60
 _TIMEOUT_OCR        = 180   # Textract can be slow on multi-page scans
-_TIMEOUT_AI_PARSE   = 120
+# The orchestrator self-bounds each stage (see orchestrator._STAGE2_TIMEOUT et al.)
+# and returns a partial result rather than being cancelled, so this is only a hard
+# safety net set just above its internal budget. The single-shot fallback is one
+# LLM call, so it gets a tighter cap — together they bound the worst case instead
+# of stacking two full 2-minute timeouts when the orchestrator degrades.
+_TIMEOUT_ORCHESTRATOR = 150
+_TIMEOUT_AI_PARSE     = 90
 
 
 @dataclass
@@ -150,7 +156,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
         try:
             parsed_ai, tokens, warnings = await asyncio.wait_for(
                 orchestrator.parse(cleaned, anchors),
-                timeout=_TIMEOUT_AI_PARSE,
+                timeout=_TIMEOUT_ORCHESTRATOR,
             )
         except (AIParsingError, TimeoutError) as exc:
             log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))

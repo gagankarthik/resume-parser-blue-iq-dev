@@ -265,6 +265,7 @@ class ExperienceItem(BaseModel):
                 "state": "TN",
                 "country": None,
                 "zip_code": "37916",
+                "employer_phone": "865-541-1111",
                 "profession": "RN",
                 "specialties": ["Med Surg / Tele"],
                 "service_type": None,
@@ -305,6 +306,7 @@ class ExperienceItem(BaseModel):
     state:         str | None = Field(None, description="Facility state/province, only if stated — copied exactly as written (keep 'NY', do NOT expand to 'New York')")
     country:       str | None = Field(None, description="Facility country — ONLY if explicitly written on the résumé; otherwise null. Do NOT infer 'United States'.")
     zip_code:      str | None = Field(None, description="Facility postal/ZIP code, only if stated — never guessed from the city")
+    employer_phone: str | None = Field(None, description="Employer/facility phone number exactly as written, only if stated next to this role (e.g. '304-287-2120'). Null if not stated.")
     # ── Clinical classification (Select Profession / Select Specialties) ──────
     profession:    str | None = Field(None, description="Credential/profession for this role exactly as stated (e.g. 'RN', 'LPN', 'CRT'). Do NOT expand the abbreviation.")
     specialties:   list[str]     = Field(default_factory=list, description="Clinical specialties/units for this role (e.g. 'Med Surg/Tele', 'ICU'). One per item.")
@@ -350,6 +352,11 @@ class ExperienceItem(BaseModel):
     @classmethod
     def sanitize_optional_strings(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
+
+    @field_validator("employer_phone", mode="before")
+    @classmethod
+    def sanitize_employer_phone(cls, v: object) -> str | None:
+        return _sanitize_phone(str(v)) if isinstance(v, str) else None
 
     @field_validator("teaching_facility", "magnet_facility", "trauma_facility", mode="before")
     @classmethod

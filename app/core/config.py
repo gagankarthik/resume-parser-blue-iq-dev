@@ -84,7 +84,9 @@ class Settings(BaseSettings):
     use_multi_agent: bool = True
     # Cap on concurrent in-flight LLM calls across the whole pipeline (Stage-2
     # agents + per-role WorkAgent calls) so long résumés don't trip the TPM ceiling.
-    multi_agent_max_concurrency: int = 4
+    # Sized so a long travel-nurse CV (structure + ~12 per-role calls + sections)
+    # drains in 2–3 concurrency rounds instead of serialising into a timeout.
+    multi_agent_max_concurrency: int = 8
     # Complexity gate: résumés with at least this many cleaned characters use the
     # multi-agent orchestrator; shorter/simpler ones use the fast single-shot
     # parser. This keeps the synchronous path snappy for one-page résumés while

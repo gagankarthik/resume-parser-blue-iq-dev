@@ -92,13 +92,16 @@ EXTRACTION RULES:
 - For each experience entry, also fill these ONLY when explicitly stated (else null/empty — never guess or infer):
   • location — the FULL address line exactly as written, including street/suite/number if present (e.g. "135 Brush Hill Road, Milton, MA 02186"). Copy the WHOLE line. Do NOT drop the street and keep only city/state/zip.
   • city, state, country, zip_code — copy the parts that appear, verbatim. Keep state as written ("NY", "VA" — do NOT expand to "New York"/"Virginia"). Leave country null unless the résumé literally names a country (do NOT assume "United States"). Never guess a ZIP from the city.
+  • employer_phone — the employer/facility phone number written next to that role (verbatim, e.g. "304-287-2120"). Null if not stated. NEVER use the candidate's own contact phone here.
   • profession — the credential for that role as written (e.g. "RN", "LPN", "CRT"); do NOT expand it.
   • specialties — the clinical units/specialties for that role (e.g. "Med Surg/Tele", "ICU"), as a list.
   • position_held, agency_name, shift, charting_system (Epic/Cerner/Meditech…), reason_for_leaving.
   • nurse_to_patient_ratio, facility_beds, beds_in_unit, service_type, trauma_level, additional_info.
   • teaching_facility, magnet_facility, trauma_facility — only as "Yes"/"No"/"N/A" when the resume says so, else null.
 - Skills: individual items only — not sentences. Include clinical specialties AND credentials separately.
-- Certifications (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN…) → certifications[] not skills[].
+- NEVER drop an item listed under a credentials/certifications/licenses heading — each must land in skills[], certifications[], or licenses[].
+- Certifications (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN…) → certifications[] not skills[]. Also keep NON-clinical credentials that are listed (e.g. "CPR", "First Aid", "CNA", "Driver's License") in certifications[] — do not discard them just because they are not clinical or not state licenses.
+- A bare nursing/allied PRACTICE credential listed on its own (RN, LPN, LVN) is a professional license even with no number/state — put it in licenses[] with license_type set to the credential and missing fields null, NOT in certifications[].
 - Certification dates: a bare date next to a cert (e.g. "BLS: 12/2024") is AMBIGUOUS — do NOT assume it is an expiry. Put it in the neutral `date` field. Only use `issued_date` when the résumé labels it issued/awarded/completed, and `expiry_date` only when labeled expires/valid through/renewal.
 - LICENSES vs certifications — a STATE professional license is NOT a certification; put it in licenses[], never certifications[] or skills only:
   • Any state RN/LPN/RT/etc. licence, e.g. "Florida RN License #RN9411204", "Active New York State Registered Nurse License", "Compact/Multistate RN License", "Radiologic Technologist License (TX)".

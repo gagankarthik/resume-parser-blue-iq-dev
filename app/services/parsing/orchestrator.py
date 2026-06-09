@@ -18,6 +18,7 @@ Returns (ParsedResumeAI, total_tokens, warnings).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 
 from app.core.exceptions import AIParsingError
 from app.core.logging import get_logger
@@ -31,7 +32,11 @@ from app.services.parsing.agents.base import TokenMeter
 from app.services.parsing.agents.credentials import CredentialsAgent
 from app.services.parsing.agents.education import EducationAgent
 from app.services.parsing.agents.personal import PersonalInfoAgent
-from app.services.parsing.agents.schemas import CredentialsResult, SupplementalResult
+from app.services.parsing.agents.schemas import (
+    CredentialsResult,
+    PersonalResult,
+    SupplementalResult,
+)
 from app.services.parsing.agents.structure import StructureAgent
 from app.services.parsing.agents.supplemental import SupplementalAgent
 from app.services.parsing.agents.validator import ValidatorAgent
@@ -46,6 +51,14 @@ log = get_logger(__name__)
 # hold a 25-year multi-page CV.
 _MAX_AGENT_CHARS = 30_000
 
+# Per-stage soft deadlines. The orchestrator bounds ITSELF so a slow stage returns
+# whatever it has (partial + warning) instead of letting the pipeline's outer
+# wait_for cancel the whole parse and discard all completed work. The sum stays
+# comfortably under the pipeline's orchestrator timeout so this graceful path wins.
+_STRUCTURE_TIMEOUT = 30   # one sequential call
+_STAGE2_TIMEOUT    = 75   # structure + per-role work fan-out + section agents
+_VALIDATOR_TIMEOUT = 25   # re-extraction of mismatched roles only
+
 
 def _unwrap[T](result: object, default: T, agent: str, warnings: list[str]) -> T:
     if isinstance(result, Exception):
@@ -53,6 +66,34 @@ def _unwrap[T](result: object, default: T, agent: str, warnings: list[str]) -> T
         warnings.append(f"{agent} failed; that section may be incomplete.")
         return default
     return result  # type: ignore[return-value]
+
+
+async def _run_sections_bounded(
+    specs: list[tuple[str, Awaitable[object]]], *, timeout: float
+) -> list[object]:
+    """Run section coroutines concurrently under a soft deadline.
+
+    Returns a list aligned 1:1 with `specs`: the agent's result, the exception it
+    raised, or a TimeoutError for any section still running when `timeout` elapses
+    (those are cancelled). Every element is safe to feed to `_unwrap`, so a slow or
+    failed section degrades to its default instead of cancelling the whole parse.
+    """
+    tasks = [asyncio.ensure_future(coro) for _, coro in specs]
+    done, pending = await asyncio.wait(tasks, timeout=timeout, return_when=asyncio.ALL_COMPLETED)
+    for task in pending:
+        task.cancel()
+    if pending:
+        # Let the cancellations settle so no "Task was destroyed" warnings escape.
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    out: list[object] = []
+    for (name, _), task in zip(specs, tasks):
+        if task in done:
+            out.append(task.exception() or task.result())
+        else:
+            log.warning("agent_section_timeout", agent=name, timeout=timeout)
+            out.append(TimeoutError(f"{name} timed out after {timeout}s"))
+    return out
 
 
 async def parse(text: str, anchors: RuleExtracted) -> tuple[ParsedResumeAI, int, list[str]]:
@@ -70,36 +111,50 @@ async def parse(text: str, anchors: RuleExtracted) -> tuple[ParsedResumeAI, int,
 
     # ── Stage 1: structure ────────────────────────────────────────────────────
     try:
-        structure = await structure_agent.run(text, meter)
-    except AIParsingError as exc:
+        structure = await asyncio.wait_for(structure_agent.run(text, meter), _STRUCTURE_TIMEOUT)
+    except (AIParsingError, TimeoutError) as exc:
         log.warning("structure_failed", error=str(exc))
         warnings.append("Structure mapping failed; work history extracted without per-role verification.")
         structure = None
     roles = structure.roles if structure else []
     log.info("orchestrator_structure", roles=len(roles))
 
-    # ── Stage 2: parallel section extraction ──────────────────────────────────
-    results = await asyncio.gather(
-        personal_agent.run(text, anchors, meter),
-        work_agent.run(text, roles, meter),
-        education_agent.run(text, meter),
-        cred_agent.run(text, meter),
-        supp_agent.run(text, meter),
-        return_exceptions=True,
+    # ── Stage 2: parallel section extraction (self-bounded) ───────────────────
+    # Run the sections as explicit tasks under a soft deadline. Any section still
+    # in flight when the deadline hits is cancelled and degrades to its empty
+    # default (with a warning) — so one slow section can't time out the whole
+    # orchestrator and force the pipeline to throw everything away and re-parse.
+    raw = await _run_sections_bounded(
+        [
+            ("PersonalInfoAgent",  personal_agent.run(text, anchors, meter)),
+            ("WorkExperienceAgent", work_agent.run(text, roles, meter)),
+            ("EducationAgent",     education_agent.run(text, meter)),
+            ("CredentialsAgent",   cred_agent.run(text, meter)),
+            ("SupplementalAgent",  supp_agent.run(text, meter)),
+        ],
+        timeout=_STAGE2_TIMEOUT,
     )
 
-    personal: PersonalInfo      = _unwrap(results[0], PersonalInfo(), "PersonalInfoAgent", warnings)
-    work: list[ExperienceItem]  = _unwrap(results[1], [], "WorkExperienceAgent", warnings)
-    education: list[EducationItem] = _unwrap(results[2], [], "EducationAgent", warnings)
-    creds: CredentialsResult    = _unwrap(results[3], CredentialsResult(), "CredentialsAgent", warnings)
-    supp: SupplementalResult    = _unwrap(results[4], SupplementalResult(), "SupplementalAgent", warnings)
+    pres: PersonalResult        = _unwrap(raw[0], PersonalResult(), "PersonalInfoAgent", warnings)
+    personal: PersonalInfo      = pres.personal
+    if pres.summary_off_topic and personal.summary:
+        warnings.append(
+            "The professional summary appears unrelated to the candidate's healthcare "
+            "background — it may be boilerplate copied from an unrelated résumé. Review before use."
+        )
+    work: list[ExperienceItem]  = _unwrap(raw[1], [], "WorkExperienceAgent", warnings)
+    education: list[EducationItem] = _unwrap(raw[2], [], "EducationAgent", warnings)
+    creds: CredentialsResult    = _unwrap(raw[3], CredentialsResult(), "CredentialsAgent", warnings)
+    supp: SupplementalResult    = _unwrap(raw[4], SupplementalResult(), "SupplementalAgent", warnings)
 
     # ── Stage 4: validation / re-extraction ───────────────────────────────────
     if work and roles:
         try:
-            work, vwarn = await validator_agent.run(work, roles, text, meter)
+            work, vwarn = await asyncio.wait_for(
+                validator_agent.run(work, roles, text, meter), _VALIDATOR_TIMEOUT
+            )
             warnings.extend(vwarn)
-        except AIParsingError as exc:
+        except (AIParsingError, TimeoutError) as exc:
             log.warning("validator_failed", error=str(exc))
 
     parsed = ParsedResumeAI(

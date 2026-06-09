@@ -15,6 +15,7 @@ from app.services.parsing.agents.base import BaseAgent, TokenMeter
 from app.services.parsing.agents.schemas import (
     CredentialsResult,
     EducationResult,
+    PersonalResult,
     ResumeStructure,
     RoleBoundary,
     SupplementalResult,
@@ -38,7 +39,9 @@ def _canned(overrides=None):
             "ResumeStructure": lambda: ResumeStructure(
                 roles=[RoleBoundary(company="Mercy Hospital", title="RN - ICU", bullet_count=0)]
             ),
-            "PersonalInfo": lambda: PersonalInfo(full_name="Jane Smith", email="jane@example.com"),
+            "PersonalResult": lambda: PersonalResult(
+                personal=PersonalInfo(full_name="Jane Smith", email="jane@example.com")
+            ),
             "ExperienceItem": lambda: ExperienceItem(company="Mercy Hospital", role="RN - ICU"),
             "EducationResult": lambda: EducationResult(education=[]),
             "CredentialsResult": lambda: CredentialsResult(skills=["ICU"], certifications=[], licenses=[]),
@@ -61,11 +64,26 @@ async def test_orchestrator_assembles_all_sections(monkeypatch):
     assert warnings == []
 
 
+async def test_orchestrator_flags_off_topic_summary(monkeypatch):
+    def off_topic(s, u):
+        return PersonalResult(
+            personal=PersonalInfo(full_name="Jane Smith", summary="Award-winning dance instructor."),
+            summary_off_topic=True,
+        )
+
+    monkeypatch.setattr(BaseAgent, "_structured_call", _canned({"PersonalResult": off_topic}))
+    parsed, _tokens, warnings = await orchestrator.parse("text", RuleExtracted())
+
+    # Summary copied verbatim, but a review warning is surfaced.
+    assert parsed.personal_info.summary == "Award-winning dance instructor."
+    assert any("unrelated" in w for w in warnings)
+
+
 async def test_orchestrator_isolates_one_failing_section(monkeypatch):
     def boom(system, user):
         raise AIParsingError("PersonalInfoAgent down")
 
-    monkeypatch.setattr(BaseAgent, "_structured_call", _canned({"PersonalInfo": boom}))
+    monkeypatch.setattr(BaseAgent, "_structured_call", _canned({"PersonalResult": boom}))
     parsed, _tokens, warnings = await orchestrator.parse("text", RuleExtracted())
 
     # Personal section degraded to empty, but the rest still came through.
@@ -77,7 +95,7 @@ async def test_orchestrator_isolates_one_failing_section(monkeypatch):
 async def test_orchestrator_raises_when_everything_empty(monkeypatch):
     empty = {
         "ResumeStructure": lambda s, u: ResumeStructure(roles=[]),
-        "PersonalInfo": lambda s, u: PersonalInfo(),
+        "PersonalResult": lambda s, u: PersonalResult(personal=PersonalInfo()),
         "EducationResult": lambda s, u: EducationResult(education=[]),
         "CredentialsResult": lambda s, u: CredentialsResult(),
         "SupplementalResult": lambda s, u: SupplementalResult(),
@@ -110,6 +128,33 @@ async def test_work_agent_extracts_one_entry_per_role_and_seeds_identity(monkeyp
     assert out[0].role == "Travel RN"          # seeded from the structure map, not "Unknown"
     assert out[0].agency_name == "Supplemental Healthcare"
     assert out[0].profession == "RN"
+
+
+async def test_work_agent_stubs_failed_role_to_keep_alignment(monkeypatch):
+    """A role whose extraction keeps failing is backfilled from the structure map
+    (not dropped), so the output stays 1:1 with `roles` — guarding the validator's
+    positional pairing against the label-shift / duplicate-employer regression."""
+    agent = WorkExperienceAgent()
+
+    async def fake(system, user, response_format, meter, *, max_tokens=None):
+        # The Woodlands role never extracts; Amedisys always does.
+        if "Woodlands" in user:
+            raise RuntimeError("transient model error")
+        return ExperienceItem(company="Amedisys", role="Psychiatric RN", description=["b1"])
+
+    monkeypatch.setattr(agent, "_structured_call", fake)
+    roles = [
+        RoleBoundary(company="Woodlands Assisted Living", title="Supervisory RN",
+                     start_date="03/2013", end_date="07/2015", bullet_count=0),
+        RoleBoundary(company="Amedisys", title="Psychiatric RN", bullet_count=0),
+    ]
+    out = await agent.run("text", roles, TokenMeter())
+
+    assert len(out) == 2                                 # neither employer dropped
+    assert out[0].company == "Woodlands Assisted Living"  # stub keeps its own slot
+    assert out[0].role == "Supervisory RN"
+    assert out[0].start_date == "03/2013"
+    assert out[1].company == "Amedisys"                  # no shift onto the next role
 
 
 # ── ValidatorAgent: bullet-count reconciliation ──────────────────────────────

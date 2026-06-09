@@ -17,10 +17,32 @@ from app.models.schemas import (
     EducationItem,
     ExperienceItem,
     LicenseItem,
+    PersonalInfo,
     ProjectItem,
     ReferenceItem,
     _coerce_list,
 )
+
+# ── Stage 2: personal section ─────────────────────────────────────────────────
+
+
+class PersonalResult(BaseModel):
+    """PersonalInfo plus a review flag for an off-topic summary.
+
+    The summary is always copied verbatim into `personal.summary` (we never
+    fabricate or rewrite it). `summary_off_topic` is a separate signal so the
+    orchestrator can warn a reviewer when the summary is boilerplate that clearly
+    belongs to a different field — without polluting the returned PersonalInfo.
+    """
+
+    personal:          PersonalInfo = Field(default_factory=PersonalInfo)
+    summary_off_topic: bool         = Field(
+        False,
+        description="True ONLY if the professional summary is clearly unrelated to "
+                    "the candidate's healthcare profession/work history (e.g. copied "
+                    "boilerplate from an unrelated occupation). Still copy the summary "
+                    "verbatim into personal.summary regardless of this flag.",
+    )
 
 # ── Stage 1: structure map ────────────────────────────────────────────────────
 

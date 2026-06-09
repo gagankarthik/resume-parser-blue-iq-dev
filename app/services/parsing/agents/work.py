@@ -30,6 +30,7 @@ FIELD RULES:
 - company = facility/employer name. role = job title (include the credential if written, e.g. "RN - MICU").
 - If this is a travel/agency assignment, set agency_name and keep the role's own profession/specialties.
 - location = the FULL address line as written (street/suite included). Also fill city/state/country/zip ONLY if stated (keep state as written, e.g. "NY"; never invent country or zip).
+- employer_phone = the employer/facility phone number if one is written next to this role (e.g. "304-287-2120"), copied verbatim; null otherwise. Do NOT confuse it with the candidate's own contact phone.
 - description = an ARRAY, one item per responsibility/duty bullet, copied VERBATIM. If the role is written as prose, split each duty sentence into its own item. Never merge separate bullets; never split one bullet into several.
 - achievements = only items with measurable results.
 - Fill profession, specialties, shift, charting_system, nurse_to_patient_ratio, beds_in_unit, reason_for_leaving, position_held, and the teaching/magnet/trauma flags ONLY when explicitly stated."""
@@ -41,7 +42,8 @@ _SYSTEM_FULL = f"""You extract ALL work-history roles from a healthcare résumé
 RULES:
 - Include EVERY role, even old/short ones. Separate each role/assignment as its own entry (critical for travel nurses).
 - For a travel/agency umbrella role listing multiple facilities, output one entry per facility, each inheriting the umbrella profession/role and setting agency_name. NEVER use "Unknown" as a role.
-- description = an ARRAY, one item per duty bullet copied verbatim (split prose into sentences). location = full address line as written."""
+- description = an ARRAY, one item per duty bullet copied verbatim (split prose into sentences). location = full address line as written.
+- employer_phone = the facility/employer phone number written next to a role (verbatim), null otherwise — never the candidate's own phone."""
 
 
 class WorkExperienceAgent(BaseAgent):
@@ -76,7 +78,30 @@ class WorkExperienceAgent(BaseAgent):
                 if not isinstance(res, Exception):
                     results[idx] = res
 
+        # Keep the output 1:1 with the structure map. A role that failed even after
+        # retry is backfilled with a stub from its RoleBoundary rather than dropped,
+        # so (a) the employer is never lost and (b) downstream positional pairing in
+        # the ValidatorAgent (work[i] ↔ roles[i]) stays correct — collapsing the list
+        # here is what caused labels to shift up and employers to duplicate.
+        for i, res in enumerate(results):
+            if res is None:
+                log.warning("work_role_stubbed", company=roles[i].company)
+                results[i] = self._stub_from_role(roles[i])
+
         return [r for r in results if r is not None]
+
+    @staticmethod
+    def _stub_from_role(role: RoleBoundary) -> ExperienceItem:
+        """Minimal entry from the structure map for a role whose focused extraction
+        failed — preserves the employer/identity (no duty bullets) so it isn't lost."""
+        return ExperienceItem(
+            company=role.company,
+            role=role.title or role.profession or "Unknown",
+            start_date=role.start_date,
+            end_date=role.end_date,
+            agency_name=role.agency_name,
+            profession=role.profession,
+        )
 
     async def _extract_one(self, text: str, role: RoleBoundary, meter: TokenMeter) -> ExperienceItem:
         if role.bullet_count > 0:
