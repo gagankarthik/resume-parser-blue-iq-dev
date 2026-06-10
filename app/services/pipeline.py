@@ -206,6 +206,15 @@ async def run(inp: PipelineInput) -> PipelineResult:
     if mismatch:
         warnings.append(mismatch)
 
+    # A résumé almost always carries an email; on OCR'd documents a missing one
+    # usually means the scan quality defeated OCR (e.g. an underlined hyperlink
+    # in a phone screenshot) — surface it for review instead of a silent null.
+    if ocr_used and not partial and not normalized.personal_info.email:
+        warnings.append(
+            "No email address was detected. The document was read via OCR and the "
+            "email may be unreadable in the source image — please verify manually."
+        )
+
     duration_ms = int((time.monotonic() - start) * 1000)
 
     log.info(
