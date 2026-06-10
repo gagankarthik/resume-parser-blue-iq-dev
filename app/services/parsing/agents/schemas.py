@@ -115,20 +115,24 @@ class EducationResult(BaseModel):
 
 
 class CredentialsResult(BaseModel):
-    """Skills + certifications + state licenses — kept in one agent because the
-    LLM must decide, per item, whether it is a skill, a certification, or a
-    state licence, and seeing them together prevents double-classification."""
+    """Skills + certifications + state licenses + professional associations —
+    kept in one agent because the LLM must decide, per item, whether it is a
+    skill, a certification, a state licence, or a membership/committee, and
+    seeing them together prevents double-classification. (Résumés often mix all
+    of these under one heading like "Professional Associations/Certifications/
+    Licenses/Collaboratives".)"""
 
     skills:         list[str]                = Field(default_factory=list)
     certifications: list[CertificationItem]  = Field(default_factory=list)
     licenses:       list[LicenseItem]        = Field(default_factory=list)
+    professional_associations: list[str]     = Field(default_factory=list)
 
     @field_validator("certifications", "licenses", mode="before")
     @classmethod
     def _coerce_objs(cls, v: object) -> list:
         return _coerce_list(v)
 
-    @field_validator("skills", mode="before")
+    @field_validator("skills", "professional_associations", mode="before")
     @classmethod
     def _coerce_strs(cls, v: object) -> list[str]:
         items = _coerce_list(v)

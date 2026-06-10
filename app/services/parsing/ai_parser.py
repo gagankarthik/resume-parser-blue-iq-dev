@@ -113,7 +113,7 @@ EXTRACTION RULES:
 - NEVER drop an item listed under a credentials/certifications/licenses heading — each must land in skills[], certifications[], or licenses[].
 - Certifications (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN…) → certifications[] not skills[]. Also keep NON-clinical credentials that are listed (e.g. "CPR", "First Aid", "CNA", "Driver's License") in certifications[] — do not discard them just because they are not clinical or not state licenses.
 - A bare nursing/allied PRACTICE credential (RN, LPN, LVN) LISTED in a credentials/certifications/licenses section is a professional license even with no number/state — put it in licenses[] with license_type set to the credential and missing fields null, NOT in certifications[]. Post-nominals after the candidate's name alone do NOT create a license entry.
-- Certification dates: a bare date next to a cert (e.g. "BLS: 12/2024") is AMBIGUOUS — do NOT assume it is an expiry. Put it in the neutral `date` field. Only use `issued_date` when the résumé labels it issued/awarded/completed, and `expiry_date` only when labeled expires/valid through/renewal.
+- Certification dates: a bare date next to a cert (e.g. "BLS: 12/2024") is AMBIGUOUS — do NOT assume it is an expiry. Put it in the neutral `date` field. "Completed/Issued/Awarded <date>" (e.g. "Steps to Leadership Completed December 2024") → `issued_date`, NEVER `expiry_date`. Use `expiry_date` only when labeled expires/valid through/renewal.
 - LICENSES vs certifications — a STATE professional license is NOT a certification; put it in licenses[], never certifications[] or skills only:
   • Any state RN/LPN/RT/etc. licence, e.g. "Florida RN License #RN9411204", "Active New York State Registered Nurse License", "Compact/Multistate RN License", "Radiologic Technologist License (TX)".
   • Capture: name (as written), license_type (the credential, e.g. "RN"/"RT" — do NOT expand), state (as written, keep "NY"), license_number (verbatim, INCLUDING any letter prefix like "RN9411204" — never drop the number), status ("Active"/"In progress"…), and issued/expiry dates only if stated.
@@ -125,6 +125,8 @@ EXTRACTION RULES:
 - References: extract any listed referees into references[] (name, relationship/title, company, email, phone). Capture each referee's own credentials within their name/title if written (e.g. "Jane Doe, RN, BSN" — keep "RN, BSN"). If the resume only says "References available upon request", leave references[] empty.
 - Awards/honors: extract each award, honor, or recognition into awards[] as a short string (include the year in parentheses if stated). Do NOT put awards in skills[] or experience[].
 - Publications: extract each publication, poster, or research contribution into publications[] as a single citation string. Do NOT put publications in experience[] or projects[].
+- Professional associations: society/association memberships, honor societies, committees, collaboratives, and process-owner roles go in professional_associations[] verbatim (e.g. "Sigma Theta Tau International Honor Society of Nursing Member", "Sepsis Clinical Services Committee", "SJHS Sepsis Process Owner"). They are NOT certifications, licenses, or skills — and never drop them.
+- Academic honors ("Summa Cum Laude", "Magna Cum Laude") on a degree line go in awards[].
 - Multi-column resumes: text may be extracted left-column-first; treat it as sequential.
 
 HEALTHCARE CREDENTIAL ABBREVIATIONS — preserve as-is in output:
@@ -135,7 +137,7 @@ HEALTHCARE CREDENTIAL ABBREVIATIONS — preserve as-is in output:
   Imaging:     Rad Tech, RT(R), RT(CT), RT(M), RT(MR), ARRT, CT Tech, MRI Tech, Mammography Tech, X-Ray Tech, Echo Tech, EKG Tech, Sonographer, RDMS
   Surgical:    OR Tech, CST, SPT, CVOR Tech, Sterile Processing Tech
 
-PRE-EXTRACTED CONTACT ANCHORS — use these values directly, do not re-extract:
+PRE-EXTRACTED CONTACT ANCHORS — regex-found, authoritative; use these values directly. But if a list is EMPTY, the regex found nothing (OCR may have garbled it): extract that field from the resume text yourself, repairing obvious OCR artifacts (stray spaces inside an email, '(@' for '@'). Never leave the email null when one is visible in the text.
 {anchors_block}
 
 RESUME TEXT:

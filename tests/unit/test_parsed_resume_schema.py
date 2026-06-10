@@ -281,3 +281,22 @@ def test_personal_credentials_coerced_and_trimmed():
 def test_personal_credentials_default_empty():
     p = ParsedResumeAI.model_validate({"personal_info": {"full_name": "Jane Smith"}}).personal_info
     assert p.credentials == []
+
+
+# -- Professional associations (memberships / committees / collaboratives) ----
+
+def test_professional_associations_round_trip():
+    parsed = ParsedResumeAI.model_validate(
+        {"professional_associations": [
+            "Sigma Theta Tau International Honor Society of Nursing Member",
+            "Sepsis Clinical Services Committee",
+        ]}
+    )
+    assert len(parsed.professional_associations) == 2
+
+
+def test_professional_associations_default_and_null_coerced():
+    assert ParsedResumeAI.model_validate({"skills": []}).professional_associations == []
+    assert ParsedResumeAI.model_validate(
+        {"professional_associations": None}
+    ).professional_associations == []

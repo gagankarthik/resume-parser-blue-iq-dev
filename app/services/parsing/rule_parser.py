@@ -7,6 +7,11 @@ import re
 from dataclasses import dataclass, field
 
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+# OCR fallback: Tesseract often injects a space next to the @ when reading
+# underlined hyperlink text ("Katherine.Driscoll@ Baycare.org"). Only consulted
+# when the strict pattern finds nothing; matches are normalized by removing the
+# spaces.
+_EMAIL_LOOSE = re.compile(r"\b[A-Za-z0-9._%+\-]+ ?@ ?[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
 _PHONE = re.compile(
     r"(?<!\d)(\+?[\d][\d\s\-\.\(\)]{6,18}[\d])(?!\d)"
 )
@@ -35,6 +40,10 @@ def extract(text: str) -> RuleExtracted:
     result = RuleExtracted()
 
     result.emails = list(dict.fromkeys(_EMAIL.findall(text)))
+    if not result.emails:
+        result.emails = list(dict.fromkeys(
+            m.group().replace(" ", "") for m in _EMAIL_LOOSE.finditer(text)
+        ))
 
     raw_phones = _PHONE.findall(text)
     # Normalize: strip non-digit chars, keep only plausible lengths

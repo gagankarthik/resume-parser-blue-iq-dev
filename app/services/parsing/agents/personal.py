@@ -20,7 +20,7 @@ RULES:
 - location: the candidate's FULL home address line as written, including street/number if present — do NOT shorten to city/state/zip.
 - personal.summary: the professional summary/objective text if present, copied VERBATIM, else null. Do NOT rewrite or clean it.
 - summary_off_topic: set true ONLY when that summary is clearly unrelated to the candidate's healthcare profession/work history — e.g. leftover boilerplate from an unrelated occupation (a dance instructor, retail, etc.). When unsure, leave it false. Either way, still copy the summary verbatim.
-- Use the pre-extracted contact anchors for email/phone/URLs; do not re-derive them."""
+- Contact anchors: the pre-extracted email/phone/URL lists below were found by regex and are authoritative — use them as given. But if a list is EMPTY, the regex found nothing (OCR may have garbled it, e.g. an underlined hyperlink): extract that field from the résumé text YOURSELF, repairing obvious OCR artifacts (stray spaces inside an email address, '(@' for '@'). Never leave the email null when one is visible in the text."""
 
 
 class PersonalInfoAgent(BaseAgent):

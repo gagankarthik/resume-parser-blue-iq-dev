@@ -689,15 +689,16 @@ class ParsedResumeAI(BaseModel):
     projects:        list[ProjectItem]     = Field(default_factory=list, description="Notable projects")
     languages:       list[str]             = Field(default_factory=list, description="Spoken/written languages")
     references:      list[ReferenceItem]   = Field(default_factory=list, description="Professional references, if explicitly listed (not 'available upon request')")
-    awards:          list[str]             = Field(default_factory=list, description="Awards, honors, and recognitions (e.g. 'DAISY Award 2023', 'Employee of the Year')")
+    awards:          list[str]             = Field(default_factory=list, description="Awards, honors, and recognitions (e.g. 'DAISY Award 2023', 'Summa Cum Laude', 'Employee of the Year')")
     publications:    list[str]             = Field(default_factory=list, description="Publications, posters, or research contributions, each as a single citation string")
+    professional_associations: list[str]   = Field(default_factory=list, description="Professional associations, society memberships, committees, and collaboratives, each verbatim (e.g. 'Sigma Theta Tau International Honor Society of Nursing Member', 'Sepsis Clinical Services Committee', 'SJHS Sepsis Process Owner')")
 
     @field_validator("experience", "education", "certifications", "licenses", "projects", "references", mode="before")
     @classmethod
     def coerce_lists(cls, v: object) -> list:
         return _coerce_list(v)
 
-    @field_validator("skills", "languages", "awards", "publications", mode="before")
+    @field_validator("skills", "languages", "awards", "publications", "professional_associations", mode="before")
     @classmethod
     def coerce_string_lists(cls, v: object) -> list[str]:
         items = _coerce_list(v)

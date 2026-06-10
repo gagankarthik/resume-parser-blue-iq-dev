@@ -196,6 +196,7 @@ async def parse(
         references=supp.references,
         awards=supp.awards,
         publications=supp.publications,
+        professional_associations=creds.professional_associations,
     )
 
     # If literally nothing came back, signal failure so the pipeline can fall back

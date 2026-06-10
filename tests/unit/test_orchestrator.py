@@ -106,6 +106,23 @@ async def test_orchestrator_raises_when_everything_empty(monkeypatch):
         await orchestrator.parse("text", RuleExtracted())
 
 
+async def test_orchestrator_carries_professional_associations(monkeypatch):
+    def with_assocs(s, u):
+        return CredentialsResult(
+            skills=["ICU"],
+            professional_associations=[
+                "Sigma Theta Tau International Honor Society of Nursing Member",
+                "Sepsis Clinical Services Committee",
+            ],
+        )
+
+    monkeypatch.setattr(BaseAgent, "_structured_call", _canned({"CredentialsResult": with_assocs}))
+    parsed, _tokens, _warnings = await orchestrator.parse("text", RuleExtracted())
+
+    assert len(parsed.professional_associations) == 2
+    assert "Sepsis Clinical Services Committee" in parsed.professional_associations
+
+
 # ── WorkExperienceAgent: per-role extraction + structure-map seeding ─────────
 
 async def test_work_agent_extracts_one_entry_per_role_and_seeds_identity(monkeypatch):

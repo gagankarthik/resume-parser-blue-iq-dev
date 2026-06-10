@@ -25,3 +25,15 @@ def test_no_false_positives_on_clean_text():
     result = extract("This resume has no contact information at all.")
     assert result.emails == []
     assert result.phones == []
+
+
+def test_email_with_ocr_space_around_at_recovered():
+    # Tesseract reads underlined hyperlinks with a stray space next to the @.
+    text = "Katherine N. Driscoll\nKatherine.Driscoll@ Baycare.org\n(631) 903-2593"
+    out = extract(text)
+    assert out.emails == ["Katherine.Driscoll@Baycare.org"]
+
+
+def test_strict_email_preferred_over_loose():
+    out = extract("jane@example.com and noise @ not-an-email-context")
+    assert out.emails == ["jane@example.com"]
