@@ -44,8 +44,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     log.info("worker_lambda_start", job_id=event["job_id"], batch_id=event.get("batch_id"))
 
+    loop = asyncio.new_event_loop()
     try:
-        loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(
             process_resume_async(
@@ -58,10 +58,16 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 force_textract=bool(event.get("force_textract", False)),
             )
         )
-        loop.close()
     except Exception as exc:
         log.error("worker_lambda_error", job_id=event["job_id"], error=str(exc))
         raise   # re-raise so Lambda marks invocation as failed
+    finally:
+        loop.close()
+        # CRITICAL: install a FRESH, open loop. This warm container also serves
+        # HTTP events via Mangum, which reuses the thread's current event loop —
+        # leaving the closed loop installed poisoned every subsequent HTTP
+        # request from this container with "RuntimeError: Event loop is closed".
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
     log.info("worker_lambda_done", job_id=event["job_id"])
     return {"status": "ok", "job_id": event["job_id"]}
