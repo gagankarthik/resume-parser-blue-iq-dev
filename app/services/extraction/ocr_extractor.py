@@ -9,6 +9,7 @@ Handles: rotated scans, low-contrast images, poor-quality photocopies,
 """
 
 import io
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import boto3
@@ -141,11 +142,17 @@ def _auto_rotate(img: Image.Image) -> Image.Image:
 # ── Tesseract ─────────────────────────────────────────────────────────────────
 
 def _run_tesseract(images: list[Image.Image]) -> tuple[str, float]:
-    """Run Tesseract on preprocessed images; return (text, mean_confidence)."""
+    """Run Tesseract on preprocessed images; return (text, mean_confidence).
+
+    Bails out after the FIRST page when its confidence is already below the
+    escalation threshold: scan quality is uniform across a document, so OCRing
+    the remaining pages just to discard the whole result doubles the OCR time
+    on exactly the documents that are already slow (multi-page bad scans).
+    """
     pages: list[str] = []
     confidences: list[float] = []
 
-    for img in images:
+    for i, img in enumerate(images):
         # --psm 3 = fully automatic page segmentation (handles multi-column)
         # --oem 3 = best available LSTM engine
         data = pytesseract.image_to_data(
@@ -162,6 +169,16 @@ def _run_tesseract(images: list[Image.Image]) -> tuple[str, float]:
             pages.append(" ".join(w for w, _ in words))
             confidences.append(sum(c for _, c in words) / len(words))
 
+        if i == 0 and len(images) > 1:
+            first_conf = confidences[0] if confidences else 0.0
+            if first_conf < _CONFIDENCE_THRESHOLD:
+                log.info(
+                    "ocr_tesseract_early_escalation",
+                    first_page_confidence=round(first_conf, 1),
+                    pages_skipped=len(images) - 1,
+                )
+                return "", first_conf
+
     overall = sum(confidences) / len(confidences) if confidences else 0.0
     return "\n\n".join(pages), overall
 
@@ -176,17 +193,24 @@ def _run_textract(
     """
     Call AWS Textract via synchronous detect_document_text.
     Uses preprocessed images (converted to PNG) for better accuracy.
+    Pages are sent concurrently — they are independent network calls, and a
+    serial loop made multi-page scans pay full Textract latency per page.
     """
     settings = get_settings()
     client = boto3.client("textract", region_name=settings.aws_region)
     # Never use LocalStack endpoint for Textract — always real AWS
-    pages: list[str] = []
 
-    for img in preprocessed_images:
+    def _one_page(img: Image.Image) -> str:
         buf = io.BytesIO()
         img.save(buf, format="PNG")
-        pages.append(_textract_image_bytes(client, buf.getvalue()))
+        return _textract_image_bytes(client, buf.getvalue())
 
+    if len(preprocessed_images) == 1:
+        return _one_page(preprocessed_images[0])
+
+    # boto3 clients are thread-safe for concurrent calls; page order is preserved.
+    with ThreadPoolExecutor(max_workers=min(4, len(preprocessed_images))) as pool:
+        pages = list(pool.map(_one_page, preprocessed_images))
     return "\n\n".join(pages)
 
 
