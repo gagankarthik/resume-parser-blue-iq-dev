@@ -11,8 +11,10 @@ Tables:
   feedback      — pk: feedback_id (GSI company-created-index, TTL)
 """
 
+import json
 import time
 from datetime import UTC, datetime
+from decimal import Decimal
 from functools import lru_cache
 from typing import Any
 
@@ -262,6 +264,14 @@ def update_job_processing(job_id: str) -> None:
     )
 
 
+def _dynamo_safe(value: dict) -> dict:
+    """Make a JSON-able dict storable in DynamoDB: floats become Decimals
+    (boto3 rejects Python floats with 'Float types are not supported').
+    The parsed-resume result carries float confidence scores, so every async
+    job result must pass through this before update_item."""
+    return json.loads(json.dumps(value), parse_float=Decimal)
+
+
 def update_job_completed(job_id: str, result: dict) -> None:
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
@@ -272,7 +282,7 @@ def update_job_completed(job_id: str, result: dict) -> None:
         ExpressionAttributeValues={
             ":s": "completed",
             ":t": datetime.now(UTC).isoformat(),
-            ":r": result,
+            ":r": _dynamo_safe(result),
         },
     )
 
@@ -293,11 +303,25 @@ def update_job_failed(job_id: str, error: str, error_code: str) -> None:
     )
 
 
+def _plain(value: Any) -> Any:
+    """Recursively convert DynamoDB Decimals back to int/float so read-back job
+    results look like fresh JSON. Without this, schema validators that check
+    isinstance(v, int | float) (e.g. education years) silently null Decimals."""
+    if isinstance(value, Decimal):
+        return int(value) if value % 1 == 0 else float(value)
+    if isinstance(value, list):
+        return [_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    return value
+
+
 def get_job(job_id: str) -> dict | None:
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
     resp = table.get_item(Key={"job_id": job_id})
-    return resp.get("Item")
+    item = resp.get("Item")
+    return _plain(item) if item else None
 
 
 # ── Webhooks ──────────────────────────────────────────────────────────────────
