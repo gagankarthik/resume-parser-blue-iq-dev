@@ -34,14 +34,22 @@ log = get_logger(__name__)
 
 # Per-step timeouts (seconds)
 _TIMEOUT_EXTRACTION = 60
-_TIMEOUT_OCR        = 180   # Textract can be slow on multi-page scans
+_TIMEOUT_OCR        = 90    # Textract on multi-page scans — bounded so OCR alone
+                            # can't eat the whole per-resume budget
 # The orchestrator self-bounds each stage (see orchestrator._STAGE2_TIMEOUT et al.)
 # and returns a partial result rather than being cancelled, so this is only a hard
 # safety net set just above its internal budget. The single-shot fallback is one
 # LLM call, so it gets a tighter cap — together they bound the worst case instead
 # of stacking two full 2-minute timeouts when the orchestrator degrades.
-_TIMEOUT_ORCHESTRATOR = 150
-_TIMEOUT_AI_PARSE     = 90
+_TIMEOUT_ORCHESTRATOR = 100
+_TIMEOUT_AI_PARSE     = 45
+
+# Overall soft budget for one resume. Every AI step is capped by the time left
+# under this budget, so extraction + parsing + fallback together stay under
+# two minutes instead of stacking their individual worst cases.
+_TOTAL_BUDGET     = 115
+# Time held back from the orchestrator for the single-shot fallback + scoring.
+_FALLBACK_RESERVE = 20
 
 
 @dataclass
@@ -149,14 +157,22 @@ async def run(inp: PipelineInput) -> PipelineResult:
     tokens    = 0
     parsed_ai = None
 
+    def _remaining() -> float:
+        return _TOTAL_BUDGET - (time.monotonic() - start)
+
     use_orchestrator = (
-        settings.use_multi_agent and len(cleaned) >= settings.multi_agent_min_chars
+        settings.use_multi_agent
+        and len(cleaned) >= settings.multi_agent_min_chars
+        # If extraction (e.g. a slow OCR pass) already ate most of the budget,
+        # go straight to the cheaper single-shot parser.
+        and _remaining() > _FALLBACK_RESERVE + 25
     )
     if use_orchestrator:
+        orch_budget = min(_TIMEOUT_ORCHESTRATOR, _remaining() - _FALLBACK_RESERVE)
         try:
             parsed_ai, tokens, warnings = await asyncio.wait_for(
-                orchestrator.parse(cleaned, anchors),
-                timeout=_TIMEOUT_ORCHESTRATOR,
+                orchestrator.parse(cleaned, anchors, budget=orch_budget),
+                timeout=orch_budget + 10,  # hard net above the self-bounded stages
             )
         except (AIParsingError, TimeoutError) as exc:
             log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))
@@ -166,7 +182,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
         try:
             parsed_ai, tokens = await asyncio.wait_for(
                 ai_parser.parse(sections, anchors),
-                timeout=_TIMEOUT_AI_PARSE,
+                timeout=min(_TIMEOUT_AI_PARSE, max(15.0, _remaining())),
             )
         except (AIParsingError, TimeoutError) as exc:
             reason = (
@@ -185,6 +201,10 @@ async def run(inp: PipelineInput) -> PipelineResult:
     # ── 7–9. Normalize + score ────────────────────────────────────────────────
     normalized = normalize(parsed_ai)
     confidence = score(normalized)
+
+    mismatch = _surname_mismatch_warning(normalized)
+    if mismatch:
+        warnings.append(mismatch)
 
     duration_ms = int((time.monotonic() - start) * 1000)
 
@@ -209,6 +229,37 @@ async def run(inp: PipelineInput) -> PipelineResult:
         partial=partial,
         warnings=warnings,
     )
+
+
+def _surname_mismatch_warning(parsed: ParsedResumeAI) -> str | None:
+    """Flag a likely-incomplete surname by comparing the parsed name against the
+    email local part: "Rubie Ricafort" with "rubie.ricafortmoulds@…" suggests a
+    hyphenated/double surname ("Ricafort-Moulds") the résumé body truncated.
+    Conservative: only fires when the local part continues the surname with a
+    ≥4-letter alphabetic run that is not another part of the name.
+    """
+    pi = parsed.personal_info
+    if not (pi.full_name and pi.email):
+        return None
+    local = re.sub(r"[^a-z]", "", pi.email.split("@", 1)[0].lower())
+    tokens = [
+        t for t in (re.sub(r"[^a-z]", "", w.lower()) for w in pi.full_name.split())
+        if len(t) >= 3
+    ]
+    if not tokens or not local:
+        return None
+    surname = tokens[-1]
+    idx = local.find(surname)
+    if idx < 0:
+        return None
+    suffix = local[idx + len(surname):]
+    if len(suffix) >= 4 and suffix.isalpha() and suffix not in tokens:
+        return (
+            f"The email address suggests a longer surname than the parsed name "
+            f"(\"{pi.full_name}\" vs \"…{surname}{suffix}@\"). The résumé may "
+            "truncate a hyphenated or double surname — review full_name."
+        )
+    return None
 
 
 def _fallback_from_anchors(anchors: rule_parser.RuleExtracted) -> ParsedResumeAI:

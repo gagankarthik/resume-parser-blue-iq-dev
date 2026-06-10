@@ -27,13 +27,14 @@ _SYSTEM_ONE = f"""You extract ONE work-history role from a healthcare résumé i
 {{bullet_instruction}}
 
 FIELD RULES:
-- company = facility/employer name. role = job title (include the credential if written, e.g. "RN - MICU").
-- If this is a travel/agency assignment, set agency_name and keep the role's own profession/specialties.
+- company = the FACILITY/employer where the work was performed (e.g. "Brattleboro Memorial Hospital") — NEVER the staffing agency. role = job title (include the credential if written, e.g. "RN - MICU").
+- If this is a travel/agency assignment, the agency goes in agency_name ONLY and the facility stays in company; keep the role's own profession/specialties. An employer with its OWN job title and date range is NOT an agency assignment — leave agency_name null for it.
 - location = the FULL address line as written (street/suite included). Also fill city/state/country/zip ONLY if stated (keep state as written, e.g. "NY"; never invent country or zip).
 - employer_phone = the employer/facility phone number if one is written next to this role (e.g. "304-287-2120"), copied verbatim; null otherwise. Do NOT confuse it with the candidate's own contact phone.
 - description = an ARRAY, one item per responsibility/duty bullet, copied VERBATIM. If the role is written as prose, split each duty sentence into its own item. Never merge separate bullets; never split one bullet into several.
 - achievements = only items with measurable results.
-- Fill profession, specialties, shift, charting_system, nurse_to_patient_ratio, beds_in_unit, reason_for_leaving, position_held, and the teaching/magnet/trauma flags ONLY when explicitly stated."""
+- specialties = ONLY the unit/specialty named for THIS role in its heading, title, or an explicit unit/specialty label (e.g. "ICU", "Med Surg/Tele"). Do NOT mine phrases out of the duty bullets — a bullet mentioning "surgical patients", a piece of equipment, a therapy, or a physician group is NOT a specialty.
+- Fill profession, shift, charting_system, nurse_to_patient_ratio, beds_in_unit, reason_for_leaving, position_held, and the teaching/magnet/trauma flags ONLY when explicitly stated."""
 
 _SYSTEM_FULL = f"""You extract ALL work-history roles from a healthcare résumé into {{ "work_experience": [ ... ] }}.
 
@@ -41,9 +42,41 @@ _SYSTEM_FULL = f"""You extract ALL work-history roles from a healthcare résumé
 
 RULES:
 - Include EVERY role, even old/short ones. Separate each role/assignment as its own entry (critical for travel nurses).
-- For a travel/agency umbrella role listing multiple facilities, output one entry per facility, each inheriting the umbrella profession/role and setting agency_name. NEVER use "Unknown" as a role.
+- For a travel/agency umbrella role listing multiple facilities, output one entry per facility: company = the FACILITY name (never the agency), agency_name = the staffing agency, each inheriting the umbrella profession/role. NEVER use "Unknown" as a role.
+- An employer with its OWN job title and date range is a separate employer, not an agency assignment — leave its agency_name null.
 - description = an ARRAY, one item per duty bullet copied verbatim (split prose into sentences). location = full address line as written.
 - employer_phone = the facility/employer phone number written next to a role (verbatim), null otherwise — never the candidate's own phone."""
+
+
+def apply_role_boundary(item: ExperienceItem, role: RoleBoundary) -> ExperienceItem:
+    """Reconcile a focused per-role extraction with its structure-map boundary.
+
+    The structure map is the authority on each role's identity. This backfills
+    role/agency/profession the extraction left blank, restores the facility name
+    when the staffing agency displaced it in `company` (the failure mode where
+    every travel site came back as company="Supplemental Healthcare" with the
+    real facility demoted into the description), and strips an agency wrongly
+    inherited by a standalone employer that has its own title and dates.
+    """
+    if (not item.role) or item.role.strip().lower() == "unknown":
+        item.role = role.title or role.profession or item.role
+    if role.agency_name and not item.agency_name:
+        item.agency_name = role.agency_name
+    if role.profession and not item.profession:
+        item.profession = role.profession
+
+    mapped = (role.company or "").strip()
+    if mapped and mapped.lower() != "unknown":
+        extracted = (item.company or "").strip().lower()
+        agency = (item.agency_name or "").strip().lower()
+        if extracted in ("", "unknown"):
+            item.company = mapped
+        elif agency and extracted == agency and mapped.lower() != agency:
+            item.company = mapped
+
+    if item.agency_name and not role.agency_name and not role.is_travel_assignment:
+        item.agency_name = None
+    return item
 
 
 class WorkExperienceAgent(BaseAgent):
@@ -124,14 +157,8 @@ class WorkExperienceAgent(BaseAgent):
             f"{text}\n=== END ===\n\nReturn ONLY this single role."
         )
         item = await self._structured_call(system, user, ExperienceItem, meter, max_tokens=4096)
-        # Seed identity/agency from the structure map when the focused pass left them blank.
-        if (not item.role) or item.role.strip().lower() == "unknown":
-            item.role = role.title or role.profession or item.role
-        if role.agency_name and not item.agency_name:
-            item.agency_name = role.agency_name
-        if role.profession and not item.profession:
-            item.profession = role.profession
-        return item
+        # Seed identity/agency from the structure map and fix agency-vs-facility mixups.
+        return apply_role_boundary(item, role)
 
     async def _extract_full(self, text: str, meter: TokenMeter) -> list[ExperienceItem]:
         log.info("work_full_fallback")

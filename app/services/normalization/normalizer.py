@@ -13,8 +13,10 @@ Covers:
 import re
 
 from app.models.schemas import (
+    CertificationItem,
     EducationItem,
     ExperienceItem,
+    LicenseItem,
     ParsedResumeAI,
     PersonalInfo,
     _sanitize_date,
@@ -73,6 +75,11 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
         _normalize_education(edu)
     for exp in parsed.experience:
         _normalize_experience(exp)
+    _clean_credential_buckets(parsed)
+    for lic in parsed.licenses:
+        lic.name = _fix_credential_case(lic.name)
+        if lic.license_type:
+            lic.license_type = _fix_credential_case(lic.license_type)
     return parsed
 
 
@@ -90,6 +97,7 @@ def _normalize_personal(personal: PersonalInfo) -> None:
         personal.full_name = _strip_name_credentials(personal.full_name)
     elif personal.credentials:
         personal.credentials = _dedup_preserve_order(personal.credentials)
+    personal.credentials = [_fix_credential_case(c) for c in personal.credentials]
 
 
 def _dedup_preserve_order(values: list[str]) -> list[str]:
@@ -156,6 +164,106 @@ def _strip_name_credentials(name: str) -> str:
     return " ".join(tokens).strip(" ,") or name.strip()
 
 
+# ── Credential casing + cross-bucket hygiene ──────────────────────────────────
+
+# Credential tokens whose canonical form is not simply upper-case.
+_CRED_CASING_SPECIAL = {"phd": "PhD", "edd": "EdD"}
+
+# Practice credentials that are professional LICENSES, never certifications.
+_PRACTICE_LICENSE_TYPES = {"rn", "lpn", "lvn"}
+
+# Academic degrees that sometimes leak into skills[] — they belong in education /
+# post-nominal credentials, not in the skills list.
+_DEGREE_SKILL_TOKENS = {"bsn", "msn", "adn", "asn", "dnp", "phd", "mph", "mba"}
+
+# Well-known certifications (and listed non-clinical credentials) that belong in
+# certifications[], not skills[]. Includes a common résumé misspelling.
+_CERT_SKILL_TOKENS = {
+    "bls", "acls", "pals", "cpr", "nrp", "tncc", "enpc", "nihss", "stable",
+    "ccrn", "cen", "cnor", "ocn", "cpn", "cnrn", "wcc", "tcrn", "first aid",
+    "neonatal resuscitation program", "neonatal resucitation program",
+    "advanced cardiac life support", "basic life support",
+    "pediatric advanced life support", "drivers license", "driver license",
+}
+
+_CERT_SUFFIX_RE = re.compile(
+    r"\s+(certification|certificate|certified|cert|card)s?\s*$", re.I
+)
+
+
+def _fix_credential_case(token: str) -> str:
+    """Restore canonical casing on a credential the model lower-cased ('rn' → 'RN')."""
+    t = token.strip()
+    key = t.strip(".").lower()
+    if key in _CRED_CASING_SPECIAL:
+        return _CRED_CASING_SPECIAL[key]
+    if key in _NAME_CREDENTIALS or key in PROFESSION_ABBREVIATIONS:
+        return t.upper()
+    return t
+
+
+def _cred_key(value: str) -> str:
+    """Matching key for cross-bucket comparison: case/punctuation-insensitive,
+    with trailing 'Certification'/'Certified'/'Card' noise stripped
+    ('CPR Certification' → 'cpr', \"Driver's License\" → 'drivers license')."""
+    v = _CERT_SUFFIX_RE.sub("", value.strip().lower())
+    v = re.sub(r"[^a-z0-9 ]", "", v)
+    return re.sub(r"\s+", " ", v).strip()
+
+
+def _clean_credential_buckets(parsed: ParsedResumeAI) -> None:
+    """Deterministic cross-bucket hygiene after parsing.
+
+    The LLM is told how to bucket skills vs certifications vs licenses, but it
+    still leaks ('CPR Certification' in skills, 'LPN' filed as a certification).
+    This pass enforces the rules instead of hoping:
+      • An RN/LPN/LVN entry in certifications[] is a professional licence —
+        promote it into licenses[] (unless that licence type already exists).
+      • Drop certifications that duplicate an existing licence.
+      • skills[] loses anything that matches an extracted certification/licence
+        or an academic degree token; a well-known cert found ONLY in skills[]
+        (CPR, BLS, Driver's License…) is MOVED to certifications[], not lost.
+    """
+    license_types = {lt for lic in parsed.licenses if (lt := (lic.license_type or "").lower())}
+    license_keys = {_cred_key(lic.name) for lic in parsed.licenses} | license_types
+
+    kept_certs: list[CertificationItem] = []
+    for cert in parsed.certifications:
+        key = _cred_key(cert.name)
+        if key in _PRACTICE_LICENSE_TYPES:
+            if key not in license_types:
+                parsed.licenses.append(
+                    LicenseItem(
+                        name=cert.name.upper(),
+                        license_type=cert.name.upper(),
+                        issued_date=cert.issued_date,
+                        expiry_date=cert.expiry_date,
+                    )
+                )
+                license_types.add(key)
+                license_keys.add(key)
+            continue
+        if key in license_keys:
+            continue
+        kept_certs.append(cert)
+    parsed.certifications = kept_certs
+
+    cert_keys = {_cred_key(c.name) for c in parsed.certifications}
+    kept_skills: list[str] = []
+    for skill in parsed.skills:
+        key = _cred_key(skill)
+        if key and (key in cert_keys or key in license_keys or key in _DEGREE_SKILL_TOKENS):
+            continue
+        if key in _CERT_SKILL_TOKENS:
+            parsed.certifications.append(
+                CertificationItem(name=_CERT_SUFFIX_RE.sub("", skill.strip()))
+            )
+            cert_keys.add(key)
+            continue
+        kept_skills.append(skill)
+    parsed.skills = kept_skills
+
+
 def _normalize_skills(skills: list[str]) -> list[str]:
     """
     Normalize each skill/specialty to its canonical healthcare-taxonomy name
@@ -204,6 +312,9 @@ def _normalize_experience(exp: ExperienceItem) -> None:
     # Expand credential abbreviations in role titles
     if exp.role:
         exp.role = _expand_role_credentials(exp.role)
+
+    if exp.profession:
+        exp.profession = _fix_credential_case(exp.profession)
 
     # Map each per-role specialty to its canonical taxonomy name (dedup, in order)
     if exp.specialties:

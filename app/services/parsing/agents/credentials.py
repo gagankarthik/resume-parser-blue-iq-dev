@@ -18,12 +18,14 @@ _SYSTEM = f"""You extract a healthcare résumé's SKILLS, CERTIFICATIONS, and LI
 
 NEVER DROP an item that is listed under a credentials/certifications/licenses heading — every listed item must land in exactly one of the three buckets below. A section literally titled "Certifications and Licenses" mixes both types, so split its items by what each one IS, not by the heading.
 
+SOURCE OF TRUTH: classify items the résumé actually LISTS (in its skills/credentials/certifications/licenses sections or stated in the body). Do NOT invent a license OR certification from the post-nominal letters after the candidate's name ("Jane Smith, RN, BSN" alone creates NO license entry) or from a job title — post-nominals are captured separately as personal credentials.
+
 CLASSIFY each item into exactly one bucket:
-- skills[]: clinical specialties, units, and competencies (e.g. "ICU", "Med Surg/Tele", "Epic", "Venipuncture"), one item each — not sentences.
+- skills[]: clinical specialties, units, and competencies (e.g. "ICU", "Med Surg/Tele", "Epic", "Venipuncture"), one item each — not sentences. NEVER put certifications (CPR, BLS, ACLS, PALS…), licenses, driver's licenses, or academic degrees (BSN, MSN) in skills[] — those belong in the other buckets.
 - certifications[]: time-limited or general credentials that are NOT a professional practice license — clinical certs (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN, ARRT…) AND non-clinical credentials listed on the résumé such as "CPR", "First Aid", "CNA", "Driver's License". Keep these even though they are not state licenses — do NOT discard a listed credential just because it is non-clinical. A bare date next to a cert ("BLS: 12/2024") is AMBIGUOUS — put it in the neutral `date` field, NOT expiry, unless the résumé labels it issued/expires.
 - licenses[]: STATE / professional PRACTICE licenses. Two forms qualify:
   • Explicit state licenses (e.g. "Florida RN License #RN9411204", "Active NYS Registered Nurse License", "Compact/Multistate RN License", "Radiologic Technologist License (TX)").
-  • A bare nursing/allied PRACTICE credential listed on its own (RN, LPN, LVN) — these ARE professional licenses even when no number or state is written. Put them here with license_type set to the credential and the missing fields left null; do NOT file RN/LPN/LVN as a certification.
+  • A bare nursing/allied PRACTICE credential (RN, LPN, LVN) LISTED in a credentials/certifications/licenses section — these ARE professional licenses even when no number or state is written. Put them here with license_type set to the credential and the missing fields left null; do NOT file RN/LPN/LVN as a certification. (But post-nominals after the name alone do NOT create a license — see SOURCE OF TRUTH above.)
   Capture name, license_type (credential as written, e.g. "RN" — do NOT expand), state (as written, keep "NY"), license_number VERBATIM including any letter prefix, status ("Active"/"In progress"), and dates only if stated. Set is_compact=true ONLY if it literally says compact/multistate/eNLC.
 - An in-progress / pending licence is still captured, with status reflecting that. Never omit a licence number when one is written."""
 

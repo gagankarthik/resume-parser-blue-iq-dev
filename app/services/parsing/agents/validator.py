@@ -18,6 +18,7 @@ from app.models.schemas import ExperienceItem
 from .base import BaseAgent, TokenMeter
 from .prompts import CORE_RULES
 from .schemas import RoleBoundary
+from .work import apply_role_boundary
 
 log = get_logger(__name__)
 
@@ -86,6 +87,7 @@ class ValidatorAgent(BaseAgent):
             f"=== RESUME TEXT ===\n{text}\n=== END ===\n\nReturn ONLY this single role."
         )
         item = await self._structured_call(system, user, ExperienceItem, meter, max_tokens=4096)
-        if (not item.role) or item.role.strip().lower() == "unknown":
-            item.role = role.title or role.profession or item.role
-        return item
+        # Same structure-map reconciliation as the WorkAgent's first pass, so a
+        # re-extraction can never lose the agency/profession seeding or have the
+        # staffing agency displace the facility in `company`.
+        return apply_role_boundary(item, role)

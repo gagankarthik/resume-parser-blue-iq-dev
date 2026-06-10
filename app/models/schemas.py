@@ -102,6 +102,15 @@ def _sanitize_date(v: str | None) -> str | None:
     m = re.match(r"^(\d{1,2})[/-](\d{4})$", v)
     if m:
         return _fmt_my(int(m[1]), int(m[2]))
+    # Numeric month + 2-digit year ("4/19" → 04/2019, "12/25" → 12/2025). On a
+    # résumé this form is a month/year ("August 2018 – April 19"), not a
+    # day-of-month without a year. A modest future window keeps cert expiry
+    # dates ("exp 4/27") parseable.
+    m = re.match(r"^(\d{1,2})[/-](\d{2})$", v)
+    if m and 1 <= int(m[1]) <= 12:
+        year = _expand_yy(int(m[2]))
+        if year <= _date.today().year + 10:
+            return _fmt_my(int(m[1]), year)
 
     # Written: "Month DD, YYYY" / "Month DDth YYYY"
     m = re.match(r"^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})$", v)
@@ -113,12 +122,18 @@ def _sanitize_date(v: str | None) -> str | None:
     if m and m[1][:3].lower() in _MONTHS:
         return _fmt_my(_MONTHS[m[1][:3].lower()], int(m[2]))
 
-    # Written with a 2-digit year: "Month 'YY" (apostrophe = explicit year), or
-    # "Month YY" where YY cannot be a day-of-month (>31). A bare "Month 15" is an
-    # ambiguous day/year, so we do NOT guess a year — better None than a wrong date.
+    # Written with a 2-digit year: "Month 'YY" (apostrophe = explicit year),
+    # "Month YY" where YY cannot be a day-of-month (>31), or "Month YY" where the
+    # expanded year is in the past ("April 19" → 04/2019 — résumé date ranges end
+    # in years, and a bare day-of-month with no year is useless anyway). Only a
+    # value that would expand to a FUTURE year ("June 30" → 2030?) stays ambiguous,
+    # so we do not guess — better None than a wrong date.
     m = re.match(r"^([A-Za-z]{3,9})\.?\s+('?)(\d{2})$", v)
-    if m and m[1][:3].lower() in _MONTHS and (m[2] == "'" or int(m[3]) > 31):
-        return _fmt_my(_MONTHS[m[1][:3].lower()], _expand_yy(int(m[3])))
+    if m and m[1][:3].lower() in _MONTHS:
+        yy = int(m[3])
+        year = _expand_yy(yy)
+        if m[2] == "'" or yy > 31 or year <= _date.today().year:
+            return _fmt_my(_MONTHS[m[1][:3].lower()], year)
 
     # Year only
     m = re.match(r"^(\d{4})$", v)

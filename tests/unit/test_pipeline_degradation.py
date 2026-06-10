@@ -54,7 +54,7 @@ async def test_pipeline_degrades_to_partial_on_ai_failure(monkeypatch):
     """When BOTH the orchestrator and single-shot parse fail, run() returns a
     flagged partial result, not an error."""
 
-    async def _boom_orch(_text, _anchors):
+    async def _boom_orch(_text, _anchors, budget=None):
         raise AIParsingError("orchestrator empty")
 
     async def _boom(_sections, _anchors):
@@ -82,7 +82,7 @@ async def test_pipeline_falls_back_to_single_shot_when_orchestrator_fails(monkey
     (a clean, non-partial result) — not degrade to anchors-only."""
     from app.models.schemas import ParsedResumeAI, PersonalInfo
 
-    async def _boom_orch(_text, _anchors):
+    async def _boom_orch(_text, _anchors, budget=None):
         raise AIParsingError("orchestrator down")
 
     async def _single_shot(_sections, _anchors):
@@ -106,7 +106,7 @@ async def test_short_resume_skips_orchestrator_for_speed(monkeypatch):
     """The complexity gate must keep short résumés on the fast single-shot path."""
     from app.models.schemas import ParsedResumeAI, PersonalInfo
 
-    async def _orch(_text, _anchors):  # must NOT run for a short résumé
+    async def _orch(_text, _anchors, budget=None):  # must NOT run for a short résumé
         raise AssertionError("orchestrator must not run below multi_agent_min_chars")
 
     async def _single_shot(_sections, _anchors):
@@ -123,12 +123,53 @@ async def test_short_resume_skips_orchestrator_for_speed(monkeypatch):
     assert result.ai_tokens_used == 42
 
 
+# ── Surname/email mismatch review flag ───────────────────────────────────────
+
+def _parsed_with(name, email):
+    from app.models.schemas import ParsedResumeAI, PersonalInfo
+    return ParsedResumeAI(personal_info=PersonalInfo(full_name=name, email=email))
+
+
+def test_surname_mismatch_flagged_for_hyphenated_email():
+    # "Ricafort-Moulds" truncated to "Ricafort" in the body, but the email keeps it.
+    w = pipeline._surname_mismatch_warning(
+        _parsed_with("Rubie Ricafort", "rubie.ricafortmoulds@example.com")
+    )
+    assert w is not None and "surname" in w
+
+
+def test_surname_match_not_flagged():
+    assert pipeline._surname_mismatch_warning(
+        _parsed_with("Jane Smith", "jane.smith@example.com")
+    ) is None
+
+
+def test_surname_with_trailing_digits_not_flagged():
+    assert pipeline._surname_mismatch_warning(
+        _parsed_with("Jane Smith", "jane.smith1985@example.com")
+    ) is None
+
+
+def test_short_credential_suffix_not_flagged():
+    # "...smithrn" — a 2-letter credential tail must not trip the flag.
+    assert pipeline._surname_mismatch_warning(
+        _parsed_with("Jane Smith", "janesmithrn@example.com")
+    ) is None
+
+
+def test_firstname_after_surname_not_flagged():
+    # "Last, First" style local part: the residue is the first name, not a surname.
+    assert pipeline._surname_mismatch_warning(
+        _parsed_with("Jane Smith", "smithjane@example.com")
+    ) is None
+
+
 @pytest.mark.asyncio
 async def test_pipeline_uses_orchestrator_when_enabled(monkeypatch):
     """Happy path: orchestrator result is used and its warnings propagate."""
     from app.models.schemas import ParsedResumeAI, PersonalInfo
 
-    async def _orch(_text, _anchors):
+    async def _orch(_text, _anchors, budget=None):
         return (
             ParsedResumeAI(personal_info=PersonalInfo(full_name="Jane Smith")),
             999,

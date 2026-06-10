@@ -32,6 +32,17 @@ JITTER_FACTOR     = 0.2    # ±20 % of backoff delay
 MAX_SECTION_CHARS = 8_000  # per section — prevents token overflow for long resumes
 MAX_TOTAL_CHARS   = 24_000 # total prompt cap (≈ 6K tokens at ~4 chars/token)
 
+# One client per process — connection-pool reuse across parses (same pattern as
+# the multi-agent BaseAgent).
+_client: AsyncOpenAI | None = None
+
+
+def _get_client() -> AsyncOpenAI:
+    global _client
+    if _client is None:
+        _client = AsyncOpenAI(api_key=get_settings().openai_api_key)
+    return _client
+
 
 def _truncate_sections(sections: dict[str, str]) -> dict[str, str]:
     """Cap each section and the total to avoid hitting max_tokens."""
@@ -79,7 +90,7 @@ EXTRACTION RULES:
 - Extract ONLY what is explicitly stated. NEVER infer, guess, expand, or hallucinate. If a value is not written on the résumé, use null.
 - Use null for any field not present in the text.
 - full_name: the candidate's name ONLY. Do NOT include trailing credential, licence, or degree suffixes (e.g. "Jane Smith, RN BSN" → "Jane Smith").
-- personal_info.credentials: the post-nominal credentials that follow the name (e.g. "Jane Smith, RN, BSN, MPH, CCRN" → ["RN", "BSN", "MPH", "CCRN"]), each as a SEPARATE item in the order written. These are stripped from full_name and MUST be captured here — never drop them. Also list the same credentials/certs in skills[]/certifications[] where they belong.
+- personal_info.credentials: the post-nominal credentials that follow the name (e.g. "Jane Smith, RN, BSN, MPH, CCRN" → ["RN", "BSN", "MPH", "CCRN"]), each as a SEPARATE item in the order written. These are stripped from full_name and MUST be captured here — never drop them. Post-nominals live ONLY here: do NOT copy them into skills[], and NEVER fabricate a certifications[] or licenses[] entry from a post-nominal alone — only from items the résumé actually lists.
 - Dates — keep exactly the precision written; never invent a missing day or month:
   • Full date  → MM/DD/YYYY   (e.g. "2/16/2024" → "02/16/2024", "July 21, 2019" → "07/21/2019")
   • Month+year → MM/YYYY      (e.g. "August 2018" → "08/2018", "9/2019" → "09/2019") — do NOT add a day.
@@ -94,14 +105,14 @@ EXTRACTION RULES:
   • city, state, country, zip_code — copy the parts that appear, verbatim. Keep state as written ("NY", "VA" — do NOT expand to "New York"/"Virginia"). Leave country null unless the résumé literally names a country (do NOT assume "United States"). Never guess a ZIP from the city.
   • employer_phone — the employer/facility phone number written next to that role (verbatim, e.g. "304-287-2120"). Null if not stated. NEVER use the candidate's own contact phone here.
   • profession — the credential for that role as written (e.g. "RN", "LPN", "CRT"); do NOT expand it.
-  • specialties — the clinical units/specialties for that role (e.g. "Med Surg/Tele", "ICU"), as a list.
+  • specialties — ONLY the unit/specialty named in that role's heading/title or an explicit unit label (e.g. "Med Surg/Tele", "ICU"), as a list. Do NOT mine phrases from duty bullets — equipment, therapies, patient populations, or physician groups mentioned in a bullet are NOT specialties.
   • position_held, agency_name, shift, charting_system (Epic/Cerner/Meditech…), reason_for_leaving.
   • nurse_to_patient_ratio, facility_beds, beds_in_unit, service_type, trauma_level, additional_info.
   • teaching_facility, magnet_facility, trauma_facility — only as "Yes"/"No"/"N/A" when the resume says so, else null.
-- Skills: individual items only — not sentences. Include clinical specialties AND credentials separately.
+- Skills: individual items only — not sentences. Clinical specialties, units, and competencies. Do NOT put certifications (CPR, BLS, ACLS, PALS…), licenses, driver's licenses, or academic degrees (BSN, MSN) in skills[] — those go in certifications[]/licenses[].
 - NEVER drop an item listed under a credentials/certifications/licenses heading — each must land in skills[], certifications[], or licenses[].
 - Certifications (BLS, ACLS, PALS, CCRN, CEN, NRP, TNCC, OCN…) → certifications[] not skills[]. Also keep NON-clinical credentials that are listed (e.g. "CPR", "First Aid", "CNA", "Driver's License") in certifications[] — do not discard them just because they are not clinical or not state licenses.
-- A bare nursing/allied PRACTICE credential listed on its own (RN, LPN, LVN) is a professional license even with no number/state — put it in licenses[] with license_type set to the credential and missing fields null, NOT in certifications[].
+- A bare nursing/allied PRACTICE credential (RN, LPN, LVN) LISTED in a credentials/certifications/licenses section is a professional license even with no number/state — put it in licenses[] with license_type set to the credential and missing fields null, NOT in certifications[]. Post-nominals after the candidate's name alone do NOT create a license entry.
 - Certification dates: a bare date next to a cert (e.g. "BLS: 12/2024") is AMBIGUOUS — do NOT assume it is an expiry. Put it in the neutral `date` field. Only use `issued_date` when the résumé labels it issued/awarded/completed, and `expiry_date` only when labeled expires/valid through/renewal.
 - LICENSES vs certifications — a STATE professional license is NOT a certification; put it in licenses[], never certifications[] or skills only:
   • Any state RN/LPN/RT/etc. licence, e.g. "Florida RN License #RN9411204", "Active New York State Registered Nurse License", "Compact/Multistate RN License", "Radiologic Technologist License (TX)".
@@ -142,7 +153,7 @@ async def parse(
     Raises AIParsingError after MAX_RETRIES exhausted.
     """
     settings = get_settings()
-    client   = AsyncOpenAI(api_key=settings.openai_api_key)
+    client   = _get_client()
     prompt   = _build_prompt(sections, anchors)
     last_exc: Exception | None = None
 

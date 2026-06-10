@@ -125,11 +125,40 @@ def test_experience_month_year_date_not_padded():
 
 
 def test_ambiguous_bare_month_day_not_guessed():
-    # "June 30" could be the 30th or June 2030 — ambiguous, so don't invent a year.
+    # "June 30" could be the 30th or June 2030 — a FUTURE year, so still ambiguous
+    # and we don't guess.
     exp = ParsedResumeAI.model_validate(
         {"experience": [{"company": "X", "role": "Y", "start_date": "June 30"}]}
     ).experience[0]
     assert exp.start_date is None
+
+
+def test_written_month_past_two_digit_year_is_a_year():
+    # "August 2018 – April 19": the trailing 19 is 2019, a past year — not a day.
+    # (Regression: this end date used to sanitize to None and get lost.)
+    exp = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "Y",
+                         "start_date": "August 2018", "end_date": "April 19"}]}
+    ).experience[0]
+    assert exp.start_date == "08/2018"
+    assert exp.end_date == "04/2019"
+
+
+def test_numeric_month_two_digit_year():
+    exp = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "Y",
+                         "start_date": "8/18", "end_date": "4/19"}]}
+    ).experience[0]
+    assert exp.start_date == "08/2018"
+    assert exp.end_date == "04/2019"
+
+
+def test_numeric_two_digit_year_allows_near_future_expiry():
+    # Cert expiries are commonly written MM/YY a few years out — must parse.
+    cert = ParsedResumeAI.model_validate(
+        {"certifications": [{"name": "BLS", "expiry_date": "4/27"}]}
+    ).certifications[0]
+    assert cert.expiry_date == "04/2027"
 
 
 def test_impossible_calendar_date_rejected():

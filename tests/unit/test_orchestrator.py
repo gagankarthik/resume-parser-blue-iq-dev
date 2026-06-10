@@ -157,6 +157,50 @@ async def test_work_agent_stubs_failed_role_to_keep_alignment(monkeypatch):
     assert out[1].company == "Amedisys"                  # no shift onto the next role
 
 
+async def test_work_agent_restores_facility_when_agency_displaces_company(monkeypatch):
+    """If the model returns the staffing agency as `company`, the structure map's
+    facility name must win (regression: every travel site came back as
+    company='Supplemental Healthcare', real facility lost into description)."""
+    agent = WorkExperienceAgent()
+
+    async def fake(system, user, response_format, meter, *, max_tokens=None):
+        return ExperienceItem(
+            company="Supplemental Healthcare", role="Travel RN",
+            agency_name="Supplemental Healthcare", description=["b1"],
+        )
+
+    monkeypatch.setattr(agent, "_structured_call", fake)
+    roles = [RoleBoundary(company="Brattleboro Memorial Hospital", title="Travel RN",
+                          agency_name="Supplemental Healthcare",
+                          is_travel_assignment=True, bullet_count=1)]
+    out = await agent.run("text", roles, TokenMeter())
+
+    assert out[0].company == "Brattleboro Memorial Hospital"
+    assert out[0].agency_name == "Supplemental Healthcare"
+
+
+async def test_work_agent_clears_agency_on_standalone_employer(monkeypatch):
+    """An employer with its own title/dates (not under a travel umbrella) must not
+    inherit a neighbouring agency (the Woodlands Assisted Living mislabel)."""
+    agent = WorkExperienceAgent()
+
+    async def fake(system, user, response_format, meter, *, max_tokens=None):
+        return ExperienceItem(
+            company="Woodlands Assisted Living", role="Supervisory RN",
+            agency_name="Supplemental Healthcare",  # wrongly inherited by the model
+            employer_phone="304-287-2120", description=["b1"],
+        )
+
+    monkeypatch.setattr(agent, "_structured_call", fake)
+    roles = [RoleBoundary(company="Woodlands Assisted Living", title="Supervisory RN",
+                          start_date="03/2013", end_date="07/2015", bullet_count=1)]
+    out = await agent.run("text", roles, TokenMeter())
+
+    assert out[0].agency_name is None
+    assert out[0].company == "Woodlands Assisted Living"
+    assert out[0].employer_phone == "304-287-2120"
+
+
 # ── ValidatorAgent: bullet-count reconciliation ──────────────────────────────
 
 async def test_validator_reextracts_and_fixes_mismatch(monkeypatch):

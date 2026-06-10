@@ -138,6 +138,77 @@ def test_known_role_not_overwritten():
     assert parsed.experience[0].role == "Registered Nurse - Intensive Care Unit"
 
 
+# ── Credential casing + cross-bucket hygiene ──────────────────────────────────
+
+def test_lowercased_credentials_restored_to_canonical_case():
+    parsed = ParsedResumeAI.model_validate(
+        {"personal_info": {"full_name": "Stephanie Cinfio", "credentials": ["rn", "bsn"]}}
+    )
+    normalize(parsed)
+    assert parsed.personal_info.credentials == ["RN", "BSN"]
+
+
+def test_lowercased_license_type_uppercased():
+    parsed = ParsedResumeAI.model_validate(
+        {"licenses": [{"name": "rn", "license_type": "rn", "state": "NY"}]}
+    )
+    normalize(parsed)
+    assert parsed.licenses[0].license_type == "RN"
+    assert parsed.licenses[0].name == "RN"
+
+
+def test_practice_credential_cert_promoted_to_license():
+    # "LPN" filed under certifications is a professional licence — promote it.
+    parsed = ParsedResumeAI.model_validate(
+        {"certifications": [{"name": "LPN"}, {"name": "BLS"}]}
+    )
+    normalize(parsed)
+    assert [c.name for c in parsed.certifications] == ["BLS"]
+    assert len(parsed.licenses) == 1
+    assert parsed.licenses[0].license_type == "LPN"
+
+
+def test_practice_credential_cert_not_duplicated_when_license_exists():
+    parsed = ParsedResumeAI.model_validate(
+        {
+            "certifications": [{"name": "RN"}],
+            "licenses": [{"name": "Registered Nurse License", "license_type": "RN", "state": "NY"}],
+        }
+    )
+    normalize(parsed)
+    assert parsed.certifications == []
+    assert len(parsed.licenses) == 1          # not duplicated
+    assert parsed.licenses[0].state == "NY"   # original licence untouched
+
+
+def test_certifications_leaked_into_skills_are_removed():
+    # Items already captured as certifications must not also appear as skills.
+    parsed = ParsedResumeAI.model_validate(
+        {
+            "skills": ["ICU", "CPR Certification", "BLS Certification"],
+            "certifications": [{"name": "CPR"}, {"name": "BLS"}],
+        }
+    )
+    normalize(parsed)
+    assert parsed.skills == ["Intensive Care Unit"]
+    assert [c.name for c in parsed.certifications] == ["CPR", "BLS"]
+
+
+def test_known_cert_only_in_skills_is_moved_not_lost():
+    parsed = ParsedResumeAI.model_validate(
+        {"skills": ["ICU", "PALS", "Driver's License"], "certifications": []}
+    )
+    normalize(parsed)
+    assert parsed.skills == ["Intensive Care Unit"]
+    assert [c.name for c in parsed.certifications] == ["PALS", "Driver's License"]
+
+
+def test_degree_tokens_dropped_from_skills():
+    parsed = ParsedResumeAI.model_validate({"skills": ["bsn", "ICU"]})
+    normalize(parsed)
+    assert parsed.skills == ["Intensive Care Unit"]
+
+
 # ── Skill dedup (case-insensitive) ────────────────────────────────────────────
 
 def test_skill_deduplication():

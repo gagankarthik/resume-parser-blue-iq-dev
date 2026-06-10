@@ -18,6 +18,7 @@ Returns (ParsedResumeAI, total_tokens, warnings).
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable
 
 from app.core.exceptions import AIParsingError
@@ -54,10 +55,11 @@ _MAX_AGENT_CHARS = 30_000
 # Per-stage soft deadlines. The orchestrator bounds ITSELF so a slow stage returns
 # whatever it has (partial + warning) instead of letting the pipeline's outer
 # wait_for cancel the whole parse and discard all completed work. The sum stays
-# comfortably under the pipeline's orchestrator timeout so this graceful path wins.
-_STRUCTURE_TIMEOUT = 30   # one sequential call
-_STAGE2_TIMEOUT    = 75   # structure + per-role work fan-out + section agents
-_VALIDATOR_TIMEOUT = 25   # re-extraction of mismatched roles only
+# comfortably under the pipeline's orchestrator timeout so this graceful path wins,
+# and the whole parse stays inside the pipeline's ≤2-minute budget.
+_STRUCTURE_TIMEOUT = 20   # one sequential call
+_STAGE2_TIMEOUT    = 60   # structure + per-role work fan-out + section agents
+_VALIDATOR_TIMEOUT = 15   # re-extraction of mismatched roles only
 
 
 def _unwrap[T](result: object, default: T, agent: str, warnings: list[str]) -> T:
@@ -96,7 +98,25 @@ async def _run_sections_bounded(
     return out
 
 
-async def parse(text: str, anchors: RuleExtracted) -> tuple[ParsedResumeAI, int, list[str]]:
+def _stage_timeout(default: float, deadline: float | None, reserve: float) -> float:
+    """Cap a stage's default budget by the time left before the overall deadline,
+    holding back `reserve` seconds for the stages that follow it. Never below 5s
+    so a stage isn't started just to be cancelled immediately."""
+    if deadline is None:
+        return default
+    return max(5.0, min(default, deadline - time.monotonic() - reserve))
+
+
+async def parse(
+    text: str, anchors: RuleExtracted, budget: float | None = None
+) -> tuple[ParsedResumeAI, int, list[str]]:
+    """Parse with the multi-agent pipeline.
+
+    `budget` (seconds) is an optional overall soft deadline: per-stage timeouts
+    shrink so the orchestrator finishes (possibly partial, with warnings) inside
+    it instead of being cancelled from outside and losing completed work.
+    """
+    deadline = time.monotonic() + budget if budget else None
     meter = TokenMeter()
     warnings: list[str] = []
     text = text[:_MAX_AGENT_CHARS]
@@ -111,7 +131,11 @@ async def parse(text: str, anchors: RuleExtracted) -> tuple[ParsedResumeAI, int,
 
     # ── Stage 1: structure ────────────────────────────────────────────────────
     try:
-        structure = await asyncio.wait_for(structure_agent.run(text, meter), _STRUCTURE_TIMEOUT)
+        structure = await asyncio.wait_for(
+            structure_agent.run(text, meter),
+            # Hold back enough budget for Stage 2 to do real work.
+            _stage_timeout(_STRUCTURE_TIMEOUT, deadline, reserve=40),
+        )
     except (AIParsingError, TimeoutError) as exc:
         log.warning("structure_failed", error=str(exc))
         warnings.append("Structure mapping failed; work history extracted without per-role verification.")
@@ -132,7 +156,7 @@ async def parse(text: str, anchors: RuleExtracted) -> tuple[ParsedResumeAI, int,
             ("CredentialsAgent",   cred_agent.run(text, meter)),
             ("SupplementalAgent",  supp_agent.run(text, meter)),
         ],
-        timeout=_STAGE2_TIMEOUT,
+        timeout=_stage_timeout(_STAGE2_TIMEOUT, deadline, reserve=5),
     )
 
     pres: PersonalResult        = _unwrap(raw[0], PersonalResult(), "PersonalInfoAgent", warnings)
@@ -148,10 +172,13 @@ async def parse(text: str, anchors: RuleExtracted) -> tuple[ParsedResumeAI, int,
     supp: SupplementalResult    = _unwrap(raw[4], SupplementalResult(), "SupplementalAgent", warnings)
 
     # ── Stage 4: validation / re-extraction ───────────────────────────────────
-    if work and roles:
+    # Skipped entirely when the deadline leaves no useful time — the validator is
+    # a refinement pass, never worth jeopardising an already-complete extraction.
+    if work and roles and (deadline is None or deadline - time.monotonic() > 8):
         try:
             work, vwarn = await asyncio.wait_for(
-                validator_agent.run(work, roles, text, meter), _VALIDATOR_TIMEOUT
+                validator_agent.run(work, roles, text, meter),
+                _stage_timeout(_VALIDATOR_TIMEOUT, deadline, reserve=2),
             )
             warnings.extend(vwarn)
         except (AIParsingError, TimeoutError) as exc:
