@@ -114,7 +114,14 @@ async def batch_parse(
 
     if settings.use_lambda_worker:
         for job in accepted_jobs:
-            invoke_worker(settings, job)
+            if not invoke_worker(settings, job):
+                # Mark the job failed immediately so the batch status converges
+                # instead of counting a never-started job as "processing" forever.
+                db.update_job_failed(
+                    job["job_id"],
+                    "Background processing could not be started for this file.",
+                    ErrorCode.WORKER_DISPATCH_FAILED.value,
+                )
     else:
         background_tasks.add_task(process_batch_locally, batch_id, accepted_jobs)
 

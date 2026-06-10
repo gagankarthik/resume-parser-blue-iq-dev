@@ -45,6 +45,7 @@ class ErrorCode(StrEnum):
     PARSE_FAILED           = "PARSE_FAILED"
     EXTRACTION_TIMEOUT     = "EXTRACTION_TIMEOUT"
     PARSE_TIMEOUT          = "PARSE_TIMEOUT"
+    WORKER_DISPATCH_FAILED = "WORKER_DISPATCH_FAILED"
 
     # ── Resources ─────────────────────────────────────────────────────────────
     JOB_NOT_FOUND          = "JOB_NOT_FOUND"
@@ -103,6 +104,10 @@ _HINTS: dict[str, str] = {
     ErrorCode.BATCH_TOO_LARGE: (
         "The batch contains too many files. Maximum is 200 files per request. "
         "Split the files into multiple batch requests."
+    ),
+    ErrorCode.WORKER_DISPATCH_FAILED: (
+        "Background processing for this file could not be started. "
+        "Please retry the upload; if the problem persists, contact support."
     ),
     ErrorCode.EXTRACTION_FAILED: (
         "The resume text could not be extracted. The document may be password-protected, "

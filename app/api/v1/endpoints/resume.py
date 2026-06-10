@@ -62,7 +62,14 @@ async def _dispatch_async(
     payload: dict,
 ) -> None:
     if settings.use_lambda_worker:
-        invoke_worker(settings, payload)
+        if not invoke_worker(settings, payload):
+            # Fail the job NOW so pollers get a clear "failed" with a reason,
+            # not an eternal "processing" that only ends when the client gives up.
+            db.update_job_failed(
+                payload["job_id"],
+                "Background processing could not be started for this file.",
+                ErrorCode.WORKER_DISPATCH_FAILED.value,
+            )
     else:
         background_tasks.add_task(process_resume_async, **payload)
 

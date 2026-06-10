@@ -19,8 +19,14 @@ from app.core.logging import get_logger
 log = get_logger(__name__)
 
 
-def invoke_worker(settings, payload: dict) -> None:
-    """Fire-and-forget async (self-)invoke of the worker pipeline."""
+def invoke_worker(settings, payload: dict) -> bool:
+    """Async (self-)invoke of the worker pipeline.
+
+    Returns True when the invocation was accepted. Returns False on failure
+    (e.g. an IAM AccessDeniedException on lambda:InvokeFunction) so the caller
+    can mark the job FAILED immediately — otherwise the job sits in
+    "processing" forever and clients poll until they give up.
+    """
     client = boto3.client("lambda", region_name=settings.aws_region)
     try:
         resp = client.invoke(
@@ -31,5 +37,8 @@ def invoke_worker(settings, payload: dict) -> None:
         if resp.get("FunctionError"):
             log.error("worker_invoke_error", job_id=payload.get("job_id"),
                       function_error=resp["FunctionError"])
+            return False
+        return True
     except Exception as exc:
         log.error("worker_invoke_failed", job_id=payload.get("job_id"), error=str(exc))
+        return False
