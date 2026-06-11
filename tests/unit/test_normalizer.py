@@ -138,6 +138,49 @@ def test_known_role_not_overwritten():
     assert parsed.experience[0].role == "Registered Nurse - Intensive Care Unit"
 
 
+# ── Trauma facility inferred from a stated trauma level ───────────────────────
+
+def test_trauma_facility_backfilled_from_level():
+    # Source marks "Level 1 Trauma" but the model left trauma_facility null —
+    # a stated level means it IS a trauma facility.
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "Albany Medical Center", "role": "RN",
+                         "trauma_level": "Level 1 Trauma"}]}
+    )
+    normalize(parsed)
+    assert parsed.experience[0].trauma_facility == "Yes"
+
+
+def test_trauma_facility_explicit_no_not_overridden():
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "RN",
+                         "trauma_level": "Level II", "trauma_facility": "No"}]}
+    )
+    normalize(parsed)
+    assert parsed.experience[0].trauma_facility == "No"
+
+
+def test_trauma_facility_stays_null_without_level():
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "RN"}]}
+    )
+    normalize(parsed)
+    assert parsed.experience[0].trauma_facility is None
+
+
+# ── Description bullets: intra-bullet PDF line-wrap is collapsed ───────────────
+
+def test_description_embedded_newline_collapsed():
+    # A PDF line-wrap inside one bullet must become a single space, not a
+    # literal newline left in the array item.
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "RN",
+                         "description": ["Charted vitals ensuring\naccurate documentation"]}]}
+    )
+    normalize(parsed)
+    assert parsed.experience[0].description == ["Charted vitals ensuring accurate documentation"]
+
+
 # ── Credential casing + cross-bucket hygiene ──────────────────────────────────
 
 def test_lowercased_credentials_restored_to_canonical_case():

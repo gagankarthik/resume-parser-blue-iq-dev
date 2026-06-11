@@ -14,7 +14,8 @@ _SYSTEM = f"""You extract the EDUCATION section of a healthcare résumé into {{
 
 RULES:
 - One entry per institution/degree. Capture institution, degree, field_of_study, start_year, graduation_year, gpa — only when stated.
-- A degree "in progress" (e.g. "MSN in progress / expected 2027") IS included; put the expected year in graduation_year only if a year is given, else leave it null. Never drop an in-progress degree."""
+- A degree "in progress" (e.g. "MSN in progress / expected 2027") IS included; put the expected year in graduation_year only if a year is given, else leave it null. Never drop an in-progress degree.
+- An academic DEGREE belongs here even when the résumé lists it under a different heading. Capture any degree (ADN, BSN, "Bachelors Degree in Science of Nursing", MSN, etc.) wherever it appears — including under a CERTIFICATIONS, LICENSES, or CREDENTIALS section — not only under an "Education" header. A diploma/degree is education, never a certification."""
 
 
 class EducationAgent(BaseAgent):

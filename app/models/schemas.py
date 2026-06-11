@@ -395,9 +395,13 @@ class ExperienceItem(BaseModel):
             # Split on line breaks and true bullet glyphs only. The middle dot '·'
             # is excluded — it is commonly an inline separator ("Charge nurse · ICU").
             parts = re.split(r"[\r\n]+|\s*[•▪◦‣]\s*", v.strip())
-            return [s for p in parts if (s := re.sub(r"^[-*]\s+", "", p).strip())]
-        items = _coerce_list(v)
-        return [s for i in items if isinstance(i, str) and (s := i.strip())]
+            cleaned = (re.sub(r"^[-*]\s+", "", p) for p in parts)
+        else:
+            cleaned = (i for i in _coerce_list(v) if isinstance(i, str))
+        # Collapse intra-bullet whitespace so a PDF line-wrap inside one bullet
+        # ("ensuring\naccurate documentation") becomes a single space, not a
+        # literal newline left in the string.
+        return [s for c in cleaned if (s := re.sub(r"\s+", " ", c).strip())]
 
     @field_validator("achievements", mode="before")
     @classmethod

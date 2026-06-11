@@ -316,6 +316,13 @@ def _normalize_experience(exp: ExperienceItem) -> None:
     if exp.profession:
         exp.profession = _fix_credential_case(exp.profession)
 
+    # A stated trauma LEVEL means the site IS a trauma facility — backfill the
+    # flag the model commonly leaves null when it only captured the level
+    # (e.g. "Level 1 Trauma" with trauma_facility=None). Never override an
+    # explicit "No"/"N/A" already extracted.
+    if exp.trauma_level and exp.trauma_facility is None:
+        exp.trauma_facility = "Yes"
+
     # Map each per-role specialty to its canonical taxonomy name (dedup, in order)
     if exp.specialties:
         exp.specialties = _normalize_skills(exp.specialties)
