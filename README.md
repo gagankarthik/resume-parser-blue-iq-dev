@@ -24,7 +24,7 @@ specialties to a controlled vocabulary the placement platform can match on.
 
 | Area | What you get |
 |---|---|
-| **Formats** | Digital PDF, DOCX, and scanned PDF / PNG / JPG / TIFF / WEBP (OCR) |
+| **Formats** | Digital PDF, DOCX, RTF, and scanned PDF / PNG / JPG / TIFF / WEBP (OCR) |
 | **Accuracy** | Multi-agent extraction with per-role work history and bullet-count verification |
 | **Healthcare domain** | 350+ specialty taxonomy, credential & state-licence capture, Work History field mapping |
 | **Resilience** | Three-tier graceful degradation — never returns "nothing" on a hard résumé |
@@ -299,6 +299,7 @@ All endpoints are under `/api/v1`. Parsing endpoints authenticate with `X-API-Ke
 |---|---|---|
 | PDF (digital) | Synchronous | Layout-aware, multi-column reading order |
 | DOCX | Synchronous | Paragraphs + table cells in document order |
+| RTF | Synchronous | Control words stripped, paragraph breaks preserved |
 | PDF (scanned) | Asynchronous | Tiered OCR with automatic Textract escalation |
 | PNG · JPG · TIFF · WEBP | Asynchronous | Image preprocessing + OCR; multi-page TIFF supported |
 

@@ -24,7 +24,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AIParsingError, ExtractionError
 from app.core.logging import get_logger
 from app.models.schemas import ConfidenceScores, ParsedResumeAI, PersonalInfo
-from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor
+from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor, rtf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
 from app.services.normalization.normalizer import normalize
 from app.services.parsing import ai_parser, orchestrator, rule_parser, section_detector
@@ -118,6 +118,11 @@ async def run(inp: PipelineInput) -> PipelineResult:
         elif strategy == ExtractionStrategy.DOCX:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, docx_extractor.extract, inp.content),
+                timeout=_TIMEOUT_EXTRACTION,
+            )
+        elif strategy == ExtractionStrategy.RTF:
+            raw_text = await asyncio.wait_for(
+                loop.run_in_executor(None, rtf_extractor.extract, inp.content),
                 timeout=_TIMEOUT_EXTRACTION,
             )
         else:

@@ -10,6 +10,17 @@ def test_docx_classified_as_docx():
     assert needs_async is False
 
 
+def test_rtf_classified_as_rtf():
+    strategy, needs_async = classify("resume.rtf", b"{\\rtf1\\ansi Hello}")
+    assert strategy == ExtractionStrategy.RTF
+    assert needs_async is False
+
+
+def test_rtf_extension_with_wrong_content_raises():
+    with pytest.raises(UnsupportedFileTypeError):
+        classify("resume.rtf", b"%PDF-1.7 not actually rtf")
+
+
 def test_unsupported_extension_raises():
     with pytest.raises(UnsupportedFileTypeError):
         classify("resume.txt", b"some content")

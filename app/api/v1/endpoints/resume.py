@@ -99,8 +99,8 @@ async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
     response_model=ParseResponse,
     summary="Parse a resume",
     description=(
-        "Upload a single resume (PDF, DOCX, PNG, JPG, TIFF). "
-        "Digital PDFs and DOCX files are processed **synchronously** and the parsed JSON "
+        "Upload a single resume (PDF, DOCX, RTF, PNG, JPG, TIFF). "
+        "Digital PDFs, DOCX, and RTF files are processed **synchronously** and the parsed JSON "
         "is returned immediately. "
         "Scanned PDFs and images require OCR and are processed **asynchronously** — "
         "a `job_id` is returned and results are delivered via webhook and the polling endpoint."
@@ -109,7 +109,7 @@ async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
 )
 async def parse_resume(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(..., description="Resume file: PDF, DOCX, PNG, JPG, or TIFF"),
+    file: UploadFile = File(..., description="Resume file: PDF, DOCX, RTF, PNG, JPG, or TIFF"),
     force_textract: bool = Form(
         False,
         description="Skip Tesseract and use AWS Textract directly for any OCR this "
@@ -184,7 +184,7 @@ async def create_upload_url(
         raise api_error(
             415, ErrorCode.UNSUPPORTED_FILE_TYPE,
             f"Unsupported file extension for '{payload.filename}'. "
-            "Accepted: .pdf, .docx, .png, .jpg, .jpeg, .tiff, .webp",
+            "Accepted: .pdf, .docx, .rtf, .png, .jpg, .jpeg, .tiff, .webp",
         )
 
     job_id    = str(ULID())
@@ -212,7 +212,7 @@ async def create_upload_url(
     summary="Parse a file uploaded via a presigned URL",
     description=(
         "Parse a resume that was uploaded with `/resume/upload-url`. "
-        "Behaves exactly like `/resume/parse`: digital PDF/DOCX return the parsed JSON "
+        "Behaves exactly like `/resume/parse`: digital PDF/DOCX/RTF return the parsed JSON "
         "**synchronously**; scanned PDFs and images return a `job_id` for "
         "**asynchronous** (OCR) processing via webhook + polling."
     ),

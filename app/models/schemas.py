@@ -810,7 +810,7 @@ class UploadUrlRequest(BaseModel):
 
     filename: str = Field(
         ...,
-        description="Original filename including extension (.pdf, .docx, .png, .jpg, .jpeg, .tiff, .webp)",
+        description="Original filename including extension (.pdf, .docx, .rtf, .png, .jpg, .jpeg, .tiff, .webp)",
         examples=["jane_smith_rn.pdf"],
     )
 

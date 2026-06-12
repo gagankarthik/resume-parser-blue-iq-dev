@@ -56,7 +56,7 @@ X-API-Key: rp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 | Constraint | Value |
 |---|---|
 | Field name | `file` |
-| Supported types | `.pdf`, `.docx`, `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.webp` |
+| Supported types | `.pdf`, `.docx`, `.rtf`, `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.webp` |
 | Max size | **~6 MB** on this endpoint (the Lambda Function URL caps request bodies at the edge). For files up to **10 MB**, use the [large-file upload flow](#3a-large-file-upload-over-6-mb). |
 
 Files are validated by **magic bytes**, not just extension — a renamed file is rejected.
@@ -65,7 +65,7 @@ Files are validated by **magic bytes**, not just extension — a renamed file is
 
 The processing path is chosen automatically from the file:
 
-- **Digital PDF / DOCX → synchronous.** The full result is in the response.
+- **Digital PDF / DOCX / RTF → synchronous.** The full result is in the response.
 - **Scanned PDF / image → asynchronous** (OCR is slow). You get a `job_id`;
   fetch the result by polling (Section 4) or via a webhook (Section 6).
 

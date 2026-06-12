@@ -7,6 +7,7 @@ This validates the actual binary signature of the file content before processing
 Supported types and their signatures:
   PDF  : %PDF  (0x25 50 44 46)
   DOCX : PK\x03\x04  (ZIP archive — DOCX/XLSX/PPTX are ZIP containers)
+  RTF  : {\rtf
   PNG  : \x89PNG\r\n\x1a\n
   JPEG : \xFF\xD8\xFF
   TIFF : II (little-endian) or MM (big-endian)
@@ -18,6 +19,7 @@ from app.core.exceptions import UnsupportedFileTypeError
 _SIGNATURES: dict[str, list[bytes]] = {
     "pdf":  [b"%PDF"],
     "docx": [b"PK\x03\x04"],   # ZIP container
+    "rtf":  [b"{\\rtf"],
     "png":  [b"\x89PNG\r\n\x1a\n"],
     "jpeg": [b"\xff\xd8\xff"],
     "tiff": [b"II*\x00", b"MM\x00*"],
@@ -27,6 +29,7 @@ _SIGNATURES: dict[str, list[bytes]] = {
 _EXT_TO_TYPE: dict[str, str] = {
     ".pdf":  "pdf",
     ".docx": "docx",
+    ".rtf":  "rtf",
     ".png":  "png",
     ".jpg":  "jpeg",
     ".jpeg": "jpeg",
@@ -48,7 +51,7 @@ def validate_file(filename: str, content: bytes) -> str:
     if ext not in _EXT_TO_TYPE:
         raise UnsupportedFileTypeError(
             f"Unsupported file extension '{ext}'. "
-            "Accepted: .pdf, .docx, .png, .jpg, .jpeg, .tiff, .webp"
+            "Accepted: .pdf, .docx, .rtf, .png, .jpg, .jpeg, .tiff, .webp"
         )
 
     declared_type = _EXT_TO_TYPE[ext]
