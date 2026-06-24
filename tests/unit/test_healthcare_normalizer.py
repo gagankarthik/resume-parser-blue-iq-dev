@@ -92,6 +92,17 @@ def test_med_surg_expands():
     result = _normalize_skills(["Med Surg"])
     assert result == ["Medical Surgical"]
 
+def test_med_surg_hyphenated_expands():
+    # "Med-Surg" (hyphen) must resolve the same as "Med Surg" / "Med/Surg".
+    assert _normalize_skills(["Med-Surg"]) == ["Medical Surgical"]
+    assert _normalize_skills(["med-surg"]) == ["Medical Surgical"]
+    assert _normalize_skills(["Med/Surg"]) == ["Medical Surgical"]
+
+def test_hyphen_and_space_are_equivalent():
+    # Hyphen vs space must not change resolution for multi-word specialties.
+    assert _normalize_skills(["Med - Surg"]) == ["Medical Surgical"]
+    assert _normalize_skills(["Med-Surg", "Med Surg"]) == ["Medical Surgical"]
+
 def test_ob_gyn_expands():
     result = _normalize_skills(["OB/GYN"])
     assert result == ["Obstetrics and Gynecology"]
