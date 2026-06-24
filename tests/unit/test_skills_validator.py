@@ -145,3 +145,34 @@ def test_paren_social_worker_recognized():
 def test_dietary_group_populated():
     result = _validate(["Dietician"])
     assert result.groups["Dietician"] == "Dietary"
+
+
+# ── Common shorthand / synonym variants seen on real resumes ──────────────────
+
+def test_ampersand_matches_and():
+    # "Labor & Delivery" must resolve like "Labor and Delivery".
+    result = _validate(["Labor & Delivery"])
+    assert result.recognized == ["Labor and Delivery"]
+    assert result.groups["Labor and Delivery"] == "Labor and Delivery"
+
+
+def test_l_and_d_abbreviation_recognized():
+    result = _validate(["L&D"])
+    assert result.recognized == ["Labor and Delivery"]
+
+
+def test_critical_care_shorthand_recognized():
+    result = _validate(["Critical Care"])
+    assert result.recognized == ["Critical Care Unit"]
+    assert result.groups["Critical Care Unit"] == "ICU"
+
+
+def test_psych_synonym_recognized():
+    for term in ("Psych", "Psychiatric"):
+        result = _validate([term])
+        assert result.recognized == ["Behavioral Health"]
+
+
+def test_step_down_spacing_variant_recognized():
+    result = _validate(["Step Down"])
+    assert result.recognized == ["Stepdown"]

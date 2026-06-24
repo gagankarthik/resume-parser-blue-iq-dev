@@ -12,6 +12,7 @@ from a browser directly — the platform's backend holds the admin token.
   GET    /api/v1/admin/companies/{company_id}/keys    list a company's keys (no raw)
   POST   /api/v1/admin/keys/{key_hash}/revoke         revoke a key
   GET    /api/v1/admin/companies/{company_id}/usage   usage + token stats
+  GET    /api/v1/admin/companies/{company_id}/logs    recent activity (per-key attributed)
 """
 
 import re
@@ -159,6 +160,10 @@ async def company_logs(company_id: str, days: int = 30, limit: int = 100) -> lis
             "ocr_used": bool(r.get("ocr_used")),
             "ai_tokens_used": int(r.get("ai_tokens_used", 0) or 0),
             "error_code": r.get("error_code", ""),
+            # Key that produced the job, so the platform can break usage down
+            # per key. Empty for legacy/unattributed records.
+            "key_hash": r.get("key_hash", ""),
+            "key_prefix": r.get("key_prefix", ""),
         }
         for r in logs[:limit]
     ]

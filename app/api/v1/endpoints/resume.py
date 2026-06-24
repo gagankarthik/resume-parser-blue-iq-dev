@@ -139,6 +139,7 @@ async def parse_resume(
             file_type=result.file_type, file_size_bytes=len(content),
             status="completed", duration_ms=result.duration_ms,
             ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
+            key_hash=record["key_hash"], key_prefix=record.get("key_prefix", ""),
         )
         return ParseResponse(job_id=job_id, status="completed",
                              data=result.parsed, confidence=result.confidence,
@@ -151,6 +152,7 @@ async def parse_resume(
         "job_id": job_id, "company_id": company_id, "s3_key": s3_key,
         "filename": filename, "file_size_bytes": len(content),
         "force_textract": force_textract,
+        "key_hash": record["key_hash"], "key_prefix": record.get("key_prefix", ""),
     })
     return ParseResponse(job_id=job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{job_id}")
@@ -279,6 +281,7 @@ async def parse_uploaded(
             file_type=result.file_type, file_size_bytes=len(content),
             status="completed", duration_ms=result.duration_ms,
             ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
+            key_hash=record["key_hash"], key_prefix=record.get("key_prefix", ""),
         )
         s3_client.delete_file(s3_key)
         return ParseResponse(job_id=payload.job_id, status="completed",
@@ -291,6 +294,7 @@ async def parse_uploaded(
         "job_id": payload.job_id, "company_id": company_id, "s3_key": s3_key,
         "filename": filename, "file_size_bytes": len(content),
         "force_textract": payload.force_textract,
+        "key_hash": record["key_hash"], "key_prefix": record.get("key_prefix", ""),
     })
     return ParseResponse(job_id=payload.job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{payload.job_id}")
@@ -406,6 +410,7 @@ async def retry_parse(
             file_type=result.file_type, file_size_bytes=len(content),
             status="completed", duration_ms=result.duration_ms,
             ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
+            key_hash=record["key_hash"], key_prefix=record.get("key_prefix", ""),
         )
         db.update_job_completed(new_job_id, {
             "data": result.parsed.model_dump(),
@@ -425,6 +430,7 @@ async def retry_parse(
         "job_id": new_job_id, "company_id": company_id, "s3_key": s3_key,
         "filename": filename, "file_size_bytes": len(content),
         "force_textract": force_textract,
+        "key_hash": record["key_hash"], "key_prefix": record.get("key_prefix", ""),
     })
     return RetryResponse(
         job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,

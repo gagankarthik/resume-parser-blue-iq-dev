@@ -15,6 +15,8 @@ Expected event payload:
     "file_size_bytes": 204800,
     "batch_id":        "01J3K5..."   (optional)
     "force_textract":  false          (optional — skip Tesseract, use Textract)
+    "key_hash":        "..."          (optional — attribute usage to the API key)
+    "key_prefix":      "rp_live_ab"   (optional — display prefix for the key)
   }
 """
 
@@ -56,6 +58,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 file_size_bytes=int(event["file_size_bytes"]),
                 batch_id=event.get("batch_id"),
                 force_textract=bool(event.get("force_textract", False)),
+                key_hash=event.get("key_hash", ""),
+                key_prefix=event.get("key_prefix", ""),
             )
         )
     except Exception as exc:

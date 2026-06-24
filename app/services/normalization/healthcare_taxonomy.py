@@ -63,6 +63,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "cticu": "Cardiothoracic Intensive Care Unit",
     "ct icu": "Cardiothoracic Intensive Care Unit",
     "ccu": "Critical Care Unit",
+    "critical care": "Critical Care Unit",
     "chemo": "Chemotherapy",
     "covid icu": "Intensive Care Unit",
     "cvcc": "Cardiovascular Critical Care",
@@ -83,6 +84,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "icu": "Intensive Care Unit",
     "icu float": "Intensive Care Unit Float",
     "imcu": "Intermediate Care Unit",
+    "l&d": "Labor and Delivery",
     "ltac": "Long-Term Acute Care",
     "ltac icu": "Long-Term Acute Care Intensive Care Unit",
     "ltac telemetry": "Long-Term Acute Care Telemetry",
@@ -120,11 +122,15 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "preop": "Pre-Operative",
     "pre-op": "Pre-Operative",
     "pre op": "Pre-Operative",
+    "psych": "Behavioral Health",
+    "psychiatric": "Behavioral Health",
+    "psychiatry": "Behavioral Health",
     "rnfa": "Registered Nurse First Assistant",
     "rn first assistant": "Registered Nurse First Assistant",
     "sicu": "Surgical Intensive Care Unit",
     "surgical icu": "Surgical Intensive Care Unit",
     "snf": "Skilled Nursing Facility",
+    "step down": "Stepdown",
     "tcu": "Transitional Care Unit",
     "transitional care": "Transitional Care Unit",
     "tele": "Telemetry",
@@ -723,18 +729,28 @@ ALL_SPECIALTIES: list[str] = list(dict.fromkeys(NURSING_SPECIALTIES + ALLIED_HEA
 # ── Punctuation-robust matching ───────────────────────────────────────────────
 # Resumes and the source spreadsheet disagree on punctuation: en-dash vs hyphen
 # ("Ultrasound Tech – General" vs "...- General"), slash spacing ("Med Surg / Tele"
-# vs "Med Surg/ Tele"). We match on a normalized key so every variant resolves to
-# the same canonical name without enumerating each spelling.
+# vs "Med Surg/ Tele"), hyphen-vs-space ("Med-Surg" vs "Med Surg"), and ampersand
+# vs "and" ("Labor & Delivery" vs "Labor and Delivery"). We match on a normalized
+# key so every variant resolves to the same canonical name without enumerating
+# each spelling.
 
 
 def _match_key(s: str) -> str:
-    """Punctuation/whitespace-insensitive lookup key for a specialty string."""
+    """Punctuation/whitespace-insensitive lookup key for a specialty string.
+
+    Hyphens and whitespace are treated as the same separator, so "Med-Surg",
+    "Med Surg", and "Med - Surg" all collapse to one key. An ampersand is treated
+    as "and" ("Labor & Delivery" → "Labor and Delivery"). Slashes are kept (they
+    are meaningful — "Med Surg / Tele" — but their surrounding spacing is removed).
+    Both the canonical names and the lookup string get this treatment, so the
+    transform stays internally consistent.
+    """
     s = s.replace("–", "-").replace("—", "-")  # en/em dash → hyphen
     s = s.lower().strip()
+    s = s.replace("&", " and ")      # ampersand ≡ "and" (Labor & Delivery)
     s = re.sub(r"\s*/\s*", "/", s)   # collapse spacing around slashes
-    s = re.sub(r"\s*-\s*", "-", s)   # collapse spacing around hyphens
-    s = re.sub(r"\s+", " ", s)
-    return s
+    s = re.sub(r"[\s-]+", " ", s)    # hyphens + whitespace → single space
+    return s.strip()
 
 
 _SPECIALTY_BY_KEY:   dict[str, str] = {_match_key(s): s for s in ALL_SPECIALTIES}

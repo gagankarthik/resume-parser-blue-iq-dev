@@ -391,25 +391,35 @@ def write_audit_log(
     ocr_used: bool = False,
     ai_tokens_used: int = 0,
     error_code: str = "",
+    key_hash: str = "",
+    key_prefix: str = "",
 ) -> None:
-    """Write an audit record — never stores resume content."""
+    """Write an audit record — never stores resume content.
+
+    key_hash / key_prefix attribute the job to the API key that produced it, so
+    the admin platform can break usage down per key. Both are optional: legacy
+    records and any path without an authenticated key simply omit them.
+    """
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_audit_logs)
+    item = {
+        "job_id": job_id,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "company_id": company_id,
+        "file_type": file_type,
+        "file_size_bytes": file_size_bytes,
+        "status": status,
+        "duration_ms": duration_ms,
+        "ocr_used": ocr_used,
+        "ai_tokens_used": ai_tokens_used,
+        "error_code": error_code,
+    }
+    if key_hash:
+        item["key_hash"] = key_hash
+    if key_prefix:
+        item["key_prefix"] = key_prefix
     try:
-        table.put_item(
-            Item={
-                "job_id": job_id,
-                "timestamp": datetime.now(UTC).isoformat(),
-                "company_id": company_id,
-                "file_type": file_type,
-                "file_size_bytes": file_size_bytes,
-                "status": status,
-                "duration_ms": duration_ms,
-                "ocr_used": ocr_used,
-                "ai_tokens_used": ai_tokens_used,
-                "error_code": error_code,
-            }
-        )
+        table.put_item(Item=item)
     except ClientError as exc:
         log.error("audit_log_write_failed", job_id=job_id, error=str(exc))
 
