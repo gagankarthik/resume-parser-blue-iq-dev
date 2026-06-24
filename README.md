@@ -237,13 +237,20 @@ debugging, and capacity planning — and nothing sensitive:
 
 ```
 job_id · company_id · file_type · file_size · status · duration_ms ·
-ocr_used · ai_tokens_used · error_code · timestamp
+ocr_used · ai_tokens_used · error_code · timestamp · key_hash · key_prefix
 ```
+
+`key_hash` / `key_prefix` attribute each job to the API key that produced it (across the sync,
+async, retry, and batch paths). They are omitted on legacy records and any path without an
+authenticated key. The admin platform uses them to break usage down **per key** — see
+`GET /api/v1/admin/companies/{company_id}/logs`, which returns both fields alongside per-job
+token counts.
 
 ### Token & usage accounting
 LLM token consumption is metered across **every** model call — including each agent in the
 multi-agent path — aggregated per job, and recorded on the audit log. Per-company usage and token
-totals are queryable through the usage endpoints, giving a precise, tenant-level cost view.
+totals are queryable through the usage endpoints, and per-key totals can be rolled up from the
+admin logs endpoint — giving a precise, tenant- and key-level cost view.
 
 ### Correction feedback loop
 After a reviewer edits a parsed record, the original and corrected JSON can be submitted back to

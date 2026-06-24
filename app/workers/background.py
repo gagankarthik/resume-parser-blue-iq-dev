@@ -38,6 +38,8 @@ async def process_resume_async(
     file_size_bytes: int,
     batch_id: str | None = None,
     force_textract: bool = False,
+    key_hash: str = "",
+    key_prefix: str = "",
 ) -> None:
     """
     Full pipeline for one resume file.
@@ -113,6 +115,8 @@ async def process_resume_async(
                 ocr_used=result.ocr_used if result else False,
                 ai_tokens_used=result.ai_tokens_used if result else 0,
                 error_code=error_code,
+                key_hash=key_hash,
+                key_prefix=key_prefix,
             )
         except Exception as exc:
             log.error("audit_log_failed", job_id=job_id, error=str(exc))

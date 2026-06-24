@@ -75,6 +75,24 @@ async def test_company_logs_respects_limit(monkeypatch):
     assert len(out) == 2
 
 
+async def test_company_logs_surface_key_attribution(monkeypatch):
+    """key_hash / key_prefix are passed through so the platform can break usage
+    down per key; legacy records without them default to empty strings."""
+    logs = [
+        {"job_id": "1", "timestamp": "2026-06-07T10:00:00",
+         "key_hash": "abc123", "key_prefix": "rp_live_ab"},
+        {"job_id": "2", "timestamp": "2026-06-06T10:00:00"},  # legacy, unattributed
+    ]
+    monkeypatch.setattr(admin.db, "get_audit_logs_for_company", lambda cid, since: logs)
+
+    out = await admin.company_logs("acme", days=30, limit=10)
+    by_id = {r["job_id"]: r for r in out}
+    assert by_id["1"]["key_hash"] == "abc123"
+    assert by_id["1"]["key_prefix"] == "rp_live_ab"
+    assert by_id["2"]["key_hash"] == ""
+    assert by_id["2"]["key_prefix"] == ""
+
+
 # ── Deactivation enforcement in API-key auth ──────────────────────────────────
 
 def test_company_is_active_blocks_disabled(monkeypatch):

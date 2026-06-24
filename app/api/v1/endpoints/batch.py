@@ -94,6 +94,8 @@ async def batch_parse(
             "filename": filename,
             "file_size_bytes": len(content),
             "batch_id": batch_id,
+            "key_hash": record["key_hash"],
+            "key_prefix": record.get("key_prefix", ""),
         })
 
     total = len(accepted_jobs)

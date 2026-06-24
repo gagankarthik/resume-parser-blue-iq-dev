@@ -40,6 +40,8 @@ async def _process_one(sem: asyncio.Semaphore, job: dict[str, Any]) -> None:
             filename=job["filename"],
             file_size_bytes=job["file_size_bytes"],
             batch_id=job.get("batch_id"),
+            key_hash=job.get("key_hash", ""),
+            key_prefix=job.get("key_prefix", ""),
         )
 
 
