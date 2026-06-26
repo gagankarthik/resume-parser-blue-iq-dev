@@ -94,6 +94,21 @@ class Settings(BaseSettings):
     # actually benefit. Set to 0 to always use multi-agent (when enabled).
     multi_agent_min_chars: int = 3500
 
+    # Specialty → ID matching
+    # Path to the specialty reference catalog (JSON list, or CSV) of
+    # {id, specialty, full_name, keywords[], group?} used to map each per-role
+    # specialty to a platform specialty id. When unset/missing, the matcher still
+    # resolves canonical specialty NAMES + confidence from the built-in taxonomy
+    # but leaves specialty_id null (matched=False) for admin review.
+    specialty_catalog_path: str | None = None
+    # When True, specialties that miss the deterministic tiers (name/full_name/
+    # keywords) are resolved by one batched LLM call against a filtered shortlist
+    # from the catalog. No-op when the catalog is empty or nothing is unmatched.
+    enable_ai_specialty_match: bool = True
+    # Upper bound on how many catalog candidates are offered to the AI shortlist
+    # tier in one call (keeps the prompt and token cost bounded).
+    specialty_ai_shortlist_max: int = 60
+
     # Processing limits
     # The direct multipart endpoint (POST /resume/parse) is still bounded by the
     # Lambda Function URL's ~6 MB request cap, so files larger than that must use

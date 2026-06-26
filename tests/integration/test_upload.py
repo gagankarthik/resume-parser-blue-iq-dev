@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 import app.api.dependencies as deps
 import app.api.v1.endpoints.resume as resume
+import app.services.application.resume_service as resume_service
 from app.main import app
 from app.models.schemas import ConfidenceScores, ParsedResumeAI
 from app.services.pipeline import PipelineResult
@@ -158,7 +159,7 @@ def test_parse_uploaded_async_path_dispatches(monkeypatch):
     async def _fake_dispatch(settings, background_tasks, payload):
         dispatched.update(payload)
 
-    monkeypatch.setattr(resume, "_dispatch_async", _fake_dispatch)
+    monkeypatch.setattr(resume_service, "dispatch_async", _fake_dispatch)
 
     resp = client.post(
         "/api/v1/resume/parse-uploaded",
@@ -194,7 +195,7 @@ def test_parse_uploaded_sync_path_returns_result(monkeypatch):
     async def _fake_pipeline(inp):
         return result
 
-    monkeypatch.setattr(resume, "run_pipeline", _fake_pipeline)
+    monkeypatch.setattr(resume_service, "run_pipeline", _fake_pipeline)
 
     completed: dict = {}
     monkeypatch.setattr(resume.db, "update_job_completed", lambda jid, r: completed.update(jid=jid))

@@ -328,7 +328,17 @@ There are no request-rate limits on the API. Please still upload responsibly
       "state": "CA",
       "country": null,
       "zip_code": "94105",
-      "specialties": ["Med Surg / Tele"],
+      "specialties": [
+        {
+          "name": "Med Surg / Tele",
+          "raw": "Med Surg/Tele",
+          "specialty_id": "1042",
+          "group": "Med Surg / Tele",
+          "confidence": 1.0,
+          "matched": true,
+          "match_tier": "name"
+        }
+      ],
       "description": ["Led backend architecture.", "Owned the payments service."],
       "achievements": ["Reduced API latency by 40%", "Mentored 4 engineers"]
     }
@@ -365,6 +375,16 @@ inferred or expanded (`"VA"` stays `"VA"`; `country` is `null` unless the résum
 
 **Experience `description`** is an **array of strings** — one item per bullet, copied as
 written (a multi-sentence bullet stays a single item).
+
+**Experience `specialties`** is an **array of objects**, one per clinical specialty/unit
+for that role (e.g. `{ "name": "Med Surg / Tele", "specialty_id": "1042", "group":
+"Med Surg / Tele", "confidence": 1.0, "matched": true, "match_tier": "name" }`). Each
+specialty is cleaned and mapped to a specialty id via a tiered match — (1) specialty name,
+(2) fuller name, (3) keywords, then (4) an AI shortlist pick for anything still unresolved.
+`match_tier` reports which tier fired and `confidence` (`0.0–1.0`) its strength. A specialty
+that maps to the catalog returns with a `specialty_id`; one that does **not** is still
+returned with `specialty_id: null` and `matched: false` (never dropped) so it can be queued
+for admin review. `raw` preserves the original text as written.
 
 **Certifications**: a bare date next to a cert (e.g. `"BLS: 12/2024"`) is ambiguous, so it
 is placed in the neutral `date` field — `issued_date`/`expiry_date` are set only when the

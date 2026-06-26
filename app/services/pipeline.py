@@ -10,6 +10,7 @@ Steps (all with per-step timeouts):
   6. AI parsing (async, GPT-4o structured output)
   7. Pydantic validation
   8. Normalization (healthcare specialties, degrees, dates)
+  8b. Specialty → catalog-id matching (deterministic tiers + batched AI tier)
   9. Confidence scoring
 
 Nothing is stored — raw content is never written to disk or database.
@@ -26,6 +27,7 @@ from app.core.logging import get_logger
 from app.models.schemas import ConfidenceScores, ParsedResumeAI, PersonalInfo
 from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor, rtf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
+from app.services.normalization import specialty_matcher
 from app.services.normalization.normalizer import normalize
 from app.services.parsing import ai_parser, orchestrator, rule_parser, section_detector
 from app.services.scoring.confidence_scorer import score
@@ -205,6 +207,21 @@ async def run(inp: PipelineInput) -> PipelineResult:
 
     # ── 7–9. Normalize + score ────────────────────────────────────────────────
     normalized = normalize(parsed_ai)
+
+    # Tier-4 specialty resolution: one batched LLM call maps any per-role specialty
+    # the deterministic tiers missed to a catalog id (no-op without a catalog or
+    # when nothing is unmatched). Best-effort and time-bounded — a failure leaves
+    # the deterministic matches intact and never fails the parse.
+    spec_budget = _remaining() - 5  # keep a little headroom for scoring
+    if spec_budget > 0:
+        try:
+            tokens += await asyncio.wait_for(
+                specialty_matcher.resolve_unmatched_with_ai(normalized, budget=spec_budget),
+                timeout=spec_budget,
+            )
+        except Exception as exc:  # noqa: BLE001 — tier 4 is optional, never fatal
+            log.warning("specialty_ai_tier_skipped", job_id=inp.job_id, error=str(exc))
+
     confidence = score(normalized)
 
     mismatch = _surname_mismatch_warning(normalized)

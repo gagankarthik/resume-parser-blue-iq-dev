@@ -71,7 +71,10 @@ def test_experience_work_history_fields_round_trip():
     assert exp.city == "Knoxville"
     assert exp.zip_code == "37916"
     assert exp.profession == "RN"
-    assert exp.specialties == ["Med Surg/ Tele"]  # canonicalized later by the normalizer
+    # specialties coerce to SpecialtyMatch objects (name only; id/confidence filled
+    # later by the normalizer's matcher).
+    assert [s.name for s in exp.specialties] == ["Med Surg/ Tele"]
+    assert exp.specialties[0].specialty_id is None
     assert exp.charting_system == "Epic"
 
 
@@ -111,7 +114,21 @@ def test_experience_specialties_canonicalized_by_normalizer():
         {"experience": [{"company": "X", "role": "RN", "specialties": ["Med Surg/ Tele", "ICU"]}]}
     )
     normalize(parsed)
-    assert parsed.experience[0].specialties == ["Med Surg / Tele", "Intensive Care Unit"]
+    specs = parsed.experience[0].specialties
+    # Names canonicalised; without a catalog these resolve by name (id stays null).
+    assert [s.name for s in specs] == ["Med Surg / Tele", "Intensive Care Unit"]
+    assert all(s.specialty_id is None and s.match_tier == "name" for s in specs)
+    assert all(s.confidence == 1.0 for s in specs)
+
+
+def test_experience_specialty_objects_accepted():
+    # The model now emits objects ({"name": ...}); a dict round-trip must work too.
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "RN",
+                         "specialties": [{"name": "ICU"}, "Med Surg/Tele"]}]}
+    )
+    specs = parsed.experience[0].specialties
+    assert [s.name for s in specs] == ["ICU", "Med Surg/Tele"]
 
 
 # ── Dates: MM/DD/YYYY, partial precision preserved, never fabricated ──────────

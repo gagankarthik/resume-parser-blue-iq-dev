@@ -26,7 +26,7 @@ _SYSTEM = f"""You RE-EXTRACT one work-history role from a healthcare résumé �
 
 {CORE_RULES}
 
-This role has EXACTLY {{expected}} responsibility bullet(s). Extract all {{expected}} into description[], verbatim, one per item — do NOT add, skip, or merge any. Also return every other field you can find (company, role, dates, location, city/state/zip, employer_phone, profession, specialties, agency_name, shift, charting_system, achievements …) using the same schema, so nothing from the first pass is lost."""
+This role has EXACTLY {{expected}} responsibility bullet(s). Extract all {{expected}} into description[], verbatim, one per item — do NOT add, skip, or merge any. Also return every other field you can find (company, role, dates, location, city/state/zip, employer_phone, profession, specialties, agency_name, shift, charting_system, achievements …) using the same schema, so nothing from the first pass is lost. specialties is a list of OBJECTS each with just a name (e.g. [{{{{"name": "ICU"}}}}]) — fill only `name`."""
 
 
 def _bullets(item: ExperienceItem) -> int:
