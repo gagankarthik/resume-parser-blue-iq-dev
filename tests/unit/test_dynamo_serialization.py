@@ -10,6 +10,7 @@ exactly this write.)
 
 from decimal import Decimal
 
+from app.db import audit_logs
 from app.db import dynamodb as db
 from app.db.dynamodb import _dynamo_safe, _plain
 from app.models.schemas import ParsedResumeAI
@@ -24,8 +25,10 @@ class _CapturingTable:
 
 
 def _patch_table(monkeypatch) -> _CapturingTable:
+    # write_audit_log resolves _get_dynamodb in the audit_logs repository module,
+    # so patch it there (the serde facade still re-exports the helpers).
     table = _CapturingTable()
-    monkeypatch.setattr(db, "_get_dynamodb", lambda settings: type("R", (), {"Table": lambda self, name: table})())
+    monkeypatch.setattr(audit_logs, "_get_dynamodb", lambda settings: type("R", (), {"Table": lambda self, name: table})())
     return table
 
 

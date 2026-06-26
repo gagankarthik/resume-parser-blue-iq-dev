@@ -43,35 +43,14 @@ from app.models.schemas import (
     UploadUrlRequest,
     UploadUrlResponse,
 )
+from app.services.application import resume_service
 from app.services.extraction.classifier import classify
 from app.services.feedback import diff_fields
 from app.services.normalization.skills_validator import validate_skills
-from app.services.pipeline import PipelineInput
-from app.services.pipeline import run as run_pipeline
 from app.storage import s3_client
-from app.workers.background import process_resume_async
-from app.workers.dispatch import invoke_worker
 
 router = APIRouter()
 log = get_logger(__name__)
-
-
-async def _dispatch_async(
-    settings,
-    background_tasks: BackgroundTasks,
-    payload: dict,
-) -> None:
-    if settings.use_lambda_worker:
-        if not invoke_worker(settings, payload):
-            # Fail the job NOW so pollers get a clear "failed" with a reason,
-            # not an eternal "processing" that only ends when the client gives up.
-            db.update_job_failed(
-                payload["job_id"],
-                "Background processing could not be started for this file.",
-                ErrorCode.WORKER_DISPATCH_FAILED.value,
-            )
-    else:
-        background_tasks.add_task(process_resume_async, **payload)
 
 
 async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
@@ -130,16 +109,13 @@ async def parse_resume(
              force_textract=force_textract)
 
     if not needs_async:
-        result = await run_pipeline(PipelineInput(
-            job_id=job_id, filename=filename, content=content, company_id=company_id,
-            force_textract=force_textract,
-        ))
-        db.write_audit_log(
-            job_id=job_id, company_id=company_id,
-            file_type=result.file_type, file_size_bytes=len(content),
-            status="completed", duration_ms=result.duration_ms,
-            ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
-            key_hash=record["key_hash"], key_prefix=record.get("key_prefix", ""),
+        result = await resume_service.run_parse(
+            job_id=job_id, filename=filename, content=content,
+            company_id=company_id, force_textract=force_textract,
+        )
+        resume_service.audit_parse(
+            job_id=job_id, company_id=company_id, result=result,
+            file_size_bytes=len(content), record=record,
         )
         return ParseResponse(job_id=job_id, status="completed",
                              data=result.parsed, confidence=result.confidence,
@@ -148,12 +124,11 @@ async def parse_resume(
 
     s3_key = s3_client.upload_temp_file(job_id, filename, content)
     db.create_job(job_id, company_id)
-    await _dispatch_async(settings, background_tasks, {
-        "job_id": job_id, "company_id": company_id, "s3_key": s3_key,
-        "filename": filename, "file_size_bytes": len(content),
-        "force_textract": force_textract,
-        "key_hash": record["key_hash"], "key_prefix": record.get("key_prefix", ""),
-    })
+    await resume_service.dispatch_async(settings, background_tasks,
+        resume_service.build_async_payload(
+            job_id=job_id, company_id=company_id, s3_key=s3_key, filename=filename,
+            file_size_bytes=len(content), force_textract=force_textract, record=record,
+        ))
     return ParseResponse(job_id=job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{job_id}")
 
@@ -266,22 +241,14 @@ async def parse_uploaded(
              strategy=strategy, needs_async=needs_async, size_bytes=len(content))
 
     if not needs_async:
-        result = await run_pipeline(PipelineInput(
-            job_id=payload.job_id, filename=filename, content=content, company_id=company_id,
-            force_textract=payload.force_textract,
-        ))
-        db.update_job_completed(payload.job_id, {
-            "data": result.parsed.model_dump(),
-            "confidence": result.confidence.model_dump(),
-            "partial": result.partial,
-            "warnings": result.warnings,
-        })
-        db.write_audit_log(
-            job_id=payload.job_id, company_id=company_id,
-            file_type=result.file_type, file_size_bytes=len(content),
-            status="completed", duration_ms=result.duration_ms,
-            ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
-            key_hash=record["key_hash"], key_prefix=record.get("key_prefix", ""),
+        result = await resume_service.run_parse(
+            job_id=payload.job_id, filename=filename, content=content,
+            company_id=company_id, force_textract=payload.force_textract,
+        )
+        db.update_job_completed(payload.job_id, resume_service.result_record(result))
+        resume_service.audit_parse(
+            job_id=payload.job_id, company_id=company_id, result=result,
+            file_size_bytes=len(content), record=record,
         )
         s3_client.delete_file(s3_key)
         return ParseResponse(job_id=payload.job_id, status="completed",
@@ -290,12 +257,11 @@ async def parse_uploaded(
                              partial=result.partial, warnings=result.warnings)
 
     # Async: the file is already in S3; the worker downloads and deletes it.
-    await _dispatch_async(settings, background_tasks, {
-        "job_id": payload.job_id, "company_id": company_id, "s3_key": s3_key,
-        "filename": filename, "file_size_bytes": len(content),
-        "force_textract": payload.force_textract,
-        "key_hash": record["key_hash"], "key_prefix": record.get("key_prefix", ""),
-    })
+    await resume_service.dispatch_async(settings, background_tasks,
+        resume_service.build_async_payload(
+            job_id=payload.job_id, company_id=company_id, s3_key=s3_key, filename=filename,
+            file_size_bytes=len(content), force_textract=payload.force_textract, record=record,
+        ))
     return ParseResponse(job_id=payload.job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{payload.job_id}")
 
@@ -401,23 +367,15 @@ async def retry_parse(
     db.create_job(new_job_id, company_id, retried_from=job_id, retry_count=retry_count)
 
     if not needs_async:
-        result = await run_pipeline(PipelineInput(
-            job_id=new_job_id, filename=filename, content=content, company_id=company_id,
-            force_textract=force_textract,
-        ))
-        db.write_audit_log(
-            job_id=new_job_id, company_id=company_id,
-            file_type=result.file_type, file_size_bytes=len(content),
-            status="completed", duration_ms=result.duration_ms,
-            ocr_used=result.ocr_used, ai_tokens_used=result.ai_tokens_used,
-            key_hash=record["key_hash"], key_prefix=record.get("key_prefix", ""),
+        result = await resume_service.run_parse(
+            job_id=new_job_id, filename=filename, content=content,
+            company_id=company_id, force_textract=force_textract,
         )
-        db.update_job_completed(new_job_id, {
-            "data": result.parsed.model_dump(),
-            "confidence": result.confidence.model_dump(),
-            "partial": result.partial,
-            "warnings": result.warnings,
-        })
+        resume_service.audit_parse(
+            job_id=new_job_id, company_id=company_id, result=result,
+            file_size_bytes=len(content), record=record,
+        )
+        db.update_job_completed(new_job_id, resume_service.result_record(result))
         return RetryResponse(
             job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
             status="completed", data=result.parsed, confidence=result.confidence,
@@ -426,12 +384,11 @@ async def retry_parse(
         )
 
     s3_key = s3_client.upload_temp_file(new_job_id, filename, content)
-    await _dispatch_async(settings, background_tasks, {
-        "job_id": new_job_id, "company_id": company_id, "s3_key": s3_key,
-        "filename": filename, "file_size_bytes": len(content),
-        "force_textract": force_textract,
-        "key_hash": record["key_hash"], "key_prefix": record.get("key_prefix", ""),
-    })
+    await resume_service.dispatch_async(settings, background_tasks,
+        resume_service.build_async_payload(
+            job_id=new_job_id, company_id=company_id, s3_key=s3_key, filename=filename,
+            file_size_bytes=len(content), force_textract=force_textract, record=record,
+        ))
     return RetryResponse(
         job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
         status="processing", poll_url=f"/api/v1/resume/job/{new_job_id}",

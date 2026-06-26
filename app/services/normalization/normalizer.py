@@ -21,6 +21,7 @@ from app.models.schemas import (
     PersonalInfo,
     _sanitize_date,
 )
+from app.services.normalization import specialty_matcher
 from app.services.normalization.healthcare_taxonomy import (
     PROFESSION_ABBREVIATIONS,
     normalize_specialty,
@@ -323,9 +324,12 @@ def _normalize_experience(exp: ExperienceItem) -> None:
     if exp.trauma_level and exp.trauma_facility is None:
         exp.trauma_facility = "Yes"
 
-    # Map each per-role specialty to its canonical taxonomy name (dedup, in order)
+    # Map each per-role specialty to a catalog id + confidence via the tiered
+    # matcher (deterministic tiers 1–3; the AI tier runs later in the pipeline).
+    # Dedup-by-canonical-name, order preserved.
     if exp.specialties:
-        exp.specialties = _normalize_skills(exp.specialties)
+        raw_specialties = [(sm.raw or sm.name) for sm in exp.specialties]
+        exp.specialties = specialty_matcher.match_batch(raw_specialties)
 
     if exp.start_date and exp.start_date.lower() != "present":
         exp.start_date = _normalize_date(exp.start_date) or exp.start_date

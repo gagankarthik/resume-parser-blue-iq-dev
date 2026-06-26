@@ -33,7 +33,7 @@ FIELD RULES:
 - employer_phone = the employer/facility phone number if one is written next to this role (e.g. "304-287-2120"), copied verbatim; null otherwise. Do NOT confuse it with the candidate's own contact phone.
 - description = an ARRAY, one item per responsibility/duty bullet, copied VERBATIM. If the role is written as prose, split each duty sentence into its own item. Never merge separate bullets; never split one bullet into several.
 - achievements = only items with measurable results.
-- specialties = ONLY the unit/specialty named for THIS role in its heading, title, or an explicit unit/specialty label (e.g. "ICU", "Med Surg/Tele"). Do NOT mine phrases out of the duty bullets — a bullet mentioning "surgical patients", a piece of equipment, a therapy, or a physician group is NOT a specialty.
+- specialties = ONLY the unit/specialty named for THIS role in its heading, title, or an explicit unit/specialty label (e.g. "ICU", "Med Surg/Tele"). Return a list of OBJECTS each with just the name: [{{{{"name": "ICU"}}}}] — fill ONLY `name`, leave specialty_id/confidence/group null (the system fills them). Do NOT mine phrases out of the duty bullets — a bullet mentioning "surgical patients", a piece of equipment, a therapy, or a physician group is NOT a specialty.
 - Fill profession, shift, charting_system, nurse_to_patient_ratio, beds_in_unit, reason_for_leaving, position_held, and the teaching/magnet/trauma flags ONLY when explicitly stated."""
 
 _SYSTEM_FULL = f"""You extract ALL work-history roles from a healthcare résumé into {{ "work_experience": [ ... ] }}.
@@ -45,6 +45,7 @@ RULES:
 - For a travel/agency umbrella role listing multiple facilities, output one entry per facility: company = the FACILITY name (never the agency), agency_name = the staffing agency, each inheriting the umbrella profession/role. NEVER use "Unknown" as a role.
 - An employer with its OWN job title and date range is a separate employer, not an agency assignment — leave its agency_name null.
 - description = an ARRAY, one item per duty bullet copied verbatim (split prose into sentences). location = full address line as written.
+- specialties = a list of OBJECTS, one per unit/specialty named for the role, each with just the name (e.g. [{{"name": "ICU"}}]); fill ONLY `name` — the system fills id/confidence/group.
 - employer_phone = the facility/employer phone number written next to a role (verbatim), null otherwise — never the candidate's own phone."""
 
 

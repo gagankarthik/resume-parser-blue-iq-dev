@@ -139,6 +139,10 @@ A single orchestrator (`app/services/pipeline.py`) runs every stage with per-ste
  8. Normalize         Skills, degrees, dates, healthcare specialties
         │             (e.g. "Sr Dev" → "Senior Developer", "MSc" → "Master of Science")
         ▼
+ 8b.Specialty match   Per-role specialties → catalog id + confidence (tiered:
+        │             name / full-name / keyword, then a batched AI shortlist pick;
+        │             unmatched kept with id=null for review)
+        ▼
  9. Confidence score  Per-field 0.0–1.0 scores for human-review triage
 ```
 
