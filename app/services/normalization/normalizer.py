@@ -329,7 +329,9 @@ def _normalize_experience(exp: ExperienceItem) -> None:
     # Dedup-by-canonical-name, order preserved.
     if exp.specialties:
         raw_specialties = [(sm.raw or sm.name) for sm in exp.specialties]
-        exp.specialties = specialty_matcher.match_batch(raw_specialties)
+        # Scope the id lookup to this role's credential so a name shared across
+        # professions (e.g. "ICU") resolves to the right profession's id.
+        exp.specialties = specialty_matcher.match_batch(raw_specialties, exp.profession)
 
     if exp.start_date and exp.start_date.lower() != "present":
         exp.start_date = _normalize_date(exp.start_date) or exp.start_date

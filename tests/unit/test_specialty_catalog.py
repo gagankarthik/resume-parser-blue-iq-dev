@@ -13,9 +13,16 @@ from app.services.normalization.healthcare_taxonomy import _match_key
 
 @pytest.fixture(autouse=True)
 def _reset_catalog():
-    """Each test reloads explicitly; reset the module cache afterwards."""
+    """Each test reloads explicitly; reset to an empty catalog afterwards so the
+    bundled default snapshot never leaks between tests."""
     yield
-    specialty_catalog.reload(None)
+    specialty_catalog.reload("")
+
+
+def test_unset_path_is_empty():
+    cat = specialty_catalog.reload("")
+    assert cat.is_empty
+    assert cat.records == []
 
 
 def _write(tmp_path, name, payload):
@@ -27,10 +34,14 @@ def _write(tmp_path, name, payload):
     return str(p)
 
 
-def test_unset_path_is_empty():
+def test_default_path_loads_bundled_snapshot():
+    # reload(None) uses the configured default — the bundled Gig snapshot.
     cat = specialty_catalog.reload(None)
-    assert cat.is_empty
-    assert cat.records == []
+    assert not cat.is_empty
+    # Same specialty name carries a different id per profession (RN vs CNA ICU).
+    rn_icu = cat.by_prof_name_key[("rn", _match_key("ICU"))]
+    cna_icu = cat.by_prof_name_key[("cna", _match_key("ICU"))]
+    assert rn_icu.id != cna_icu.id
 
 
 def test_missing_file_is_empty(tmp_path):

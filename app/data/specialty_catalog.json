@@ -1,0 +1,7554 @@
+{
+  "specialties": [
+    {
+      "id": "702",
+      "specialty": "Acute Care Float",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "708",
+      "specialty": "Bariatrics",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "772",
+      "specialty": "Med Surg",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "CNA",
+      "keywords": [
+        "medical surgical",
+        "med/surg"
+      ]
+    },
+    {
+      "id": "774",
+      "specialty": "Med Surg Float",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "773",
+      "specialty": "Med Surg - Neuro",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "775",
+      "specialty": "Med Surg - Oncology",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "797",
+      "specialty": "Ortho",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "703",
+      "specialty": "Administrative",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "737",
+      "specialty": "Director",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "755",
+      "specialty": "House Supervisor",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "769",
+      "specialty": "Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "850",
+      "specialty": "Radiology Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "704",
+      "specialty": "Ambulatory Care",
+      "full_name": null,
+      "group": "Primary Care",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "844",
+      "specialty": "Primary Care",
+      "full_name": null,
+      "group": "Primary Care",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "706",
+      "specialty": "Antepartum",
+      "full_name": null,
+      "group": "Labor and Delivery",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "764",
+      "specialty": "Labor and Delivery",
+      "full_name": null,
+      "group": "Labor and Delivery",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "707",
+      "specialty": "Apheresis",
+      "full_name": null,
+      "group": "Dialysis",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "736",
+      "specialty": "Dialysis",
+      "full_name": null,
+      "group": "Dialysis",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "709",
+      "specialty": "Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "727",
+      "specialty": "Correctional",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "749",
+      "specialty": "Geriatric Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "813",
+      "specialty": "Pediatric Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "710",
+      "specialty": "BICU",
+      "full_name": "Burn Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "burn icu",
+        "burn intensive care",
+        "burn unit"
+      ]
+    },
+    {
+      "id": "719",
+      "specialty": "CCU",
+      "full_name": "Critical Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "coronary care unit"
+      ]
+    },
+    {
+      "id": "728",
+      "specialty": "COVID ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "730",
+      "specialty": "Critical Care Float",
+      "full_name": null,
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "715",
+      "specialty": "CTICU",
+      "full_name": "Cardiothoracic Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "cardiothoracic icu",
+        "cardio thoracic icu"
+      ]
+    },
+    {
+      "id": "732",
+      "specialty": "CVCC",
+      "full_name": "Cardiovascular Critical Care",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "cardiovascular critical care"
+      ]
+    },
+    {
+      "id": "733",
+      "specialty": "CVICU",
+      "full_name": "Cardiovascular Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "cardiovascular icu",
+        "cardiac icu"
+      ]
+    },
+    {
+      "id": "757",
+      "specialty": "ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "1075",
+      "specialty": "ICU Float",
+      "full_name": null,
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "776",
+      "specialty": "MICU",
+      "full_name": "Medical Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "medical icu"
+      ]
+    },
+    {
+      "id": "781",
+      "specialty": "Neuro ICU",
+      "full_name": "Neurological Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "neuro icu",
+        "neurological icu",
+        "neuroscience icu"
+      ]
+    },
+    {
+      "id": "856",
+      "specialty": "SICU",
+      "full_name": "Surgical Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "surgical icu"
+      ]
+    },
+    {
+      "id": "870",
+      "specialty": "Trauma ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "CNA",
+      "keywords": [
+        "trauma icu",
+        "ticu"
+      ]
+    },
+    {
+      "id": "711",
+      "specialty": "BMT",
+      "full_name": "Bone Marrow Transplant",
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "721",
+      "specialty": "Chemo",
+      "full_name": "Chemotherapy",
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "752",
+      "specialty": "Hematology/Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "760",
+      "specialty": "Infusion",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "793",
+      "specialty": "Oncology - Chemo Certified",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "794",
+      "specialty": "Oncology - Clinic",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "792",
+      "specialty": "Oncology - Pediatric",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "800",
+      "specialty": "Outpatient Clinic Hematology Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "801",
+      "specialty": "Outpatient Clinic Infusion",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "848",
+      "specialty": "Radiation Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "713",
+      "specialty": "Cardiac Stress Testing",
+      "full_name": null,
+      "group": "Echo Lab",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "740",
+      "specialty": "Echo Lab",
+      "full_name": "Echocardiography Laboratory",
+      "group": "Echo Lab",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "714",
+      "specialty": "Cardiac Tele",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "747",
+      "specialty": "ER Holding",
+      "full_name": "Emergency Room Holding",
+      "group": "Med Surg/ Tele",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "778",
+      "specialty": "Med Surg/ Tele",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "CNA",
+      "keywords": [
+        "med surg tele",
+        "medical surgical telemetry",
+        "ms/tele"
+      ]
+    },
+    {
+      "id": "779",
+      "specialty": "Med Surg/ Tele Float",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "789",
+      "specialty": "Observation Unit",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "865",
+      "specialty": "Tele Float",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "866",
+      "specialty": "Telemetry",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "CNA",
+      "keywords": [
+        "tele"
+      ]
+    },
+    {
+      "id": "716",
+      "specialty": "Case Manager",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "738",
+      "specialty": "Discharge Planner",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "846",
+      "specialty": "Quality Coordinator",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "847",
+      "specialty": "Quality Management",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "872",
+      "specialty": "Utilization Review",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "717",
+      "specialty": "Cath Lab",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "718",
+      "specialty": "Cath Lab Holding",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "745",
+      "specialty": "EP Lab",
+      "full_name": "Electrophysiology Laboratory",
+      "group": "Cath Lab",
+      "profession": "CNA",
+      "keywords": [
+        "electrophysiology lab"
+      ]
+    },
+    {
+      "id": "762",
+      "specialty": "Invasive Procedure",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "720",
+      "specialty": "Certified School Nurse",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "855",
+      "specialty": "School Nurse",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "878",
+      "specialty": "School Nurse - 1:1",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "882",
+      "specialty": "School Nurse - Bus Run",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "1079",
+      "specialty": "Summer Camp",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "722",
+      "specialty": "Clinical Decisions",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "739",
+      "specialty": "DOU",
+      "full_name": "Definitive Observation Unit",
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": [
+        "definitive observation unit"
+      ]
+    },
+    {
+      "id": "758",
+      "specialty": "IMC",
+      "full_name": "Intermediate Care Unit",
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": [
+        "intermediate care unit",
+        "intermediate care"
+      ]
+    },
+    {
+      "id": "807",
+      "specialty": "PCU",
+      "full_name": "Progressive Care Unit",
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": [
+        "progressive care unit"
+      ]
+    },
+    {
+      "id": "808",
+      "specialty": "PCU Float",
+      "full_name": "Progressive Care Unit Float",
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "809",
+      "specialty": "PCU - Oncology",
+      "full_name": "Progressive Care – Oncology",
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "858",
+      "specialty": "Stepdown",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "859",
+      "specialty": "Stepdown Cardiac",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "860",
+      "specialty": "Stepdown Neuro",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "864",
+      "specialty": "TCU",
+      "full_name": "Transitional Care Unit",
+      "group": "Stepdown",
+      "profession": "CNA",
+      "keywords": [
+        "transitional care unit"
+      ]
+    },
+    {
+      "id": "723",
+      "specialty": "Clinical Documentation Specialist",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "724",
+      "specialty": "Clinical Education Specialist",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "741",
+      "specialty": "Educator",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "785",
+      "specialty": "Nurse Instructor",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "725",
+      "specialty": "Clinical Research Coordinator",
+      "full_name": null,
+      "group": "Clinical Research Nurse",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "726",
+      "specialty": "Clinical Research Nurse (CRN)",
+      "full_name": null,
+      "group": "Clinical Research Nurse",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "729",
+      "specialty": "COVID Testing",
+      "full_name": null,
+      "group": "Vaccination Support",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "731",
+      "specialty": "Critical Care Transport",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "742",
+      "specialty": "Emergency Transport Traveler",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "748",
+      "specialty": "Flight Nurse",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "734",
+      "specialty": "CVOR",
+      "full_name": "Cardiovascular Operating Room",
+      "group": "Operating Room",
+      "profession": "CNA",
+      "keywords": [
+        "cardiovascular or",
+        "cardiovascular operating room"
+      ]
+    },
+    {
+      "id": "795",
+      "specialty": "Open Heart",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "796",
+      "specialty": "Operating Room",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "804",
+      "specialty": "Outpatient Surgery",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "854",
+      "specialty": "RNFA",
+      "full_name": "Registered Nurse First Assistant",
+      "group": "Operating Room",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "735",
+      "specialty": "CVPICU",
+      "full_name": "Cardiovascular Pediatric Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": [
+        "cardiovascular picu",
+        "cardiac picu"
+      ]
+    },
+    {
+      "id": "803",
+      "specialty": "Outpatient Pediatrics",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "810",
+      "specialty": "Pediatric Acute Care Float Pool",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "811",
+      "specialty": "Pediatric Ambulatory Care",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "812",
+      "specialty": "Pediatric Apheresis",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "814",
+      "specialty": "Pediatric BMT",
+      "full_name": "Bone Marrow Transplant",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "815",
+      "specialty": "Pediatric Cardiology",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "816",
+      "specialty": "Pediatric Cath Lab",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "817",
+      "specialty": "Pediatric Critical Care Float Pool",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "818",
+      "specialty": "Pediatric CVOR",
+      "full_name": "Cardiovascular Operating Room",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "819",
+      "specialty": "Pediatric Dialysis",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "820",
+      "specialty": "Pediatric Endoscopy",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "821",
+      "specialty": "Pediatric ER",
+      "full_name": "Emergency Room",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "822",
+      "specialty": "Pediatric Home Health",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "823",
+      "specialty": "Pediatric Infusion",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "824",
+      "specialty": "Pediatric IV Therapy",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "825",
+      "specialty": "Pediatric LTAC",
+      "full_name": "Pediatric Long-Term Acute Care",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "826",
+      "specialty": "Pediatric Med Surg",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "827",
+      "specialty": "Pediatric MICU",
+      "full_name": "Medical Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "828",
+      "specialty": "Pediatric Neuro",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "829",
+      "specialty": "Pediatric OR",
+      "full_name": "Operating Room",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "830",
+      "specialty": "Pediatric Ortho",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "831",
+      "specialty": "Pediatric PACU",
+      "full_name": "Post-Anesthesia Care Unit",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "832",
+      "specialty": "Pediatric PCU",
+      "full_name": "Progressive Care Unit",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "833",
+      "specialty": "Pediatric Pulmonary",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "834",
+      "specialty": "Pediatric Rehab",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "835",
+      "specialty": "Pediatric Stepdown",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "836",
+      "specialty": "Pediatric Telemetry",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "837",
+      "specialty": "Pediatric Transplant",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "838",
+      "specialty": "Pediatric Transport",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "839",
+      "specialty": "Pediatric Wound Care",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "841",
+      "specialty": "PICC",
+      "full_name": "Peripherally Inserted Central Catheter Nurse",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "842",
+      "specialty": "PICU",
+      "full_name": "Pediatric Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "CNA",
+      "keywords": [
+        "pediatric icu",
+        "peds icu",
+        "paediatric icu"
+      ]
+    },
+    {
+      "id": "744",
+      "specialty": "Endoscopy",
+      "full_name": null,
+      "group": "Endoscopy",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "751",
+      "specialty": "GI Lab",
+      "full_name": "Gastrointestinal Laboratory",
+      "group": "Endoscopy",
+      "profession": "CNA",
+      "keywords": [
+        "gastrointestinal lab",
+        "gi/endo"
+      ]
+    },
+    {
+      "id": "746",
+      "specialty": "ER",
+      "full_name": "Emergency Room",
+      "group": "ER",
+      "profession": "CNA",
+      "keywords": [
+        "emergency department",
+        "emergency dept"
+      ]
+    },
+    {
+      "id": "750",
+      "specialty": "Geriatrics",
+      "full_name": null,
+      "group": "LTC",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "768",
+      "specialty": "LTC",
+      "full_name": "Long-Term Care",
+      "group": "LTC",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "852",
+      "specialty": "Rehab",
+      "full_name": null,
+      "group": "LTC",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "857",
+      "specialty": "SNF",
+      "full_name": "Skilled Nursing Facility",
+      "group": "LTC",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "753",
+      "specialty": "Home Health",
+      "full_name": null,
+      "group": "Home Health",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "754",
+      "specialty": "Hospice",
+      "full_name": null,
+      "group": "Home Health",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "756",
+      "specialty": "Hyperbaric",
+      "full_name": null,
+      "group": "Wound Care",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "874",
+      "specialty": "Wound Care",
+      "full_name": null,
+      "group": "Wound Care",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "761",
+      "specialty": "Interventional Radiology Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "765",
+      "specialty": "LTAC",
+      "full_name": "Long-Term Acute Care",
+      "group": "LTAC",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "766",
+      "specialty": "LTAC ICU",
+      "full_name": "Long-Term Acute Care Intensive Care Unit",
+      "group": "LTAC",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "767",
+      "specialty": "LTAC Telemetry",
+      "full_name": "Long-Term Acute Care Telemetry",
+      "group": "LTAC",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "862",
+      "specialty": "Sub-Acute",
+      "full_name": null,
+      "group": "LTAC",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "770",
+      "specialty": "Maternal Fetal Care",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "777",
+      "specialty": "Mother Baby",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "783",
+      "specialty": "NICU",
+      "full_name": "Neonatal Intensive Care Unit",
+      "group": "Nursery",
+      "profession": "CNA",
+      "keywords": [
+        "neonatal icu",
+        "newborn icu"
+      ]
+    },
+    {
+      "id": "784",
+      "specialty": "NICU Transport",
+      "full_name": "Neonatal Intensive Care Unit Transport",
+      "group": "Nursery",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "787",
+      "specialty": "Nursery",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "782",
+      "specialty": "New Graduate",
+      "full_name": null,
+      "group": "New Graduate",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "861",
+      "specialty": "Student Nurse",
+      "full_name": null,
+      "group": "New Graduate",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "788",
+      "specialty": "OB/GYN",
+      "full_name": "Obstetrics and Gynecology",
+      "group": "Medical Assistant",
+      "profession": "CNA",
+      "keywords": [
+        "obstetrics gynecology",
+        "ob gyn"
+      ]
+    },
+    {
+      "id": "791",
+      "specialty": "Oncology",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "806",
+      "specialty": "Pain Management",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "840",
+      "specialty": "Pediatrics",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "885",
+      "specialty": "SNF/LTC",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "871",
+      "specialty": "Urgent Care",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "873",
+      "specialty": "Vaccination Support",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "790",
+      "specialty": "Occupational Health",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "798",
+      "specialty": "Outpatient Clinic",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "799",
+      "specialty": "Outpatient Clinic Cardiology",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "802",
+      "specialty": "Outpatient Clinic Phlebotomy",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "805",
+      "specialty": "PACU",
+      "full_name": "Post-Anesthesia Care Unit",
+      "group": "PACU",
+      "profession": "CNA",
+      "keywords": [
+        "post anesthesia care unit",
+        "recovery room"
+      ]
+    },
+    {
+      "id": "843",
+      "specialty": "PreOp",
+      "full_name": "Pre-Operative",
+      "group": "PACU",
+      "profession": "CNA",
+      "keywords": [
+        "pre op",
+        "pre operative",
+        "preoperative"
+      ]
+    },
+    {
+      "id": "705",
+      "specialty": "Anesthetist",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "712",
+      "specialty": "Cardiac Rehab",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "743",
+      "specialty": "Endocrinology",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "891",
+      "specialty": "Family Practice",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "759",
+      "specialty": "Infection Prevention",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "888",
+      "specialty": "Interventional Radiology",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "763",
+      "specialty": "IV Therapy",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "771",
+      "specialty": "MDS Coordinator",
+      "full_name": "Minimum Data Set Coordinator",
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "780",
+      "specialty": "Nephrology",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "786",
+      "specialty": "Nurse Navigator",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "845",
+      "specialty": "Public Community Health",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "849",
+      "specialty": "Radiology",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "851",
+      "specialty": "Referral Coordinator",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "853",
+      "specialty": "Rheumatology",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "863",
+      "specialty": "Surveyor",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "868",
+      "specialty": "Theragnostics",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "869",
+      "specialty": "Transplant",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "867",
+      "specialty": "Triage/ Call Center",
+      "full_name": null,
+      "group": null,
+      "profession": "CNA",
+      "keywords": []
+    },
+    {
+      "id": "1",
+      "specialty": "Acute Care Float",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "7",
+      "specialty": "Bariatrics",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "71",
+      "specialty": "Med Surg",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "RN",
+      "keywords": [
+        "medical surgical",
+        "med/surg"
+      ]
+    },
+    {
+      "id": "73",
+      "specialty": "Med Surg Float",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "72",
+      "specialty": "Med Surg - Neuro",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "74",
+      "specialty": "Med Surg - Oncology",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "96",
+      "specialty": "Ortho",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "2",
+      "specialty": "Administrative",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "36",
+      "specialty": "Director",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "54",
+      "specialty": "House Supervisor",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "68",
+      "specialty": "Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "149",
+      "specialty": "Radiology Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "3",
+      "specialty": "Ambulatory Care",
+      "full_name": null,
+      "group": "Primary Care",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "143",
+      "specialty": "Primary Care",
+      "full_name": null,
+      "group": "Primary Care",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "5",
+      "specialty": "Antepartum",
+      "full_name": null,
+      "group": "Labor and Delivery",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "63",
+      "specialty": "Labor and Delivery",
+      "full_name": null,
+      "group": "Labor and Delivery",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "6",
+      "specialty": "Apheresis",
+      "full_name": null,
+      "group": "Dialysis",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "35",
+      "specialty": "Dialysis",
+      "full_name": null,
+      "group": "Dialysis",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "8",
+      "specialty": "Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "26",
+      "specialty": "Correctional",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "48",
+      "specialty": "Geriatric Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "112",
+      "specialty": "Pediatric Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "9",
+      "specialty": "BICU",
+      "full_name": "Burn Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "burn icu",
+        "burn intensive care",
+        "burn unit"
+      ]
+    },
+    {
+      "id": "18",
+      "specialty": "CCU",
+      "full_name": "Critical Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "coronary care unit"
+      ]
+    },
+    {
+      "id": "27",
+      "specialty": "COVID ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "29",
+      "specialty": "Critical Care Float",
+      "full_name": null,
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "14",
+      "specialty": "CTICU",
+      "full_name": "Cardiothoracic Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "cardiothoracic icu",
+        "cardio thoracic icu"
+      ]
+    },
+    {
+      "id": "31",
+      "specialty": "CVCC",
+      "full_name": "Cardiovascular Critical Care",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "cardiovascular critical care"
+      ]
+    },
+    {
+      "id": "32",
+      "specialty": "CVICU",
+      "full_name": "Cardiovascular Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "cardiovascular icu",
+        "cardiac icu"
+      ]
+    },
+    {
+      "id": "56",
+      "specialty": "ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "1073",
+      "specialty": "ICU Float",
+      "full_name": null,
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "75",
+      "specialty": "MICU",
+      "full_name": "Medical Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "medical icu"
+      ]
+    },
+    {
+      "id": "80",
+      "specialty": "Neuro ICU",
+      "full_name": "Neurological Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "neuro icu",
+        "neurological icu",
+        "neuroscience icu"
+      ]
+    },
+    {
+      "id": "155",
+      "specialty": "SICU",
+      "full_name": "Surgical Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "surgical icu"
+      ]
+    },
+    {
+      "id": "169",
+      "specialty": "Trauma ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "RN",
+      "keywords": [
+        "trauma icu",
+        "ticu"
+      ]
+    },
+    {
+      "id": "10",
+      "specialty": "BMT",
+      "full_name": "Bone Marrow Transplant",
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "20",
+      "specialty": "Chemo",
+      "full_name": "Chemotherapy",
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "51",
+      "specialty": "Hematology/Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "59",
+      "specialty": "Infusion",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "92",
+      "specialty": "Oncology - Chemo Certified",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "93",
+      "specialty": "Oncology - Clinic",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "91",
+      "specialty": "Oncology - Pediatric",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "99",
+      "specialty": "Outpatient Clinic Hematology Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "100",
+      "specialty": "Outpatient Clinic Infusion",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "147",
+      "specialty": "Radiation Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "12",
+      "specialty": "Cardiac Stress Testing",
+      "full_name": null,
+      "group": "Echo Lab",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "39",
+      "specialty": "Echo Lab",
+      "full_name": "Echocardiography Laboratory",
+      "group": "Echo Lab",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "13",
+      "specialty": "Cardiac Tele",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "46",
+      "specialty": "ER Holding",
+      "full_name": "Emergency Room Holding",
+      "group": "Med Surg/ Tele",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "77",
+      "specialty": "Med Surg/ Tele",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "RN",
+      "keywords": [
+        "med surg tele",
+        "medical surgical telemetry",
+        "ms/tele"
+      ]
+    },
+    {
+      "id": "78",
+      "specialty": "Med Surg/ Tele Float",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "88",
+      "specialty": "Observation Unit",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "164",
+      "specialty": "Tele Float",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "165",
+      "specialty": "Telemetry",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "RN",
+      "keywords": [
+        "tele"
+      ]
+    },
+    {
+      "id": "15",
+      "specialty": "Case Manager",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "37",
+      "specialty": "Discharge Planner",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "145",
+      "specialty": "Quality Coordinator",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "146",
+      "specialty": "Quality Management",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "171",
+      "specialty": "Utilization Review",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "16",
+      "specialty": "Cath Lab",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "17",
+      "specialty": "Cath Lab Holding",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "44",
+      "specialty": "EP Lab",
+      "full_name": "Electrophysiology Laboratory",
+      "group": "Cath Lab",
+      "profession": "RN",
+      "keywords": [
+        "electrophysiology lab"
+      ]
+    },
+    {
+      "id": "61",
+      "specialty": "Invasive Procedure",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "19",
+      "specialty": "Certified School Nurse",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "154",
+      "specialty": "School Nurse",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "875",
+      "specialty": "School Nurse - 1:1",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "879",
+      "specialty": "School Nurse - Bus Run",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "1077",
+      "specialty": "Summer Camp",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "21",
+      "specialty": "Clinical Decisions",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "38",
+      "specialty": "DOU",
+      "full_name": "Definitive Observation Unit",
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": [
+        "definitive observation unit"
+      ]
+    },
+    {
+      "id": "57",
+      "specialty": "IMCU",
+      "full_name": "Intermediate Care Unit",
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": [
+        "intermediate care unit",
+        "intermediate care"
+      ]
+    },
+    {
+      "id": "106",
+      "specialty": "PCU",
+      "full_name": "Progressive Care Unit",
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": [
+        "progressive care unit"
+      ]
+    },
+    {
+      "id": "107",
+      "specialty": "PCU Float",
+      "full_name": "Progressive Care Unit Float",
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "108",
+      "specialty": "PCU - Oncology",
+      "full_name": "Progressive Care – Oncology",
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "157",
+      "specialty": "Stepdown",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "158",
+      "specialty": "Stepdown Cardiac",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "159",
+      "specialty": "Stepdown Neuro",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "163",
+      "specialty": "TCU",
+      "full_name": "Transitional Care Unit",
+      "group": "Stepdown",
+      "profession": "RN",
+      "keywords": [
+        "transitional care unit"
+      ]
+    },
+    {
+      "id": "22",
+      "specialty": "Clinical Documentation Specialist",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "23",
+      "specialty": "Clinical Education Specialist",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "40",
+      "specialty": "Educator",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "84",
+      "specialty": "Nurse Instructor",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "24",
+      "specialty": "Clinical Research Coordinator",
+      "full_name": null,
+      "group": "Clinical Research Nurse",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "25",
+      "specialty": "Clinical Research Nurse (CRN)",
+      "full_name": null,
+      "group": "Clinical Research Nurse",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "28",
+      "specialty": "COVID Testing",
+      "full_name": null,
+      "group": "Vaccination Support",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "30",
+      "specialty": "Critical Care Transport",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "41",
+      "specialty": "Emergency Transport Traveler",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "47",
+      "specialty": "Flight Nurse",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "1081",
+      "specialty": "CTOR",
+      "full_name": "Cardio Thoracic Operating Room",
+      "group": "Operating Room",
+      "profession": "RN",
+      "keywords": [
+        "cardio thoracic or",
+        "cardiothoracic operating room"
+      ]
+    },
+    {
+      "id": "33",
+      "specialty": "CVOR",
+      "full_name": "Cardiovascular Operating Room",
+      "group": "Operating Room",
+      "profession": "RN",
+      "keywords": [
+        "cardiovascular or",
+        "cardiovascular operating room"
+      ]
+    },
+    {
+      "id": "94",
+      "specialty": "Open Heart",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "95",
+      "specialty": "Operating Room",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "103",
+      "specialty": "Outpatient Surgery",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "153",
+      "specialty": "RNFA",
+      "full_name": "Registered Nurse First Assistant",
+      "group": "Operating Room",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "34",
+      "specialty": "CVPICU",
+      "full_name": "Cardiovascular Pediatric Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": [
+        "cardiovascular picu",
+        "cardiac picu"
+      ]
+    },
+    {
+      "id": "102",
+      "specialty": "Outpatient Pediatrics",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "109",
+      "specialty": "Pediatric Acute Care Float Pool",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "110",
+      "specialty": "Pediatric Ambulatory Care",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "111",
+      "specialty": "Pediatric Apheresis",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "113",
+      "specialty": "Pediatric BMT",
+      "full_name": "Bone Marrow Transplant",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "114",
+      "specialty": "Pediatric Cardiology",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "115",
+      "specialty": "Pediatric Cath Lab",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "116",
+      "specialty": "Pediatric Critical Care Float Pool",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "117",
+      "specialty": "Pediatric CVOR",
+      "full_name": "Cardiovascular Operating Room",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "118",
+      "specialty": "Pediatric Dialysis",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "119",
+      "specialty": "Pediatric Endoscopy",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "120",
+      "specialty": "Pediatric ER",
+      "full_name": "Emergency Room",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "121",
+      "specialty": "Pediatric Home Health",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "122",
+      "specialty": "Pediatric Infusion",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "123",
+      "specialty": "Pediatric IV Therapy",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "124",
+      "specialty": "Pediatric LTAC",
+      "full_name": "Pediatric Long-Term Acute Care",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "125",
+      "specialty": "Pediatric Med Surg",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "126",
+      "specialty": "Pediatric MICU",
+      "full_name": "Medical Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "127",
+      "specialty": "Pediatric Neuro",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "128",
+      "specialty": "Pediatric OR",
+      "full_name": "Operating Room",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "129",
+      "specialty": "Pediatric Ortho",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "130",
+      "specialty": "Pediatric PACU",
+      "full_name": "Post-Anesthesia Care Unit",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "131",
+      "specialty": "Pediatric PCU",
+      "full_name": "Progressive Care Unit",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "132",
+      "specialty": "Pediatric Pulmonary",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "133",
+      "specialty": "Pediatric Rehab",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "134",
+      "specialty": "Pediatric Stepdown",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "135",
+      "specialty": "Pediatric Telemetry",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "136",
+      "specialty": "Pediatric Transplant",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "137",
+      "specialty": "Pediatric Transport",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "138",
+      "specialty": "Pediatric Wound Care",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "140",
+      "specialty": "PICC",
+      "full_name": "Peripherally Inserted Central Catheter Nurse",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "141",
+      "specialty": "PICU",
+      "full_name": "Pediatric Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "RN",
+      "keywords": [
+        "pediatric icu",
+        "peds icu",
+        "paediatric icu"
+      ]
+    },
+    {
+      "id": "43",
+      "specialty": "Endoscopy",
+      "full_name": null,
+      "group": "Endoscopy",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "50",
+      "specialty": "GI Lab",
+      "full_name": "Gastrointestinal Laboratory",
+      "group": "Endoscopy",
+      "profession": "RN",
+      "keywords": [
+        "gastrointestinal lab",
+        "gi/endo"
+      ]
+    },
+    {
+      "id": "45",
+      "specialty": "ER",
+      "full_name": "Emergency Room",
+      "group": "ER",
+      "profession": "RN",
+      "keywords": [
+        "emergency department",
+        "emergency dept"
+      ]
+    },
+    {
+      "id": "49",
+      "specialty": "Geriatrics",
+      "full_name": null,
+      "group": "LTC",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "67",
+      "specialty": "LTC",
+      "full_name": "Long-Term Care",
+      "group": "LTC",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "151",
+      "specialty": "Rehab",
+      "full_name": null,
+      "group": "LTC",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "156",
+      "specialty": "SNF",
+      "full_name": "Skilled Nursing Facility",
+      "group": "LTC",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "52",
+      "specialty": "Home Health",
+      "full_name": null,
+      "group": "Home Health",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "53",
+      "specialty": "Hospice",
+      "full_name": null,
+      "group": "Home Health",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "55",
+      "specialty": "Hyperbaric",
+      "full_name": null,
+      "group": "Wound Care",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "173",
+      "specialty": "Wound Care",
+      "full_name": null,
+      "group": "Wound Care",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "60",
+      "specialty": "Interventional Radiology Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "64",
+      "specialty": "LTAC",
+      "full_name": "Long-Term Acute Care",
+      "group": "LTAC",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "65",
+      "specialty": "LTAC ICU",
+      "full_name": "Long-Term Acute Care Intensive Care Unit",
+      "group": "LTAC",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "66",
+      "specialty": "LTAC Telemetry",
+      "full_name": "Long-Term Acute Care Telemetry",
+      "group": "LTAC",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "161",
+      "specialty": "Sub-Acute",
+      "full_name": null,
+      "group": "LTAC",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "69",
+      "specialty": "Maternal Fetal Care",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "76",
+      "specialty": "Mother Baby",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "82",
+      "specialty": "NICU",
+      "full_name": "Neonatal Intensive Care Unit",
+      "group": "Nursery",
+      "profession": "RN",
+      "keywords": [
+        "neonatal icu",
+        "newborn icu"
+      ]
+    },
+    {
+      "id": "83",
+      "specialty": "NICU Transport",
+      "full_name": "Neonatal Intensive Care Unit Transport",
+      "group": "Nursery",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "86",
+      "specialty": "Nursery",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "81",
+      "specialty": "New Graduate",
+      "full_name": null,
+      "group": "New Graduate",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "160",
+      "specialty": "Student Nurse",
+      "full_name": null,
+      "group": "New Graduate",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "87",
+      "specialty": "OB/GYN",
+      "full_name": "Obstetrics and Gynecology",
+      "group": "Medical Assistant",
+      "profession": "RN",
+      "keywords": [
+        "obstetrics gynecology",
+        "ob gyn"
+      ]
+    },
+    {
+      "id": "90",
+      "specialty": "Oncology",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "105",
+      "specialty": "Pain Management",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "139",
+      "specialty": "Pediatrics",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "883",
+      "specialty": "SNF/LTC",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "170",
+      "specialty": "Urgent Care",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "172",
+      "specialty": "Vaccination Support",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "89",
+      "specialty": "Occupational Health",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "97",
+      "specialty": "Outpatient Clinic",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "98",
+      "specialty": "Outpatient Clinic Cardiology",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "101",
+      "specialty": "Outpatient Clinic Phlebotomy",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "104",
+      "specialty": "PACU",
+      "full_name": "Post-Anesthesia Care Unit",
+      "group": "PACU",
+      "profession": "RN",
+      "keywords": [
+        "post anesthesia care unit",
+        "recovery room"
+      ]
+    },
+    {
+      "id": "142",
+      "specialty": "PreOp",
+      "full_name": "Pre-Operative",
+      "group": "PACU",
+      "profession": "RN",
+      "keywords": [
+        "pre op",
+        "pre operative",
+        "preoperative"
+      ]
+    },
+    {
+      "id": "4",
+      "specialty": "Anesthetist",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "11",
+      "specialty": "Cardiac Rehab",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "42",
+      "specialty": "Endocrinology",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "889",
+      "specialty": "Family Practice",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "58",
+      "specialty": "Infection Prevention",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "886",
+      "specialty": "Interventional Radiology",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "62",
+      "specialty": "IV Therapy",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "70",
+      "specialty": "MDS Coordinator",
+      "full_name": "Minimum Data Set Coordinator",
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "79",
+      "specialty": "Nephrology",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "85",
+      "specialty": "Nurse Navigator",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "144",
+      "specialty": "Public Community Health",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "148",
+      "specialty": "Radiology",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "150",
+      "specialty": "Referral Coordinator",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "152",
+      "specialty": "Rheumatology",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "162",
+      "specialty": "Surveyor",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "167",
+      "specialty": "Theragnostics",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "168",
+      "specialty": "Transplant",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "166",
+      "specialty": "Triage/ Call Center",
+      "full_name": null,
+      "group": null,
+      "profession": "RN",
+      "keywords": []
+    },
+    {
+      "id": "903",
+      "specialty": "Acute Care Float",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "933",
+      "specialty": "Bariatrics",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "971",
+      "specialty": "Med Surg",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "NP",
+      "keywords": [
+        "medical surgical",
+        "med/surg"
+      ]
+    },
+    {
+      "id": "973",
+      "specialty": "Med Surg Float",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "972",
+      "specialty": "Med Surg - Neuro",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "975",
+      "specialty": "Med Surg - Oncology",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "993",
+      "specialty": "Ortho",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "904",
+      "specialty": "Administrative",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "955",
+      "specialty": "Director",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "964",
+      "specialty": "House Supervisor",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "974",
+      "specialty": "Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "921",
+      "specialty": "Radiology Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "905",
+      "specialty": "Ambulatory Care",
+      "full_name": null,
+      "group": "Primary Care",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "916",
+      "specialty": "Primary Care",
+      "full_name": null,
+      "group": "Primary Care",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "932",
+      "specialty": "Antepartum",
+      "full_name": null,
+      "group": "Labor and Delivery",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "969",
+      "specialty": "Labor and Delivery",
+      "full_name": null,
+      "group": "Labor and Delivery",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "934",
+      "specialty": "Apheresis",
+      "full_name": null,
+      "group": "Dialysis",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "953",
+      "specialty": "Dialysis",
+      "full_name": null,
+      "group": "Dialysis",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "936",
+      "specialty": "Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "949",
+      "specialty": "Correctional",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "960",
+      "specialty": "Geriatric Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1000",
+      "specialty": "Pediatric Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "935",
+      "specialty": "BICU",
+      "full_name": "Burn Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "burn icu",
+        "burn intensive care",
+        "burn unit"
+      ]
+    },
+    {
+      "id": "1029",
+      "specialty": "CCU",
+      "full_name": "Critical Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "coronary care unit"
+      ]
+    },
+    {
+      "id": "1031",
+      "specialty": "COVID ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "951",
+      "specialty": "Critical Care Float",
+      "full_name": null,
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1027",
+      "specialty": "CTICU",
+      "full_name": "Cardiothoracic Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "cardiothoracic icu",
+        "cardio thoracic icu"
+      ]
+    },
+    {
+      "id": "1032",
+      "specialty": "CVCC",
+      "full_name": "Cardiovascular Critical Care",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "cardiovascular critical care"
+      ]
+    },
+    {
+      "id": "1033",
+      "specialty": "CVICU",
+      "full_name": "Cardiovascular Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "cardiovascular icu",
+        "cardiac icu"
+      ]
+    },
+    {
+      "id": "1042",
+      "specialty": "ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1076",
+      "specialty": "ICU Float",
+      "full_name": null,
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1049",
+      "specialty": "MICU",
+      "full_name": "Medical Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "medical icu"
+      ]
+    },
+    {
+      "id": "1050",
+      "specialty": "Neuro ICU",
+      "full_name": "Neurological Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "neuro icu",
+        "neurological icu",
+        "neuroscience icu"
+      ]
+    },
+    {
+      "id": "1069",
+      "specialty": "SICU",
+      "full_name": "Surgical Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "surgical icu"
+      ]
+    },
+    {
+      "id": "1072",
+      "specialty": "Trauma ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "NP",
+      "keywords": [
+        "trauma icu",
+        "ticu"
+      ]
+    },
+    {
+      "id": "937",
+      "specialty": "BMT",
+      "full_name": "Bone Marrow Transplant",
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1030",
+      "specialty": "Chemo",
+      "full_name": "Chemotherapy",
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "962",
+      "specialty": "Hematology/Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "966",
+      "specialty": "Infusion",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "985",
+      "specialty": "Oncology - Chemo Certified",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "987",
+      "specialty": "Oncology - Clinic",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "984",
+      "specialty": "Oncology - Pediatric",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "992",
+      "specialty": "Outpatient Clinic Hematology Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "991",
+      "specialty": "Outpatient Clinic Infusion",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "918",
+      "specialty": "Radiation Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "938",
+      "specialty": "Cardiac Stress Testing",
+      "full_name": null,
+      "group": "Echo Lab",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1037",
+      "specialty": "Echo Lab",
+      "full_name": "Echocardiography Laboratory",
+      "group": "Echo Lab",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "939",
+      "specialty": "Cardiac Tele",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1040",
+      "specialty": "ER Holding",
+      "full_name": "Emergency Room Holding",
+      "group": "Med Surg/ Tele",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "976",
+      "specialty": "Med Surg/ Tele",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "NP",
+      "keywords": [
+        "med surg tele",
+        "medical surgical telemetry",
+        "ms/tele"
+      ]
+    },
+    {
+      "id": "977",
+      "specialty": "Med Surg/ Tele Float",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "981",
+      "specialty": "Observation Unit",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "928",
+      "specialty": "Tele Float",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "929",
+      "specialty": "Telemetry",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "NP",
+      "keywords": [
+        "tele"
+      ]
+    },
+    {
+      "id": "940",
+      "specialty": "Case Manager",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "954",
+      "specialty": "Discharge Planner",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "917",
+      "specialty": "Quality Coordinator",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "919",
+      "specialty": "Quality Management",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "930",
+      "specialty": "Utilization Review",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "941",
+      "specialty": "Cath Lab",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "942",
+      "specialty": "Cath Lab Holding",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1038",
+      "specialty": "EP Lab",
+      "full_name": "Electrophysiology Laboratory",
+      "group": "Cath Lab",
+      "profession": "NP",
+      "keywords": [
+        "electrophysiology lab"
+      ]
+    },
+    {
+      "id": "968",
+      "specialty": "Invasive Procedure",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "943",
+      "specialty": "Certified School Nurse",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "922",
+      "specialty": "School Nurse",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1019",
+      "specialty": "School Nurse - 1:1",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1020",
+      "specialty": "School Nurse - Bus Run",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1080",
+      "specialty": "Summer Camp",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "945",
+      "specialty": "Clinical Decisions",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1036",
+      "specialty": "DOU",
+      "full_name": "Definitive Observation Unit",
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": [
+        "definitive observation unit"
+      ]
+    },
+    {
+      "id": "1043",
+      "specialty": "IMCU",
+      "full_name": "Intermediate Care Unit",
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": [
+        "intermediate care unit",
+        "intermediate care"
+      ]
+    },
+    {
+      "id": "1055",
+      "specialty": "PCU",
+      "full_name": "Progressive Care Unit",
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": [
+        "progressive care unit"
+      ]
+    },
+    {
+      "id": "1056",
+      "specialty": "PCU Float",
+      "full_name": "Progressive Care Unit Float",
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1057",
+      "specialty": "PCU - Oncology",
+      "full_name": "Progressive Care – Oncology",
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "923",
+      "specialty": "Stepdown",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "924",
+      "specialty": "Stepdown Cardiac",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "925",
+      "specialty": "Stepdown Neuro",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1071",
+      "specialty": "TCU",
+      "full_name": "Transitional Care Unit",
+      "group": "Stepdown",
+      "profession": "NP",
+      "keywords": [
+        "transitional care unit"
+      ]
+    },
+    {
+      "id": "944",
+      "specialty": "Clinical Documentation Specialist",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "946",
+      "specialty": "Clinical Education Specialist",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "956",
+      "specialty": "Educator",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "980",
+      "specialty": "Nurse Instructor",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "947",
+      "specialty": "Clinical Research Coordinator",
+      "full_name": null,
+      "group": "Clinical Research Nurse",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "948",
+      "specialty": "Clinical Research Nurse (CRN)",
+      "full_name": null,
+      "group": "Clinical Research Nurse",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "950",
+      "specialty": "COVID Testing",
+      "full_name": null,
+      "group": "Vaccination Support",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "952",
+      "specialty": "Critical Care Transport",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "957",
+      "specialty": "Emergency Transport Traveler",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "959",
+      "specialty": "Flight Nurse",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1034",
+      "specialty": "CVOR",
+      "full_name": "Cardiovascular Operating Room",
+      "group": "Operating Room",
+      "profession": "NP",
+      "keywords": [
+        "cardiovascular or",
+        "cardiovascular operating room"
+      ]
+    },
+    {
+      "id": "986",
+      "specialty": "Open Heart",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "988",
+      "specialty": "Operating Room",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "996",
+      "specialty": "Outpatient Surgery",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1068",
+      "specialty": "RNFA",
+      "full_name": "Registered Nurse First Assistant",
+      "group": "Operating Room",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1035",
+      "specialty": "CVPICU",
+      "full_name": "Cardiovascular Pediatric Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": [
+        "cardiovascular picu",
+        "cardiac picu"
+      ]
+    },
+    {
+      "id": "995",
+      "specialty": "Outpatient Pediatrics",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "997",
+      "specialty": "Pediatric Acute Care Float Pool",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "999",
+      "specialty": "Pediatric Ambulatory Care",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "998",
+      "specialty": "Pediatric Apheresis",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1001",
+      "specialty": "Pediatric BMT",
+      "full_name": "Bone Marrow Transplant",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1002",
+      "specialty": "Pediatric Cardiology",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1003",
+      "specialty": "Pediatric Cath Lab",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1004",
+      "specialty": "Pediatric Critical Care Float Pool",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1058",
+      "specialty": "Pediatric CVOR",
+      "full_name": "Cardiovascular Operating Room",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1005",
+      "specialty": "Pediatric Dialysis",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1006",
+      "specialty": "Pediatric Endoscopy",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1059",
+      "specialty": "Pediatric ER",
+      "full_name": "Emergency Room",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1007",
+      "specialty": "Pediatric Home Health",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1008",
+      "specialty": "Pediatric Infusion",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1009",
+      "specialty": "Pediatric IV Therapy",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1060",
+      "specialty": "Pediatric LTAC",
+      "full_name": "Pediatric Long-Term Acute Care",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1010",
+      "specialty": "Pediatric Med Surg",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1061",
+      "specialty": "Pediatric MICU",
+      "full_name": "Medical Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1011",
+      "specialty": "Pediatric Neuro",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1062",
+      "specialty": "Pediatric OR",
+      "full_name": "Operating Room",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1012",
+      "specialty": "Pediatric Ortho",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1063",
+      "specialty": "Pediatric PACU",
+      "full_name": "Post-Anesthesia Care Unit",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1064",
+      "specialty": "Pediatric PCU",
+      "full_name": "Progressive Care Unit",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1013",
+      "specialty": "Pediatric Pulmonary",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1014",
+      "specialty": "Pediatric Rehab",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1028",
+      "specialty": "Pediatric Stepdown",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1015",
+      "specialty": "Pediatric Telemetry",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1016",
+      "specialty": "Pediatric Transplant",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1018",
+      "specialty": "Pediatric Transport",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1017",
+      "specialty": "Pediatric Wound Care",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1065",
+      "specialty": "PICC",
+      "full_name": "Peripherally Inserted Central Catheter Nurse",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1066",
+      "specialty": "PICU",
+      "full_name": "Pediatric Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "NP",
+      "keywords": [
+        "pediatric icu",
+        "peds icu",
+        "paediatric icu"
+      ]
+    },
+    {
+      "id": "958",
+      "specialty": "Endoscopy",
+      "full_name": null,
+      "group": "Endoscopy",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1041",
+      "specialty": "GI Lab",
+      "full_name": "Gastrointestinal Laboratory",
+      "group": "Endoscopy",
+      "profession": "NP",
+      "keywords": [
+        "gastrointestinal lab",
+        "gi/endo"
+      ]
+    },
+    {
+      "id": "1039",
+      "specialty": "ER",
+      "full_name": "Emergency Room",
+      "group": "ER",
+      "profession": "NP",
+      "keywords": [
+        "emergency department",
+        "emergency dept"
+      ]
+    },
+    {
+      "id": "961",
+      "specialty": "Geriatrics",
+      "full_name": null,
+      "group": "LTC",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1047",
+      "specialty": "LTC",
+      "full_name": "Long-Term Care",
+      "group": "LTC",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "920",
+      "specialty": "Rehab",
+      "full_name": null,
+      "group": "LTC",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1070",
+      "specialty": "SNF",
+      "full_name": "Skilled Nursing Facility",
+      "group": "LTC",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "963",
+      "specialty": "Home Health",
+      "full_name": null,
+      "group": "Home Health",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "967",
+      "specialty": "Hospice",
+      "full_name": null,
+      "group": "Home Health",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "965",
+      "specialty": "Hyperbaric",
+      "full_name": null,
+      "group": "Wound Care",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "931",
+      "specialty": "Wound Care",
+      "full_name": null,
+      "group": "Wound Care",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1021",
+      "specialty": "Interventional Radiology Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1044",
+      "specialty": "LTAC",
+      "full_name": "Long-Term Acute Care",
+      "group": "LTAC",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1045",
+      "specialty": "LTAC ICU",
+      "full_name": "Long-Term Acute Care Intensive Care Unit",
+      "group": "LTAC",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1046",
+      "specialty": "LTAC Telemetry",
+      "full_name": "Long-Term Acute Care Telemetry",
+      "group": "LTAC",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "927",
+      "specialty": "Sub-Acute",
+      "full_name": null,
+      "group": "LTAC",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "970",
+      "specialty": "Maternal Fetal Care",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "978",
+      "specialty": "Mother Baby",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1051",
+      "specialty": "NICU",
+      "full_name": "Neonatal Intensive Care Unit",
+      "group": "Nursery",
+      "profession": "NP",
+      "keywords": [
+        "neonatal icu",
+        "newborn icu"
+      ]
+    },
+    {
+      "id": "1052",
+      "specialty": "NICU Transport",
+      "full_name": "Neonatal Intensive Care Unit Transport",
+      "group": "Nursery",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "983",
+      "specialty": "Nursery",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "979",
+      "specialty": "New Graduate",
+      "full_name": null,
+      "group": "New Graduate",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "926",
+      "specialty": "Student Nurse",
+      "full_name": null,
+      "group": "New Graduate",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1053",
+      "specialty": "OB/GYN",
+      "full_name": "Obstetrics and Gynecology",
+      "group": "Medical Assistant",
+      "profession": "NP",
+      "keywords": [
+        "obstetrics gynecology",
+        "ob gyn"
+      ]
+    },
+    {
+      "id": "1022",
+      "specialty": "Oncology",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1023",
+      "specialty": "Pain Management",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1024",
+      "specialty": "Pediatrics",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "896",
+      "specialty": "SNF/LTC",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1025",
+      "specialty": "Urgent Care",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1026",
+      "specialty": "Vaccination Support",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "982",
+      "specialty": "Occupational Health",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "989",
+      "specialty": "Outpatient Clinic",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "990",
+      "specialty": "Outpatient Clinic Cardiology",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "994",
+      "specialty": "Outpatient Clinic Phlebotomy",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1054",
+      "specialty": "PACU",
+      "full_name": "Post-Anesthesia Care Unit",
+      "group": "PACU",
+      "profession": "NP",
+      "keywords": [
+        "post anesthesia care unit",
+        "recovery room"
+      ]
+    },
+    {
+      "id": "1067",
+      "specialty": "PreOp",
+      "full_name": "Pre-Operative",
+      "group": "PACU",
+      "profession": "NP",
+      "keywords": [
+        "pre op",
+        "pre operative",
+        "preoperative"
+      ]
+    },
+    {
+      "id": "895",
+      "specialty": "Anesthetist",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "897",
+      "specialty": "Cardiac Rehab",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "898",
+      "specialty": "Endocrinology",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "915",
+      "specialty": "Family Practice",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "899",
+      "specialty": "Infection Prevention",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "910",
+      "specialty": "Interventional Radiology",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "900",
+      "specialty": "IV Therapy",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "1048",
+      "specialty": "MDS Coordinator",
+      "full_name": "Minimum Data Set Coordinator",
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "901",
+      "specialty": "Nephrology",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "902",
+      "specialty": "Nurse Navigator",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "906",
+      "specialty": "Public Community Health",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "907",
+      "specialty": "Radiology",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "908",
+      "specialty": "Referral Coordinator",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "909",
+      "specialty": "Rheumatology",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "911",
+      "specialty": "Surveyor",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "913",
+      "specialty": "Theragnostics",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "914",
+      "specialty": "Transplant",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "912",
+      "specialty": "Triage/ Call Center",
+      "full_name": null,
+      "group": null,
+      "profession": "NP",
+      "keywords": []
+    },
+    {
+      "id": "356",
+      "specialty": "Acute Care Float",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "362",
+      "specialty": "Bariatrics",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "426",
+      "specialty": "Med Surg",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "medical surgical",
+        "med/surg"
+      ]
+    },
+    {
+      "id": "428",
+      "specialty": "Med Surg Float",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "427",
+      "specialty": "Med Surg - Neuro",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "429",
+      "specialty": "Med Surg - Oncology",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "451",
+      "specialty": "Ortho",
+      "full_name": null,
+      "group": "Med Surg",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "357",
+      "specialty": "Administrative",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "391",
+      "specialty": "Director",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "409",
+      "specialty": "House Supervisor",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "423",
+      "specialty": "Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "504",
+      "specialty": "Radiology Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "358",
+      "specialty": "Ambulatory Care",
+      "full_name": null,
+      "group": "Primary Care",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "498",
+      "specialty": "Primary Care",
+      "full_name": null,
+      "group": "Primary Care",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "360",
+      "specialty": "Antepartum",
+      "full_name": null,
+      "group": "Labor and Delivery",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "418",
+      "specialty": "Labor and Delivery",
+      "full_name": null,
+      "group": "Labor and Delivery",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "361",
+      "specialty": "Apheresis",
+      "full_name": null,
+      "group": "Dialysis",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "390",
+      "specialty": "Dialysis",
+      "full_name": null,
+      "group": "Dialysis",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "363",
+      "specialty": "Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "381",
+      "specialty": "Correctional",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "403",
+      "specialty": "Geriatric Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "467",
+      "specialty": "Pediatric Behavioral Health",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "364",
+      "specialty": "BICU",
+      "full_name": "Burn Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "burn icu",
+        "burn intensive care",
+        "burn unit"
+      ]
+    },
+    {
+      "id": "373",
+      "specialty": "CCU",
+      "full_name": "Critical Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "coronary care unit"
+      ]
+    },
+    {
+      "id": "382",
+      "specialty": "COVID ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "384",
+      "specialty": "Critical Care Float",
+      "full_name": null,
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "369",
+      "specialty": "CTICU",
+      "full_name": "Cardiothoracic Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "cardiothoracic icu",
+        "cardio thoracic icu"
+      ]
+    },
+    {
+      "id": "386",
+      "specialty": "CVCC",
+      "full_name": "Cardiovascular Critical Care",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "cardiovascular critical care"
+      ]
+    },
+    {
+      "id": "387",
+      "specialty": "CVICU",
+      "full_name": "Cardiovascular Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "cardiovascular icu",
+        "cardiac icu"
+      ]
+    },
+    {
+      "id": "411",
+      "specialty": "ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "1074",
+      "specialty": "ICU Float",
+      "full_name": null,
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "430",
+      "specialty": "MICU",
+      "full_name": "Medical Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "medical icu"
+      ]
+    },
+    {
+      "id": "435",
+      "specialty": "Neuro ICU",
+      "full_name": "Neurological Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "neuro icu",
+        "neurological icu",
+        "neuroscience icu"
+      ]
+    },
+    {
+      "id": "510",
+      "specialty": "SICU",
+      "full_name": "Surgical Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "surgical icu"
+      ]
+    },
+    {
+      "id": "524",
+      "specialty": "Trauma ICU",
+      "full_name": "Intensive Care Unit",
+      "group": "ICU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "trauma icu",
+        "ticu"
+      ]
+    },
+    {
+      "id": "365",
+      "specialty": "BMT",
+      "full_name": "Bone Marrow Transplant",
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "375",
+      "specialty": "Chemo",
+      "full_name": "Chemotherapy",
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "406",
+      "specialty": "Hematology/Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "414",
+      "specialty": "Infusion",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "447",
+      "specialty": "Oncology - Chemo Certified",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "448",
+      "specialty": "Oncology - Clinic",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "446",
+      "specialty": "Oncology - Pediatric",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "454",
+      "specialty": "Outpatient Clinic Hematology Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "455",
+      "specialty": "Outpatient Clinic Infusion",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "502",
+      "specialty": "Radiation Oncology",
+      "full_name": null,
+      "group": "Oncology",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "367",
+      "specialty": "Cardiac Stress Testing",
+      "full_name": null,
+      "group": "Echo Lab",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "394",
+      "specialty": "Echo Lab",
+      "full_name": "Echocardiography Laboratory",
+      "group": "Echo Lab",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "368",
+      "specialty": "Cardiac Tele",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "401",
+      "specialty": "ER Holding",
+      "full_name": "Emergency Room Holding",
+      "group": "Med Surg/ Tele",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "432",
+      "specialty": "Med Surg/ Tele",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "med surg tele",
+        "medical surgical telemetry",
+        "ms/tele"
+      ]
+    },
+    {
+      "id": "433",
+      "specialty": "Med Surg/ Tele Float",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "443",
+      "specialty": "Observation Unit",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "519",
+      "specialty": "Tele Float",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "520",
+      "specialty": "Telemetry",
+      "full_name": null,
+      "group": "Med Surg/ Tele",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "tele"
+      ]
+    },
+    {
+      "id": "370",
+      "specialty": "Case Manager",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "392",
+      "specialty": "Discharge Planner",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "500",
+      "specialty": "Quality Coordinator",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "501",
+      "specialty": "Quality Management",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "526",
+      "specialty": "Utilization Review",
+      "full_name": null,
+      "group": "Case Manager",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "371",
+      "specialty": "Cath Lab",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "372",
+      "specialty": "Cath Lab Holding",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "399",
+      "specialty": "EP Lab",
+      "full_name": "Electrophysiology Laboratory",
+      "group": "Cath Lab",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "electrophysiology lab"
+      ]
+    },
+    {
+      "id": "416",
+      "specialty": "Invasive Procedure",
+      "full_name": null,
+      "group": "Cath Lab",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "374",
+      "specialty": "Certified School Nurse",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "509",
+      "specialty": "School Nurse",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "876",
+      "specialty": "School Nurse - 1:1",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "880",
+      "specialty": "School Nurse - Bus Run",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "1078",
+      "specialty": "Summer Camp",
+      "full_name": null,
+      "group": "School RN",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "376",
+      "specialty": "Clinical Decisions",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "393",
+      "specialty": "DOU",
+      "full_name": "Definitive Observation Unit",
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "definitive observation unit"
+      ]
+    },
+    {
+      "id": "412",
+      "specialty": "IMC",
+      "full_name": "Intermediate Care Unit",
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "intermediate care unit",
+        "intermediate care"
+      ]
+    },
+    {
+      "id": "461",
+      "specialty": "PCU",
+      "full_name": "Progressive Care Unit",
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "progressive care unit"
+      ]
+    },
+    {
+      "id": "462",
+      "specialty": "PCU Float",
+      "full_name": "Progressive Care Unit Float",
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "463",
+      "specialty": "PCU - Oncology",
+      "full_name": "Progressive Care – Oncology",
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "512",
+      "specialty": "Stepdown",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "513",
+      "specialty": "Stepdown Cardiac",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "514",
+      "specialty": "Stepdown Neuro",
+      "full_name": null,
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "518",
+      "specialty": "TCU",
+      "full_name": "Transitional Care Unit",
+      "group": "Stepdown",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "transitional care unit"
+      ]
+    },
+    {
+      "id": "377",
+      "specialty": "Clinical Documentation Specialist",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "378",
+      "specialty": "Clinical Education Specialist",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "395",
+      "specialty": "Educator",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "439",
+      "specialty": "Nurse Instructor",
+      "full_name": null,
+      "group": "Educator",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "379",
+      "specialty": "Clinical Research Coordinator",
+      "full_name": null,
+      "group": "Clinical Research Nurse",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "380",
+      "specialty": "Clinical Research Nurse (CRN)",
+      "full_name": null,
+      "group": "Clinical Research Nurse",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "383",
+      "specialty": "COVID Testing",
+      "full_name": null,
+      "group": "Vaccination Support",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "385",
+      "specialty": "Critical Care Transport",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "396",
+      "specialty": "Emergency Transport Traveler",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "402",
+      "specialty": "Flight Nurse",
+      "full_name": null,
+      "group": "Critical Care Transport",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "388",
+      "specialty": "CVOR",
+      "full_name": "Cardiovascular Operating Room",
+      "group": "Operating Room",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "cardiovascular or",
+        "cardiovascular operating room"
+      ]
+    },
+    {
+      "id": "449",
+      "specialty": "Open Heart",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "450",
+      "specialty": "Operating Room",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "458",
+      "specialty": "Outpatient Surgery",
+      "full_name": null,
+      "group": "Operating Room",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "508",
+      "specialty": "RNFA",
+      "full_name": "Registered Nurse First Assistant",
+      "group": "Operating Room",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "389",
+      "specialty": "CVPICU",
+      "full_name": "Cardiovascular Pediatric Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "cardiovascular picu",
+        "cardiac picu"
+      ]
+    },
+    {
+      "id": "457",
+      "specialty": "Outpatient Pediatrics",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "464",
+      "specialty": "Pediatric Acute Care Float Pool",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "465",
+      "specialty": "Pediatric Ambulatory Care",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "466",
+      "specialty": "Pediatric Apheresis",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "468",
+      "specialty": "Pediatric BMT",
+      "full_name": "Bone Marrow Transplant",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "469",
+      "specialty": "Pediatric Cardiology",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "470",
+      "specialty": "Pediatric Cath Lab",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "471",
+      "specialty": "Pediatric Critical Care Float Pool",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "472",
+      "specialty": "Pediatric CVOR",
+      "full_name": "Cardiovascular Operating Room",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "473",
+      "specialty": "Pediatric Dialysis",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "474",
+      "specialty": "Pediatric Endoscopy",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "475",
+      "specialty": "Pediatric ER",
+      "full_name": "Emergency Room",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "476",
+      "specialty": "Pediatric Home Health",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "477",
+      "specialty": "Pediatric Infusion",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "478",
+      "specialty": "Pediatric IV Therapy",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "479",
+      "specialty": "Pediatric LTAC",
+      "full_name": "Pediatric Long-Term Acute Care",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "480",
+      "specialty": "Pediatric Med Surg",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "481",
+      "specialty": "Pediatric MICU",
+      "full_name": "Medical Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "482",
+      "specialty": "Pediatric Neuro",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "483",
+      "specialty": "Pediatric OR",
+      "full_name": "Operating Room",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "484",
+      "specialty": "Pediatric Ortho",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "485",
+      "specialty": "Pediatric PACU",
+      "full_name": "Post-Anesthesia Care Unit",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "486",
+      "specialty": "Pediatric PCU",
+      "full_name": "Progressive Care Unit",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "487",
+      "specialty": "Pediatric Pulmonary",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "488",
+      "specialty": "Pediatric Rehab",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "489",
+      "specialty": "Pediatric Stepdown",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "490",
+      "specialty": "Pediatric Telemetry",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "491",
+      "specialty": "Pediatric Transplant",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "492",
+      "specialty": "Pediatric Transport",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "493",
+      "specialty": "Pediatric Wound Care",
+      "full_name": null,
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "495",
+      "specialty": "PICC",
+      "full_name": "Peripherally Inserted Central Catheter Nurse",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "496",
+      "specialty": "PICU",
+      "full_name": "Pediatric Intensive Care Unit",
+      "group": "Pediatrics",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "pediatric icu",
+        "peds icu",
+        "paediatric icu"
+      ]
+    },
+    {
+      "id": "398",
+      "specialty": "Endoscopy",
+      "full_name": null,
+      "group": "Endoscopy",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "405",
+      "specialty": "GI Lab",
+      "full_name": "Gastrointestinal Laboratory",
+      "group": "Endoscopy",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "gastrointestinal lab",
+        "gi/endo"
+      ]
+    },
+    {
+      "id": "400",
+      "specialty": "ER",
+      "full_name": "Emergency Room",
+      "group": "ER",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "emergency department",
+        "emergency dept"
+      ]
+    },
+    {
+      "id": "404",
+      "specialty": "Geriatrics",
+      "full_name": null,
+      "group": "LTC",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "422",
+      "specialty": "LTC",
+      "full_name": "Long-Term Care",
+      "group": "LTC",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "506",
+      "specialty": "Rehab",
+      "full_name": null,
+      "group": "LTC",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "511",
+      "specialty": "SNF",
+      "full_name": "Skilled Nursing Facility",
+      "group": "LTC",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "407",
+      "specialty": "Home Health",
+      "full_name": null,
+      "group": "Home Health",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "408",
+      "specialty": "Hospice",
+      "full_name": null,
+      "group": "Home Health",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "410",
+      "specialty": "Hyperbaric",
+      "full_name": null,
+      "group": "Wound Care",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "528",
+      "specialty": "Wound Care",
+      "full_name": null,
+      "group": "Wound Care",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "415",
+      "specialty": "Interventional Radiology Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "419",
+      "specialty": "LTAC",
+      "full_name": "Long-Term Acute Care",
+      "group": "LTAC",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "420",
+      "specialty": "LTAC ICU",
+      "full_name": "Long-Term Acute Care Intensive Care Unit",
+      "group": "LTAC",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "421",
+      "specialty": "LTAC Telemetry",
+      "full_name": "Long-Term Acute Care Telemetry",
+      "group": "LTAC",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "516",
+      "specialty": "Sub-Acute",
+      "full_name": null,
+      "group": "LTAC",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "424",
+      "specialty": "Maternal Fetal Care",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "431",
+      "specialty": "Mother Baby",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "437",
+      "specialty": "NICU",
+      "full_name": "Neonatal Intensive Care Unit",
+      "group": "Nursery",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "neonatal icu",
+        "newborn icu"
+      ]
+    },
+    {
+      "id": "438",
+      "specialty": "NICU Transport",
+      "full_name": "Neonatal Intensive Care Unit Transport",
+      "group": "Nursery",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "441",
+      "specialty": "Nursery",
+      "full_name": null,
+      "group": "Nursery",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "436",
+      "specialty": "New Graduate",
+      "full_name": null,
+      "group": "New Graduate",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "515",
+      "specialty": "Student Nurse",
+      "full_name": null,
+      "group": "New Graduate",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "442",
+      "specialty": "OB/GYN",
+      "full_name": "Obstetrics and Gynecology",
+      "group": "Medical Assistant",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "obstetrics gynecology",
+        "ob gyn"
+      ]
+    },
+    {
+      "id": "445",
+      "specialty": "Oncology",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "460",
+      "specialty": "Pain Management",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "494",
+      "specialty": "Pediatrics",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "884",
+      "specialty": "SNF/LTC",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "525",
+      "specialty": "Urgent Care",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "527",
+      "specialty": "Vaccination Support",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "444",
+      "specialty": "Occupational Health",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "452",
+      "specialty": "Outpatient Clinic",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "453",
+      "specialty": "Outpatient Clinic Cardiology",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "456",
+      "specialty": "Outpatient Clinic Phlebotomy",
+      "full_name": null,
+      "group": "Outpatient Clinic",
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "459",
+      "specialty": "PACU",
+      "full_name": "Post-Anesthesia Care Unit",
+      "group": "PACU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "post anesthesia care unit",
+        "recovery room"
+      ]
+    },
+    {
+      "id": "497",
+      "specialty": "PreOp",
+      "full_name": "Pre-Operative",
+      "group": "PACU",
+      "profession": "LPN/ LVN",
+      "keywords": [
+        "pre op",
+        "pre operative",
+        "preoperative"
+      ]
+    },
+    {
+      "id": "359",
+      "specialty": "Anesthetist",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "366",
+      "specialty": "Cardiac Rehab",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "397",
+      "specialty": "Endocrinology",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "890",
+      "specialty": "Family Practice",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "413",
+      "specialty": "Infection Prevention",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "887",
+      "specialty": "Interventional Radiology",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "417",
+      "specialty": "IV Therapy",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "425",
+      "specialty": "MDS Coordinator",
+      "full_name": "Minimum Data Set Coordinator",
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "434",
+      "specialty": "Nephrology",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "440",
+      "specialty": "Nurse Navigator",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "499",
+      "specialty": "Public Community Health",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "503",
+      "specialty": "Radiology",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "505",
+      "specialty": "Referral Coordinator",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "507",
+      "specialty": "Rheumatology",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "517",
+      "specialty": "Surveyor",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "522",
+      "specialty": "Theragnostics",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "523",
+      "specialty": "Transplant",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "521",
+      "specialty": "Triage/ Call Center",
+      "full_name": null,
+      "group": null,
+      "profession": "LPN/ LVN",
+      "keywords": []
+    },
+    {
+      "id": "200",
+      "specialty": "Acute Float Pool",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "197",
+      "specialty": "Allergy and Immunology",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "198",
+      "specialty": "Dermatology",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "199",
+      "specialty": "Family Practice",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "201",
+      "specialty": "Internal Medicine",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "202",
+      "specialty": "Medical Assistant",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "203",
+      "specialty": "OB/GYN",
+      "full_name": "Obstetrics and Gynecology",
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": [
+        "obstetrics gynecology",
+        "ob gyn"
+      ]
+    },
+    {
+      "id": "204",
+      "specialty": "Oncology",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "205",
+      "specialty": "Otorhinolaryngology (ENT)",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "206",
+      "specialty": "Pain Management",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "207",
+      "specialty": "Pediatrics",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "208",
+      "specialty": "SNF/LTC",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "209",
+      "specialty": "Urgent Care",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "210",
+      "specialty": "Vaccination Support",
+      "full_name": null,
+      "group": "Medical Assistant",
+      "profession": "Medical Assistant",
+      "keywords": []
+    },
+    {
+      "id": "273",
+      "specialty": "Certified OB Tech",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "274",
+      "specialty": "Certified OR Tech / Surgical Tech (CST)",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "278",
+      "specialty": "CVOR Certified Surgical First Assistant",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "279",
+      "specialty": "CVOR Tech",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "282",
+      "specialty": "OB Tech",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "284",
+      "specialty": "OR Tech First Assistant",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "283",
+      "specialty": "OR Tech / Surgical Tech",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "287",
+      "specialty": "Pediatric CVOR Tech",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "288",
+      "specialty": "Pediatric OR Tech/ Surgical Tech",
+      "full_name": null,
+      "group": "OR Tech",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "289",
+      "specialty": "Pediatric Sterile Processing Tech (SPT)",
+      "full_name": null,
+      "group": "Sterile Processing",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "291",
+      "specialty": "Sterile Processing Tech (SPT)",
+      "full_name": null,
+      "group": "Sterile Processing",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "292",
+      "specialty": "Sterile Processing Tech (SPT) Director",
+      "full_name": null,
+      "group": "Sterile Processing",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "293",
+      "specialty": "Sterile Processing Tech (SPT) Manager",
+      "full_name": null,
+      "group": "Sterile Processing",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "294",
+      "specialty": "Sterile Processing Tech (SPT) Team Lead",
+      "full_name": null,
+      "group": "Sterile Processing",
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "270",
+      "specialty": "Anesthesia Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "271",
+      "specialty": "Certified Anesthesia Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "272",
+      "specialty": "Certified Cardiac First Assist",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "275",
+      "specialty": "Certified Orthopedic Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "276",
+      "specialty": "Certified Surgical First Assistant",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "277",
+      "specialty": "Contractor",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "280",
+      "specialty": "GI/Endo Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "281",
+      "specialty": "Instrument Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "285",
+      "specialty": "Orthopedic Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "286",
+      "specialty": "Orthotist",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "290",
+      "specialty": "Perioperative Assistant",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "295",
+      "specialty": "Surgical Support Aide",
+      "full_name": null,
+      "group": null,
+      "profession": "Surgical Services",
+      "keywords": []
+    },
+    {
+      "id": "297",
+      "specialty": "Certified Occupational Therapist Assistant - School",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "299",
+      "specialty": "COTA - Acute Care",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "300",
+      "specialty": "COTA - Behavioral Health",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "301",
+      "specialty": "COTA - Home Health",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "302",
+      "specialty": "COTA - Inpatient Rehab",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "303",
+      "specialty": "COTA - LTAC",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "304",
+      "specialty": "COTA - Outpatient",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "305",
+      "specialty": "COTA - Pediatrics",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "306",
+      "specialty": "COTA - School",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "307",
+      "specialty": "COTA - SNF",
+      "full_name": null,
+      "group": "COTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "311",
+      "specialty": "OT - Acute Care",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "312",
+      "specialty": "OT - Behavioral Health",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "313",
+      "specialty": "OT - Home Health",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "314",
+      "specialty": "OT - Inpatient Rehab",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "315",
+      "specialty": "OT - LTAC",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "316",
+      "specialty": "OT - Outpatient",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "317",
+      "specialty": "OT - Pediatrics",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "310",
+      "specialty": "OT - School",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "318",
+      "specialty": "OT - SNF",
+      "full_name": null,
+      "group": "OT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "319",
+      "specialty": "Physical Therapist Assistant - School",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "331",
+      "specialty": "PTA - Acute Care",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "332",
+      "specialty": "PTA - Behavioral Health",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "333",
+      "specialty": "PTA - Home Health",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "329",
+      "specialty": "PT Aide",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "334",
+      "specialty": "PTA - Inpatient Rehab",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "335",
+      "specialty": "PTA - LTAC",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "336",
+      "specialty": "PTA - Outpatient",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "337",
+      "specialty": "PTA - Pediatrics",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "330",
+      "specialty": "PTA - School",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "338",
+      "specialty": "PTA - SNF",
+      "full_name": null,
+      "group": "PTA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "321",
+      "specialty": "PT - Acute Care",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "322",
+      "specialty": "PT - Behavioral Health",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "323",
+      "specialty": "PT - Home Health",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "324",
+      "specialty": "PT - Inpatient Rehab",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "325",
+      "specialty": "PT - LTAC",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "326",
+      "specialty": "PT - Outpatient",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "327",
+      "specialty": "PT - Pediatrics",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "320",
+      "specialty": "PT - School",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "328",
+      "specialty": "PT - SNF",
+      "full_name": null,
+      "group": "PT",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "349",
+      "specialty": "SLPA - Acute Care",
+      "full_name": null,
+      "group": "SLPA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "350",
+      "specialty": "SLPA - Behavioral Health",
+      "full_name": null,
+      "group": "SLPA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "351",
+      "specialty": "SLPA - Inpatient Rehab",
+      "full_name": null,
+      "group": "SLPA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "352",
+      "specialty": "SLPA - LTAC",
+      "full_name": null,
+      "group": "SLPA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "353",
+      "specialty": "SLPA - Outpatient",
+      "full_name": null,
+      "group": "SLPA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "355",
+      "specialty": "SLPA - School",
+      "full_name": null,
+      "group": "SLPA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "354",
+      "specialty": "SLPA - SNF",
+      "full_name": null,
+      "group": "SLPA",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "340",
+      "specialty": "SLP - Acute Care",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "341",
+      "specialty": "SLP - Behavioral Health",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "342",
+      "specialty": "SLP - Home Health",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "343",
+      "specialty": "SLP - Inpatient Rehab",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "344",
+      "specialty": "SLP - LTAC",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "345",
+      "specialty": "SLP - Outpatient",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "346",
+      "specialty": "SLP - Pediatrics",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "347",
+      "specialty": "SLP - School",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "348",
+      "specialty": "SLP - SNF",
+      "full_name": null,
+      "group": "SLP",
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "296",
+      "specialty": "Audiologist",
+      "full_name": null,
+      "group": null,
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "298",
+      "specialty": "Contractor",
+      "full_name": null,
+      "group": null,
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "308",
+      "specialty": "Massage Therapist",
+      "full_name": null,
+      "group": null,
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "309",
+      "specialty": "Music Therapist",
+      "full_name": null,
+      "group": null,
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "339",
+      "specialty": "Rehab Aide",
+      "full_name": null,
+      "group": null,
+      "profession": "Therapy & Rehab",
+      "keywords": []
+    },
+    {
+      "id": "174",
+      "specialty": "Behavioral Health Assistant",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "Behavioral Health",
+      "keywords": []
+    },
+    {
+      "id": "175",
+      "specialty": "Behavioral Health Tech",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "Behavioral Health",
+      "keywords": []
+    },
+    {
+      "id": "176",
+      "specialty": "Mental Health Tech",
+      "full_name": null,
+      "group": "Behavioral Health",
+      "profession": "Behavioral Health",
+      "keywords": []
+    },
+    {
+      "id": "255",
+      "specialty": "Case Worker",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "256",
+      "specialty": "Certified Social Worker",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "257",
+      "specialty": "CSW (Certified Social Worker)",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "258",
+      "specialty": "LCSW (Licensed Clinical Social Worker)",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "259",
+      "specialty": "Licensed Marriage and Family Therapist",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "260",
+      "specialty": "Licensed Professional Clinical Counselor",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "261",
+      "specialty": "Licensed Professional Counselor",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "262",
+      "specialty": "LICSW (Licensed Independent Clinical Social Worker)",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "263",
+      "specialty": "LMSW (Licensed Masters of Social Worker)",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "264",
+      "specialty": "Medical Social Worker",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "265",
+      "specialty": "Mental Health",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "266",
+      "specialty": "MSW (Masters of Social Work)",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "267",
+      "specialty": "School Psychologist",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "268",
+      "specialty": "School Social Worker",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "269",
+      "specialty": "Social Worker Assistant",
+      "full_name": null,
+      "group": "Social Worker",
+      "profession": "Social Services",
+      "keywords": []
+    },
+    {
+      "id": "215",
+      "specialty": "Cath Lab Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "216",
+      "specialty": "CT Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "224",
+      "specialty": "Interventional Radiology Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "225",
+      "specialty": "Mammography Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "227",
+      "specialty": "MRI Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "232",
+      "specialty": "Sonographer",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "233",
+      "specialty": "Special Procedures",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "234",
+      "specialty": "Ultrasound Tech - General",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "235",
+      "specialty": "Ultrasound Tech - General II",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "237",
+      "specialty": "Ultrasound Tech - Maternal Fetal",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "236",
+      "specialty": "Ultrasound Tech - Vascular",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "238",
+      "specialty": "X-Ray Tech",
+      "full_name": null,
+      "group": "Imaging Tech",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "230",
+      "specialty": "Radiology Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "214",
+      "specialty": "Cath Lab Manager",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "217",
+      "specialty": "Diagnostic Imaging Assistant",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "218",
+      "specialty": "Dosimetrist",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "220",
+      "specialty": "Echo Tech - Cardiac Sonographer",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "219",
+      "specialty": "Echo Tech - Cardiac Sonographer Peds",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "221",
+      "specialty": "EKG Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "222",
+      "specialty": "Electrophysiology Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "223",
+      "specialty": "Holter Monitor Stress Test Technician",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "226",
+      "specialty": "Monitor Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "228",
+      "specialty": "Nuclear Med Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "229",
+      "specialty": "Radiation Therapist",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "231",
+      "specialty": "Registered Radiology Assistant",
+      "full_name": null,
+      "group": null,
+      "profession": "Radiology & Cardiology",
+      "keywords": []
+    },
+    {
+      "id": "241",
+      "specialty": "CRT",
+      "full_name": null,
+      "group": "Respiratory",
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "250",
+      "specialty": "RRT",
+      "full_name": null,
+      "group": "Respiratory",
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "251",
+      "specialty": "RRT Float",
+      "full_name": null,
+      "group": "Respiratory",
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "254",
+      "specialty": "RRT NICU",
+      "full_name": null,
+      "group": "Respiratory",
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "252",
+      "specialty": "RRT Pediatrics",
+      "full_name": null,
+      "group": "Respiratory",
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "253",
+      "specialty": "RRT PICU",
+      "full_name": null,
+      "group": "Respiratory",
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "247",
+      "specialty": "Manager",
+      "full_name": null,
+      "group": "Manager",
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "239",
+      "specialty": "Certified Hyperbaric Specialist",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "240",
+      "specialty": "Certified Hyperbaric Technician",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "242",
+      "specialty": "CRT NICU",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "243",
+      "specialty": "EEG Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "244",
+      "specialty": "EEG Tech Manager",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "245",
+      "specialty": "Hyperbaric Technician",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "246",
+      "specialty": "Intraoperative Neuromonitoring Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "248",
+      "specialty": "Polysomnographer / Sleep Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "249",
+      "specialty": "Pulmonary Function Technologist",
+      "full_name": null,
+      "group": null,
+      "profession": "Respiratory & Neuro",
+      "keywords": []
+    },
+    {
+      "id": "183",
+      "specialty": "Clinical Lab Scientist",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "184",
+      "specialty": "Cyto Tech",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "186",
+      "specialty": "Embryologist",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "187",
+      "specialty": "Histology Tech",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "188",
+      "specialty": "Laboratory Assistant",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "185",
+      "specialty": "Laboratory Director",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "189",
+      "specialty": "Laboratory Manager",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "190",
+      "specialty": "Medical Lab Scientist",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "191",
+      "specialty": "Medical Lab Technician",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "192",
+      "specialty": "Medical Technologist",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "193",
+      "specialty": "Metabolomic Technician",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "194",
+      "specialty": "Microbiology Tech",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "195",
+      "specialty": "Pathology Assistant",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "196",
+      "specialty": "Phlebotomist",
+      "full_name": null,
+      "group": "Laboratory",
+      "profession": "Laboratory",
+      "keywords": []
+    },
+    {
+      "id": "177",
+      "specialty": "Dialysis Tech",
+      "full_name": null,
+      "group": null,
+      "profession": "Dialysis",
+      "keywords": []
+    },
+    {
+      "id": "179",
+      "specialty": "Dietary Aide",
+      "full_name": null,
+      "group": "Dietary",
+      "profession": "Dietary Services",
+      "keywords": []
+    },
+    {
+      "id": "180",
+      "specialty": "Dietary Tech",
+      "full_name": null,
+      "group": "Dietary",
+      "profession": "Dietary Services",
+      "keywords": []
+    },
+    {
+      "id": "178",
+      "specialty": "Dietician",
+      "full_name": null,
+      "group": "Dietary",
+      "profession": "Dietary Services",
+      "keywords": []
+    },
+    {
+      "id": "182",
+      "specialty": "EMS Educator",
+      "full_name": null,
+      "group": null,
+      "profession": "EMT",
+      "keywords": []
+    },
+    {
+      "id": "181",
+      "specialty": "EMT",
+      "full_name": null,
+      "group": null,
+      "profession": "EMT",
+      "keywords": []
+    },
+    {
+      "id": "211",
+      "specialty": "Paramedic",
+      "full_name": null,
+      "group": null,
+      "profession": "Paramedic",
+      "keywords": []
+    },
+    {
+      "id": "212",
+      "specialty": "Patient Care Technician",
+      "full_name": null,
+      "group": null,
+      "profession": "Patient Care Technician",
+      "keywords": []
+    },
+    {
+      "id": "213",
+      "specialty": "Perfusionist",
+      "full_name": null,
+      "group": null,
+      "profession": "Perfusionist",
+      "keywords": []
+    },
+    {
+      "id": "892",
+      "specialty": "Special Education Teacher",
+      "full_name": null,
+      "group": "Teacher",
+      "profession": "Teacher",
+      "keywords": []
+    },
+    {
+      "id": "893",
+      "specialty": "Teacher",
+      "full_name": null,
+      "group": "Teacher",
+      "profession": "Teacher",
+      "keywords": []
+    },
+    {
+      "id": "894",
+      "specialty": "Teacher Aide",
+      "full_name": null,
+      "group": "Teacher",
+      "profession": "Teacher",
+      "keywords": []
+    }
+  ]
+}

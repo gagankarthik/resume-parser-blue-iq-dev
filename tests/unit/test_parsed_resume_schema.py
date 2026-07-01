@@ -107,18 +107,25 @@ def test_experience_yes_no_na_coercion():
     assert exp.trauma_facility is None
 
 
-def test_experience_specialties_canonicalized_by_normalizer():
+def test_experience_specialties_resolved_against_bundled_catalog():
+    from app.services.normalization import specialty_catalog
     from app.services.normalization.normalizer import normalize
 
-    parsed = ParsedResumeAI.model_validate(
-        {"experience": [{"company": "X", "role": "RN", "specialties": ["Med Surg/ Tele", "ICU"]}]}
-    )
-    normalize(parsed)
-    specs = parsed.experience[0].specialties
-    # Names canonicalised; without a catalog these resolve by name (id stays null).
-    assert [s.name for s in specs] == ["Med Surg / Tele", "Intensive Care Unit"]
-    assert all(s.specialty_id is None and s.match_tier == "name" for s in specs)
-    assert all(s.confidence == 1.0 for s in specs)
+    specialty_catalog.reload(None)  # the bundled Gig snapshot (default catalog)
+    try:
+        parsed = ParsedResumeAI.model_validate(
+            {"experience": [{"company": "X", "role": "RN", "profession": "RN",
+                             "specialties": ["Med Surg/ Tele", "ICU"]}]}
+        )
+        normalize(parsed)
+        specs = parsed.experience[0].specialties
+        # The platform's EXACT names are preserved (never re-worded), each mapped
+        # to a profession-scoped catalog id at full name-tier confidence.
+        assert [s.name for s in specs] == ["Med Surg/ Tele", "ICU"]
+        assert all(s.specialty_id and s.match_tier == "name" for s in specs)
+        assert all(s.confidence == 1.0 for s in specs)
+    finally:
+        specialty_catalog.reload("")
 
 
 def test_experience_specialty_objects_accepted():
