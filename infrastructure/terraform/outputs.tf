@@ -22,3 +22,26 @@ output "s3_bucket_name" {
   description = "Temp S3 bucket name — paste into .env S3_BUCKET_NAME"
   value       = aws_s3_bucket.temp.bucket
 }
+
+# ── Custom API domain (only meaningful when var.api_custom_domain is set) ──────
+
+output "api_cert_validation_records" {
+  description = "DNS records to add at your DNS provider (GoDaddy) to validate the ACM cert. Add each as a CNAME (name → value)."
+  value = local.api_domain_enabled ? [
+    for o in aws_acm_certificate.api[0].domain_validation_options : {
+      name  = o.resource_record_name
+      type  = o.resource_record_type
+      value = o.resource_record_value
+    }
+  ] : []
+}
+
+output "cloudfront_domain_name" {
+  description = "CloudFront hostname — point the custom API domain here (CNAME api.parsinglab.blue-iq.ai → this value)."
+  value       = local.api_domain_enabled ? aws_cloudfront_distribution.api[0].domain_name : null
+}
+
+output "api_custom_url" {
+  description = "The public API URL on the custom domain (once DNS is in place)."
+  value       = local.api_domain_enabled ? "https://${var.api_custom_domain}" : null
+}

@@ -22,6 +22,13 @@ provider "aws" {
   region = var.aws_region
 }
 
+# CloudFront requires its ACM certificate in us-east-1, regardless of where the
+# rest of the stack lives. Used only by the custom API domain (cloudfront_api.tf).
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 locals {
   name_prefix = "resume-parser-${var.environment}"
   common_tags = {

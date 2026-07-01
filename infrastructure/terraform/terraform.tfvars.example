@@ -21,3 +21,8 @@ ecr_image_uri = "123456789012.dkr.ecr.us-east-2.amazonaws.com/resume-parser-prod
 # Single function serves both the HTTP API and the async OCR path — size for OCR.
 api_lambda_memory_mb       = 2048
 api_lambda_timeout_seconds = 300
+
+# Custom API domain (optional). Set to front the Lambda Function URL with
+# CloudFront + an ACM cert on this hostname. DNS is added manually at GoDaddy
+# (see cloudfront_api.tf for the two-phase apply). Leave empty to disable.
+api_custom_domain = "api.parsinglab.blue-iq.ai"

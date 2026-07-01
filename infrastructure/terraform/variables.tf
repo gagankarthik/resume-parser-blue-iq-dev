@@ -70,3 +70,14 @@ variable "max_batch_size" {
   type        = number
   default     = 200
 }
+
+# Custom API domain (optional). Leave empty to keep only the raw Lambda Function
+# URL. Set to e.g. "api.parsinglab.blue-iq.ai" to front the Function URL with a
+# CloudFront distribution + ACM cert on that hostname (see cloudfront_api.tf).
+# DNS for the domain is external (GoDaddy), so after `terraform apply` you add the
+# ACM validation CNAME and the final CNAME (→ cloudfront_domain_name output) there.
+variable "api_custom_domain" {
+  description = "Custom hostname for the API (e.g. api.parsinglab.blue-iq.ai). Empty = disabled."
+  type        = string
+  default     = ""
+}
