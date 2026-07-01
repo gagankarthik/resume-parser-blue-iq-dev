@@ -50,12 +50,60 @@ class SpecialtyRecord:
     profession: str | None = None
 
 
+# Résumés spell professions out ("Registered Nurse"), but the platform catalog
+# keys them by short code ("RN"). Map the common full titles / abbreviations to the
+# catalog's profession key(s) so scoped matching (and the AI-tier profession guard)
+# line up. Keys are already _match_key-normalized (lowercase; "&"→"and"; slash kept).
+_PROFESSION_ALIASES: dict[str, tuple[str, ...]] = {
+    # Nursing
+    "registered nurse": ("rn",),
+    "licensed practical nurse": ("lpn/lvn", "lpn", "lvn"),
+    "licensed vocational nurse": ("lpn/lvn", "lpn", "lvn"),
+    "lpn": ("lpn/lvn", "lvn"),
+    "lvn": ("lpn/lvn", "lpn"),
+    "nurse practitioner": ("np",),
+    "advanced practice registered nurse": ("np",),
+    "aprn": ("np",),
+    "certified nursing assistant": ("cna",),
+    "certified nurse assistant": ("cna",),
+    "certified nurse aide": ("cna",),
+    "nursing assistant": ("cna",),
+    "nurse aide": ("cna",),
+    "certified medication aide": ("cna",),
+    # EMS
+    "emergency medical technician": ("emt",),
+    # Allied health
+    "patient care tech": ("patient care technician",),
+    "pct": ("patient care technician",),
+    "certified medical assistant": ("medical assistant",),
+    "registered medical assistant": ("medical assistant",),
+    "respiratory therapist": ("respiratory and neuro",),
+    "registered respiratory therapist": ("respiratory and neuro",),
+    "certified respiratory therapist": ("respiratory and neuro",),
+    "physical therapist": ("therapy and rehab",),
+    "physical therapist assistant": ("therapy and rehab",),
+    "occupational therapist": ("therapy and rehab",),
+    "speech language pathologist": ("therapy and rehab",),
+    "radiologic technologist": ("radiology and cardiology",),
+    "radiology technologist": ("radiology and cardiology",),
+    "rad tech": ("radiology and cardiology",),
+    "surgical technologist": ("surgical services",),
+    "surgical tech": ("surgical services",),
+    "operating room technician": ("surgical services",),
+    "medical laboratory technician": ("laboratory",),
+    "medical laboratory scientist": ("laboratory",),
+    "medical technologist": ("laboratory",),
+}
+
+
 def profession_keys(profession: str | None) -> list[str]:
     """Lookup keys a profession string can match on.
 
     The platform names some professions as a pair ("LPN/ LVN"); split those so a
-    résumé that says just "LPN" (or "LVN") still scopes to that profession. Returns
-    the full key first, then each slash-separated part.
+    résumé that says just "LPN" (or "LVN") still scopes to that profession. Résumés
+    also spell titles out ("Registered Nurse") where the catalog uses codes ("RN"),
+    so common titles/abbreviations are aliased to the catalog key(s). Returns the
+    full key first, then each slash-separated part, then any aliased catalog keys.
     """
     if not profession or not profession.strip():
         return []
@@ -65,6 +113,10 @@ def profession_keys(profession: str | None) -> list[str]:
         part = part.strip()
         if part and part not in keys:
             keys.append(part)
+    for k in list(keys):
+        for alias in _PROFESSION_ALIASES.get(k, ()):
+            if alias not in keys:
+                keys.append(alias)
     return keys
 
 

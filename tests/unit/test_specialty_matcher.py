@@ -82,6 +82,13 @@ def test_profession_pair_splits_lpn_lvn(prof_catalog):
     assert specialty_matcher.match("ICU", "LVN").specialty_id == "411"
 
 
+def test_full_title_aliases_to_catalog_code(prof_catalog):
+    # Résumés spell professions out; they must scope to the catalog's short code.
+    assert specialty_matcher.match("ICU", "Registered Nurse").specialty_id == "56"
+    assert specialty_matcher.match("ICU", "Certified Nursing Assistant").specialty_id == "757"
+    assert specialty_matcher.match("ICU", "Licensed Practical Nurse").specialty_id == "411"
+
+
 def test_unknown_profession_falls_back_to_flat(prof_catalog):
     # No PT "ICU" → falls back to the flat first-wins record (RN, listed first).
     assert specialty_matcher.match("ICU", "PT").specialty_id == "56"
