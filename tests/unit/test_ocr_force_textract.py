@@ -31,7 +31,7 @@ def test_force_textract_param_skips_tesseract(monkeypatch):
         calls["tesseract"] += 1
         return "tess", 99.0
 
-    def fake_textract(content, filename, images):
+    def fake_textract(images):
         calls["textract"] += 1
         return "textract text"
 
@@ -55,7 +55,7 @@ def test_global_force_textract_flag_skips_tesseract(monkeypatch):
     )
     monkeypatch.setattr(
         ocr_extractor, "_run_textract",
-        lambda content, filename, images: (calls.__setitem__("textract", calls["textract"] + 1), "x")[1],
+        lambda images: (calls.__setitem__("textract", calls["textract"] + 1), "x")[1],
     )
 
     settings = ocr_extractor.get_settings()
@@ -77,7 +77,7 @@ def test_default_uses_tesseract_when_confident(monkeypatch):
     )
     monkeypatch.setattr(
         ocr_extractor, "_run_textract",
-        lambda content, filename, images: (calls.__setitem__("textract", calls["textract"] + 1), "x")[1],
+        lambda images: (calls.__setitem__("textract", calls["textract"] + 1), "x")[1],
     )
 
     text, used = ocr_extractor.extract(_png_bytes(), "scan.png")

@@ -45,7 +45,7 @@ def extract(content: bytes, filename: str, force_textract: bool = False) -> tupl
 
     if force:
         log.info("ocr_forced_textract", pages=len(images))
-        return _run_textract(content, filename, preprocessed), True
+        return _run_textract(preprocessed), True
 
     text, confidence = _run_tesseract(preprocessed)
 
@@ -58,7 +58,7 @@ def extract(content: bytes, filename: str, force_textract: bool = False) -> tupl
         tesseract_confidence=round(confidence, 1),
         threshold=_CONFIDENCE_THRESHOLD,
     )
-    text = _run_textract(content, filename, preprocessed)
+    text = _run_textract(preprocessed)
     return text, True
 
 
@@ -185,11 +185,7 @@ def _run_tesseract(images: list[Image.Image]) -> tuple[str, float]:
 
 # ── Textract ──────────────────────────────────────────────────────────────────
 
-def _run_textract(
-    original_content: bytes,
-    filename: str,
-    preprocessed_images: list[Image.Image],
-) -> str:
+def _run_textract(preprocessed_images: list[Image.Image]) -> str:
     """
     Call AWS Textract via synchronous detect_document_text.
     Uses preprocessed images (converted to PNG) for better accuracy.
