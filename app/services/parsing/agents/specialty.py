@@ -25,11 +25,14 @@ _SYSTEM = """You map clinical specialty phrases from a healthcare résumé to a 
 You are given:
 - UNMATCHED: specialty phrases taken verbatim from one résumé that an exact/keyword
   match could not resolve.
-- CANDIDATES: the ONLY valid catalog specialties, each as "<id> | <name> | <full name>".
+- CANDIDATES: the ONLY valid catalog specialties, each as
+  "<id> | <name> | <full name> | <profession>" (full name and profession may be blank).
 
 For EACH unmatched phrase, choose the single best CANDIDATE that means the same
 clinical specialty/unit, and return its exact id. Rules:
 - Use ONLY ids that appear in CANDIDATES. Never invent an id.
+- The same specialty name may appear under several professions with different ids;
+  prefer the candidate whose profession fits the résumé role when it is clear.
 - If no candidate is a confident match, return specialty_id = null for that phrase
   (do NOT force a weak match).
 - confidence is your 0.0–1.0 certainty that the chosen id is correct (0.0 when null).

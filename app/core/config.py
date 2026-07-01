@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -96,11 +97,26 @@ class Settings(BaseSettings):
 
     # Specialty → ID matching
     # Path to the specialty reference catalog (JSON list, or CSV) of
-    # {id, specialty, full_name, keywords[], group?} used to map each per-role
-    # specialty to a platform specialty id. When unset/missing, the matcher still
+    # {id, specialty, full_name, keywords[], group?, profession?} used to map each
+    # per-role specialty to a platform specialty id. Defaults to the snapshot
+    # bundled at app/data/specialty_catalog.json (generated from the Gig API by
+    # scripts/refresh_specialty_catalog.py). When unset/missing, the matcher still
     # resolves canonical specialty NAMES + confidence from the built-in taxonomy
     # but leaves specialty_id null (matched=False) for admin review.
-    specialty_catalog_path: str | None = None
+    specialty_catalog_path: str | None = str(
+        Path(__file__).resolve().parents[1] / "data" / "specialty_catalog.json"
+    )
+    # GigHealth specialties API — source of truth for the catalog snapshot. Only
+    # the refresh script reads these (never the request hot path). The key comes
+    # from GIG_SPECIAILITIES_API_KEY (matching the platform's spelling); the URL
+    # has a sensible default and rarely needs overriding.
+    gig_specialties_api_url: str = "https://api.gighealth.com/api/v1/external/specialities"
+    gig_specialties_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "gig_specialties_api_key", "gig_speciailities_api_key"
+        ),
+    )
     # When True, specialties that miss the deterministic tiers (name/full_name/
     # keywords) are resolved by one batched LLM call against a filtered shortlist
     # from the catalog. No-op when the catalog is empty or nothing is unmatched.

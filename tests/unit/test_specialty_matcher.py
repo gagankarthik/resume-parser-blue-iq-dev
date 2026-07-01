@@ -19,7 +19,7 @@ from app.services.parsing.agents.specialty import SpecialtyAIResult, SpecialtyMa
 @pytest.fixture(autouse=True)
 def _reset_catalog():
     yield
-    specialty_catalog.reload(None)
+    specialty_catalog.reload("")   # empty; keep the bundled default out of tests
 
 
 @pytest.fixture
@@ -55,6 +55,44 @@ def test_tier3_keyword(catalog):
     assert (m.specialty_id, m.match_tier, m.confidence) == ("1042", "keywords", 0.80)
 
 
+# ── Profession-scoped id selection ────────────────────────────────────────────
+
+@pytest.fixture
+def prof_catalog(tmp_path):
+    # Same name "ICU" under two professions with different ids; "LPN/ LVN" pair.
+    path = tmp_path / "prof.json"
+    path.write_text(json.dumps([
+        {"id": "56",  "specialty": "ICU", "profession": "RN"},
+        {"id": "757", "specialty": "ICU", "profession": "CNA"},
+        {"id": "411", "specialty": "ICU", "profession": "LPN/ LVN"},
+        {"id": "999", "specialty": "BICU", "full_name": "Burn Intensive Care Unit",
+         "keywords": ["burn icu", "burn unit"], "profession": "RN"},
+    ]), encoding="utf-8")
+    return specialty_catalog.reload(str(path))
+
+
+def test_profession_scopes_shared_name(prof_catalog):
+    assert specialty_matcher.match("ICU", "RN").specialty_id == "56"
+    assert specialty_matcher.match("ICU", "CNA").specialty_id == "757"
+
+
+def test_profession_pair_splits_lpn_lvn(prof_catalog):
+    # "LPN/ LVN" is indexed under both "lpn" and "lvn".
+    assert specialty_matcher.match("ICU", "LPN").specialty_id == "411"
+    assert specialty_matcher.match("ICU", "LVN").specialty_id == "411"
+
+
+def test_unknown_profession_falls_back_to_flat(prof_catalog):
+    # No PT "ICU" → falls back to the flat first-wins record (RN, listed first).
+    assert specialty_matcher.match("ICU", "PT").specialty_id == "56"
+
+
+def test_keyword_tier_differentiates_subtype(prof_catalog):
+    # "burn unit" isn't a taxonomy name/full-name, so the curated keyword resolves it.
+    m = specialty_matcher.match("burn unit", "RN")
+    assert (m.specialty_id, m.match_tier) == ("999", "keywords")
+
+
 def test_unmatched_kept_without_id(catalog):
     m = specialty_matcher.match("Underwater Basket Weaving")
     assert m.specialty_id is None
@@ -67,7 +105,7 @@ def test_unmatched_kept_without_id(catalog):
 # ── No-catalog fallback ───────────────────────────────────────────────────────
 
 def test_no_catalog_resolves_name_without_id():
-    specialty_catalog.reload(None)
+    specialty_catalog.reload("")
     m = specialty_matcher.match("ICU")
     assert m.name == "Intensive Care Unit"           # canonicalised by the taxonomy
     assert m.specialty_id is None                     # no catalog → no id
@@ -94,7 +132,7 @@ def _parsed_with_unmatched():
 
 
 async def test_tier4_noop_without_catalog():
-    specialty_catalog.reload(None)
+    specialty_catalog.reload("")
     parsed = _parsed_with_unmatched()
     tokens = await specialty_matcher.resolve_unmatched_with_ai(parsed, budget=10)
     assert tokens == 0

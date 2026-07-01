@@ -20,7 +20,8 @@ Expected record shape (per specialty), extra keys ignored::
 
     {"id": "1042", "specialty": "Medical Surgical",
      "full_name": "Medical Surgical / Telemetry",
-     "keywords": ["med surg", "ms/tele"], "group": "Med Surg / Tele"}
+     "keywords": ["med surg", "ms/tele"], "group": "Med Surg / Tele",
+     "profession": "RN"}
 """
 
 from __future__ import annotations
@@ -41,25 +42,67 @@ log = get_logger(__name__)
 class SpecialtyRecord:
     """One catalog specialty."""
 
-    id:        str
-    name:      str
-    full_name: str | None = None
-    group:     str | None = None
-    keywords:  tuple[str, ...] = ()
+    id:         str
+    name:       str
+    full_name:  str | None = None
+    group:      str | None = None
+    keywords:   tuple[str, ...] = ()
+    profession: str | None = None
+
+
+def profession_keys(profession: str | None) -> list[str]:
+    """Lookup keys a profession string can match on.
+
+    The platform names some professions as a pair ("LPN/ LVN"); split those so a
+    résumé that says just "LPN" (or "LVN") still scopes to that profession. Returns
+    the full key first, then each slash-separated part.
+    """
+    if not profession or not profession.strip():
+        return []
+    full = _match_key(profession)
+    keys = [full]
+    for part in full.split("/"):
+        part = part.strip()
+        if part and part not in keys:
+            keys.append(part)
+    return keys
 
 
 @dataclass
 class SpecialtyCatalog:
-    """Loaded catalog plus the lookup indexes the matcher needs."""
+    """Loaded catalog plus the lookup indexes the matcher needs.
 
-    records:       list[SpecialtyRecord]   = field(default_factory=list)
-    by_name_key:   dict[str, SpecialtyRecord] = field(default_factory=dict)
-    by_full_key:   dict[str, SpecialtyRecord] = field(default_factory=dict)
+    Two index layers per field: a flat, profession-agnostic one (first spelling
+    wins) and a profession-scoped one keyed ``(profession_key, value_key)``. The
+    same specialty NAME maps to a different id per profession, so a role with a
+    known credential resolves via the scoped index first, then falls back to flat.
+    """
+
+    records:        list[SpecialtyRecord]   = field(default_factory=list)
+    by_name_key:    dict[str, SpecialtyRecord] = field(default_factory=dict)
+    by_full_key:    dict[str, SpecialtyRecord] = field(default_factory=dict)
     by_keyword_key: dict[str, SpecialtyRecord] = field(default_factory=dict)
+    by_prof_name_key:    dict[tuple[str, str], SpecialtyRecord] = field(default_factory=dict)
+    by_prof_full_key:    dict[tuple[str, str], SpecialtyRecord] = field(default_factory=dict)
+    by_prof_keyword_key: dict[tuple[str, str], SpecialtyRecord] = field(default_factory=dict)
 
     @property
     def is_empty(self) -> bool:
         return not self.records
+
+    def find(
+        self,
+        index: dict[str, SpecialtyRecord],
+        prof_index: dict[tuple[str, str], SpecialtyRecord],
+        value_key: str,
+        prof_lookup_keys: list[str],
+    ) -> SpecialtyRecord | None:
+        """Prefer a profession-scoped hit, else the flat (first-wins) hit."""
+        for pk in prof_lookup_keys:
+            rec = prof_index.get((pk, value_key))
+            if rec is not None:
+                return rec
+        return index.get(value_key)
 
 
 # Module-level cache. None = not yet loaded this process.
@@ -131,6 +174,7 @@ def _to_record(row: object) -> SpecialtyRecord | None:
 
     full = row.get("full_name") or row.get("specialty_full") or row.get("SpecialtyFull")
     group = row.get("group") or row.get("Group")
+    profession = row.get("profession") or row.get("Profession")
 
     raw_keywords = row.get("keywords")
     if isinstance(raw_keywords, str):
@@ -150,6 +194,7 @@ def _to_record(row: object) -> SpecialtyRecord | None:
         full_name=full.strip() if isinstance(full, str) and full.strip() else None,
         group=group.strip() if isinstance(group, str) and group.strip() else None,
         keywords=keywords,
+        profession=profession.strip() if isinstance(profession, str) and profession.strip() else None,
     )
 
 
@@ -157,19 +202,39 @@ def _build_indexes(records: list[SpecialtyRecord]) -> SpecialtyCatalog:
     by_name: dict[str, SpecialtyRecord] = {}
     by_full: dict[str, SpecialtyRecord] = {}
     by_keyword: dict[str, SpecialtyRecord] = {}
+    by_prof_name: dict[tuple[str, str], SpecialtyRecord] = {}
+    by_prof_full: dict[tuple[str, str], SpecialtyRecord] = {}
+    by_prof_keyword: dict[tuple[str, str], SpecialtyRecord] = {}
 
     for rec in records:
+        name_key = _match_key(rec.name)
+        full_key = _match_key(rec.full_name) if rec.full_name else None
+        keyword_keys = [_match_key(kw) for kw in rec.keywords]
+        prof_keys = profession_keys(rec.profession)
+
         # First write wins so an earlier (more canonical) row is not shadowed by a
         # later duplicate spelling.
-        by_name.setdefault(_match_key(rec.name), rec)
-        if rec.full_name:
-            by_full.setdefault(_match_key(rec.full_name), rec)
-        for kw in rec.keywords:
-            by_keyword.setdefault(_match_key(kw), rec)
+        by_name.setdefault(name_key, rec)
+        if full_key:
+            by_full.setdefault(full_key, rec)
+        for kk in keyword_keys:
+            by_keyword.setdefault(kk, rec)
+
+        # Profession-scoped: the same name maps to a different id per profession,
+        # so key on (profession, value) to pick the id for a role's credential.
+        for pk in prof_keys:
+            by_prof_name.setdefault((pk, name_key), rec)
+            if full_key:
+                by_prof_full.setdefault((pk, full_key), rec)
+            for kk in keyword_keys:
+                by_prof_keyword.setdefault((pk, kk), rec)
 
     return SpecialtyCatalog(
         records=records,
         by_name_key=by_name,
         by_full_key=by_full,
         by_keyword_key=by_keyword,
+        by_prof_name_key=by_prof_name,
+        by_prof_full_key=by_prof_full,
+        by_prof_keyword_key=by_prof_keyword,
     )

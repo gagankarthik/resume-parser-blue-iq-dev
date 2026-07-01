@@ -175,6 +175,14 @@ values:
 
 - **Specialty taxonomy** — 350+ clinical specialties and abbreviations resolved to canonical
   names (e.g. *Med Surg / Tele*, *Intensive Care Unit*), punctuation- and synonym-tolerant.
+- **Specialty → platform id** — each per-role specialty is mapped to the placement platform's
+  specialty id via a tiered match (name → full name → keywords → batched AI shortlist), scoped
+  to the role's profession so a shared name resolves to the right id (RN *ICU* vs CNA *ICU*).
+  The platform's exact names are preserved (never re-worded), every match carries a confidence,
+  and specialties that don't map are returned **without** an id for admin review (never dropped).
+  The id catalog is a snapshot of the GigHealth specialties API bundled at
+  `app/data/specialty_catalog.json`; regenerate it with `python -m scripts.refresh_specialty_catalog`
+  (needs `GIG_SPECIAILITIES_API_KEY`) and commit the result.
 - **Credential expansion** — role credentials expanded in titles (RN → Registered Nurse) while
   raw abbreviations are preserved where they belong.
 - **Post-nominal capture** — credentials trailing a name (RN, BSN, MPH, CCRN) are lifted into a

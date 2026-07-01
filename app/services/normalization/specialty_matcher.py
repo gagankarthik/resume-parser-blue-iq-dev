@@ -29,7 +29,11 @@ from app.services.normalization.healthcare_taxonomy import (
     get_specialty_group,
     resolve_specialty,
 )
-from app.services.normalization.specialty_catalog import SpecialtyRecord, get_catalog
+from app.services.normalization.specialty_catalog import (
+    SpecialtyRecord,
+    get_catalog,
+    profession_keys,
+)
 
 log = get_logger(__name__)
 
@@ -41,8 +45,14 @@ CONF_AI_MAX    = 0.70   # the AI tier's confidence is capped to this
 CONF_UNMATCHED = 0.0
 
 
-def match(raw: str) -> SpecialtyMatch:
-    """Resolve one raw specialty string through the deterministic tiers (1–3)."""
+def match(raw: str, profession: str | None = None) -> SpecialtyMatch:
+    """Resolve one raw specialty string through the deterministic tiers (1–3).
+
+    `profession` is the role's credential (e.g. "RN", "LPN"); when supplied it
+    scopes the lookup so a name that exists under several professions resolves to
+    that profession's id (RN "ICU"=56 vs CNA "ICU"=757), falling back to the flat
+    index when the profession has no such specialty.
+    """
     text = (raw or "").strip()
     if not text:
         return SpecialtyMatch(name="Unknown", raw=raw or None,
@@ -54,19 +64,23 @@ def match(raw: str) -> SpecialtyMatch:
 
     raw_key = _match_key(text)
     name_key = _match_key(name)
+    prof_keys = profession_keys(profession)
 
     # Tier 1 — specialty name (try the canonical name first, then the raw spelling).
-    rec = catalog.by_name_key.get(name_key) or catalog.by_name_key.get(raw_key)
+    rec = (catalog.find(catalog.by_name_key, catalog.by_prof_name_key, name_key, prof_keys)
+           or catalog.find(catalog.by_name_key, catalog.by_prof_name_key, raw_key, prof_keys))
     if rec is not None:
         return _matched(rec, raw, CONF_NAME, "name")
 
     # Tier 2 — fuller specialty name.
-    rec = catalog.by_full_key.get(raw_key) or catalog.by_full_key.get(name_key)
+    rec = (catalog.find(catalog.by_full_key, catalog.by_prof_full_key, raw_key, prof_keys)
+           or catalog.find(catalog.by_full_key, catalog.by_prof_full_key, name_key, prof_keys))
     if rec is not None:
         return _matched(rec, raw, CONF_FULL_NAME, "full_name")
 
     # Tier 3 — keyword.
-    rec = catalog.by_keyword_key.get(raw_key) or catalog.by_keyword_key.get(name_key)
+    rec = (catalog.find(catalog.by_keyword_key, catalog.by_prof_keyword_key, raw_key, prof_keys)
+           or catalog.find(catalog.by_keyword_key, catalog.by_prof_keyword_key, name_key, prof_keys))
     if rec is not None:
         return _matched(rec, raw, CONF_KEYWORD, "keywords")
 
@@ -85,12 +99,15 @@ def match(raw: str) -> SpecialtyMatch:
     )
 
 
-def match_batch(specialties: list[str]) -> list[SpecialtyMatch]:
-    """Resolve a list of raw specialty strings, dedup-by-canonical-name, in order."""
+def match_batch(specialties: list[str], profession: str | None = None) -> list[SpecialtyMatch]:
+    """Resolve a list of raw specialty strings, dedup-by-canonical-name, in order.
+
+    `profession` scopes every lookup to the role's credential (see `match`).
+    """
     seen: set[str] = set()
     out: list[SpecialtyMatch] = []
     for raw in specialties:
-        m = match(raw)
+        m = match(raw, profession)
         dedup_key = _match_key(m.name)
         if dedup_key in seen:
             continue
@@ -130,20 +147,23 @@ async def resolve_unmatched_with_ai(parsed: ParsedResumeAI, *, budget: float) ->
     if catalog.is_empty:
         return 0
 
-    # Gather the distinct unmatched phrases across every role (by original text).
-    pending: dict[str, list[SpecialtyMatch]] = {}
+    # Gather the distinct unmatched phrases across every role, remembering each
+    # occurrence's role profession so an id is only applied to a compatible role.
+    pending: dict[str, list[tuple[SpecialtyMatch, str | None]]] = {}
+    prof_scope: set[str] = set()
     for exp in parsed.experience:
         for sm in exp.specialties:
             if sm.matched or sm.specialty_id is not None:
                 continue
             phrase = (sm.raw or sm.name or "").strip()
             if phrase:
-                pending.setdefault(phrase, []).append(sm)
+                pending.setdefault(phrase, []).append((sm, exp.profession))
+                prof_scope.update(profession_keys(exp.profession))
     if not pending:
         return 0
 
-    shortlist, allowed_ids = _build_shortlist(
-        list(pending), catalog.records, settings.specialty_ai_shortlist_max
+    shortlist, by_id = _build_shortlist(
+        list(pending), catalog.records, settings.specialty_ai_shortlist_max, prof_scope
     )
     if not shortlist:
         return 0
@@ -160,15 +180,19 @@ async def resolve_unmatched_with_ai(parsed: ParsedResumeAI, *, budget: float) ->
         log.warning("specialty_ai_tier_failed", error=str(exc))
         return meter.total
 
-    by_id = {rec.id: rec for rec in catalog.records}
     applied = 0
     for m in matches:
-        if not m.specialty_id or m.specialty_id not in allowed_ids:
-            continue  # drop a hallucinated / off-shortlist id
-        rec = by_id.get(m.specialty_id)
+        rec = by_id.get(m.specialty_id) if m.specialty_id else None
         if rec is None:
-            continue
-        for sm in pending.get(m.raw.strip(), ()):
+            continue  # drop a hallucinated / off-shortlist id
+        rec_prof = set(profession_keys(rec.profession))
+        for sm, role_prof in pending.get(m.raw.strip(), ()):
+            # Only stamp the id when the candidate's profession is compatible with
+            # the role's (either side unknown, or their keys overlap) — never leak
+            # e.g. a CNA id onto an RN role.
+            role_keys = set(profession_keys(role_prof))
+            if rec_prof and role_keys and not (rec_prof & role_keys):
+                continue
             sm.name = rec.name
             sm.specialty_id = rec.id
             sm.group = rec.group or get_specialty_group(rec.name)
@@ -182,13 +206,18 @@ async def resolve_unmatched_with_ai(parsed: ParsedResumeAI, *, budget: float) ->
 
 
 def _build_shortlist(
-    phrases: list[str], records: list[SpecialtyRecord], cap: int
-) -> tuple[list[str], set[str]]:
+    phrases: list[str],
+    records: list[SpecialtyRecord],
+    cap: int,
+    prof_scope: set[str],
+) -> tuple[list[str], dict[str, SpecialtyRecord]]:
     """Pick the catalog candidates most likely to cover `phrases`.
 
-    Candidates sharing a word with any unmatched phrase come first (most relevant);
-    the rest fill the list up to `cap`. Returns the formatted "<id> | <name> |
-    <full>" lines plus the set of ids offered (for validating the model's reply).
+    Ranked: candidates that both share a word with an unmatched phrase AND belong
+    to a profession in scope come first, then any word-sharing candidate, then the
+    rest — trimmed to `cap`. Returns the formatted "<id> | <name> | <full> |
+    <profession>" lines plus an id→record map (for validating the model's reply and
+    applying the chosen record's profession).
     """
     phrase_tokens: set[str] = set()
     for p in phrases:
@@ -202,12 +231,18 @@ def _build_shortlist(
             words.update(_match_key(kw).split())
         return bool(words & phrase_tokens)
 
-    relevant = [r for r in records if shares_word(r)]
-    rest = [r for r in records if r not in relevant]
-    chosen = (relevant + rest)[:cap]
+    def in_scope(rec: SpecialtyRecord) -> bool:
+        return not prof_scope or bool(set(profession_keys(rec.profession)) & prof_scope)
+
+    scoped_relevant = [r for r in records if shares_word(r) and in_scope(r)]
+    other_relevant = [r for r in records if shares_word(r) and not in_scope(r)]
+    rest = [r for r in records if not shares_word(r)]
+    chosen = (scoped_relevant + other_relevant + rest)[:cap]
 
     lines = [
-        f"{r.id} | {r.name}" + (f" | {r.full_name}" if r.full_name else "")
+        f"{r.id} | {r.name}"
+        + (f" | {r.full_name}" if r.full_name else " |")
+        + (f" | {r.profession}" if r.profession else "")
         for r in chosen
     ]
-    return lines, {r.id for r in chosen}
+    return lines, {r.id: r for r in chosen}
