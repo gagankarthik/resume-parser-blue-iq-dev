@@ -6,7 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    # extra="ignore": an unrecognized env var must never crash the whole service
+    # on startup (pydantic-settings otherwise raises extra_forbidden, which 500s
+    # every request). Unknown vars are ignored; known ones still validate.
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
     # App
     app_name: str = "Resume Parser API"
