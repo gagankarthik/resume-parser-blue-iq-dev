@@ -62,7 +62,15 @@ class SpecialtyMatch(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def _required_name(cls, v: object) -> str:
-        return v.strip() if isinstance(v, str) and v.strip() else "Unknown"
+        if not isinstance(v, str):
+            return "Unknown"
+        # Smaller models occasionally leak JSON structural characters into the value
+        # when emitting a list of objects under structured output (observed:
+        # name='Med/Surg"}],'). A real specialty name never begins or ends with a
+        # quote, brace, bracket, or comma — strip those so the matcher sees the clean
+        # name (e.g. 'Med/Surg') instead of a corrupted one.
+        cleaned = re.sub(r"""^[\s"'{}\[\],]+|[\s"'{}\[\],]+$""", "", v)
+        return cleaned or "Unknown"
 
     @field_validator("raw", "group", "match_tier", mode="before")
     @classmethod

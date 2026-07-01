@@ -161,7 +161,10 @@
       "full_name": null,
       "group": "Behavioral Health",
       "profession": "CNA",
-      "keywords": []
+      "keywords": [
+        "corrections",
+        "correctional facility"
+      ]
     },
     {
       "id": "749",
@@ -1675,7 +1678,10 @@
       "full_name": null,
       "group": "Behavioral Health",
       "profession": "RN",
-      "keywords": []
+      "keywords": [
+        "corrections",
+        "correctional facility"
+      ]
     },
     {
       "id": "48",
@@ -3200,7 +3206,10 @@
       "full_name": null,
       "group": "Behavioral Health",
       "profession": "NP",
-      "keywords": []
+      "keywords": [
+        "corrections",
+        "correctional facility"
+      ]
     },
     {
       "id": "960",
@@ -4714,7 +4723,10 @@
       "full_name": null,
       "group": "Behavioral Health",
       "profession": "LPN/ LVN",
-      "keywords": []
+      "keywords": [
+        "corrections",
+        "correctional facility"
+      ]
     },
     {
       "id": "403",

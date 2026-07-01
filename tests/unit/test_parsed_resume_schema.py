@@ -138,6 +138,17 @@ def test_experience_specialty_objects_accepted():
     assert [s.name for s in specs] == ["ICU", "Med Surg/Tele"]
 
 
+def test_specialty_name_strips_leaked_json_structure():
+    # Smaller models sometimes leak JSON structural chars into the value under
+    # structured output (observed in production: 'Med/Surg"}],'). The name must be
+    # recovered clean so the matcher can map it.
+    parsed = ParsedResumeAI.model_validate(
+        {"experience": [{"company": "X", "role": "LPN",
+                         "specialties": [{"name": 'Med/Surg"}],'}, {"name": 'Corrections"}],'}]}]}
+    )
+    assert [s.name for s in parsed.experience[0].specialties] == ["Med/Surg", "Corrections"]
+
+
 # ── Dates: MM/DD/YYYY, partial precision preserved, never fabricated ──────────
 
 def test_experience_month_year_date_not_padded():

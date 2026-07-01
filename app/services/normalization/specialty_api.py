@@ -75,6 +75,7 @@ CURATED_KEYWORDS: dict[str, tuple[str, ...]] = {
     "Med Surg/ Tele": ("med surg tele", "medical surgical telemetry", "ms/tele"),
     "Telemetry":      ("tele",),
     # Emergency / other common expansions.
+    "Correctional": ("corrections", "correctional facility"),
     "ER":          ("emergency department", "emergency dept"),
     "EP Lab":      ("electrophysiology lab",),
     "GI Lab":      ("gastrointestinal lab", "gi/endo"),
