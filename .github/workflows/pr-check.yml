@@ -35,9 +35,12 @@ jobs:
       - name: Mypy
         run: poetry run mypy app/ --ignore-missing-imports
 
-      - name: Unit tests with coverage
+      - name: Tests with coverage
+        # Run the full suite (unit + integration): the coverage gate is measured
+        # against all of app/, and the worker/S3/webhook modules are only exercised
+        # by the integration tests, so unit-only can't reach the threshold.
         run: |
-          poetry run pytest tests/unit/ -v \
+          poetry run pytest tests/ -v \
             --cov=app \
             --cov-report=term-missing \
             --cov-fail-under=70

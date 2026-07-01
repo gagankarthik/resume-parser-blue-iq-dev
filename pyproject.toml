@@ -31,6 +31,7 @@ email-validator = "^2.2.0"
 pytest = "^8.3.0"
 pytest-asyncio = "^0.24.0"
 pytest-httpx = "^0.35.0"
+pytest-cov = "^6.0.0"
 moto = { extras = ["dynamodb", "s3"], version = "^5.0.0" }
 ruff = "^0.8.0"
 mypy = "^1.13.0"
