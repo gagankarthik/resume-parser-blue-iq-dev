@@ -14,6 +14,7 @@ The project [`README.md`](../README.md) at the repo root is the primary entry po
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Engineers / reviewers | Enterprise architecture: design principles, compute model, processing pipeline, data layer, security, scalability, CI/CD. |
 | [`CLIENT_INTEGRATION_GUIDE.md`](./CLIENT_INTEGRATION_GUIDE.md) | API consumers | Step-by-step integration: auth, sync vs. async parsing, polling, webhooks, rate limits, Python/Node examples, checklist. |
 | [`ocean-blue-integration-flow.md`](./ocean-blue-integration-flow.md) | Integration partners | End-to-end frontend → backend → API flow (swimlane diagram + editable Mermaid source). |
+| [`custom-api-domain.md`](./custom-api-domain.md) | Ops / infra | The `api.parsinglab.blue-iq.ai` custom domain: why we moved off the raw Function URL + API Gateway, how the CloudFront + ACM setup works, setup runbook, IaC, and troubleshooting. |
 
 ## Quick links by task
 
@@ -22,6 +23,7 @@ The project [`README.md`](../README.md) at the repo root is the primary entry po
 - **I want to understand the design** → [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - **I want the field-by-field output schema** → [Output Schema](../README.md#output-schema)
 - **I want to see the integration flow visually** → [`ocean-blue-integration-flow.md`](./ocean-blue-integration-flow.md)
+- **I want to set up / operate the custom API domain** → [`custom-api-domain.md`](./custom-api-domain.md)
 
 ## Source data
 
