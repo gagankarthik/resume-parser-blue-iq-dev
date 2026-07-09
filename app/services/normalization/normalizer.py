@@ -14,6 +14,8 @@ import re
 
 from app.models.schemas import (
     CertificationItem,
+    ClinicalRotation,
+    ComplianceInfo,
     EducationItem,
     ExperienceItem,
     LicenseItem,
@@ -104,6 +106,14 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
         _normalize_education(edu)
     for exp in parsed.experience:
         _normalize_experience(exp)
+    # Nursing enrichments (additive; fire only on genuine signals).
+    _route_clinical_rotations(parsed)          # move student rotations out of experience
+    for exp in parsed.experience:
+        if exp.employment_type is None:
+            exp.employment_type = _detect_employment_type(exp)
+    for edu in parsed.education:
+        edu.tier = _education_tier(edu.degree)
+    _flag_employment_gaps(parsed)              # gap_warning on real jobs only
     _clean_credential_buckets(parsed)
     for lic in parsed.licenses:
         lic.name = _fix_credential_case(lic.name)
@@ -111,6 +121,162 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
             lic.license_type = _fix_credential_case(lic.license_type)
     _normalize_extraction_notes(parsed)
     return parsed
+
+
+# ── Nursing enrichments ───────────────────────────────────────────────────────
+_ROTATION_RE = re.compile(
+    r"\b(clinical rotation|clinical placement|practicum|preceptorship|"
+    r"student nurse|nursing student|student practicum)\b",
+    re.IGNORECASE,
+)
+_HOURS_RE = re.compile(r"(\d{2,4})\s*(?:clinical\s*)?hours\b", re.IGNORECASE)
+
+
+def _looks_like_rotation(exp: ExperienceItem) -> bool:
+    hay = " ".join(
+        s for s in (exp.role, exp.company, exp.position_held, *(exp.description or [])) if s
+    )
+    return bool(_ROTATION_RE.search(hay))
+
+
+def _route_clinical_rotations(parsed: ParsedResumeAI) -> None:
+    """Move student rotations/practicums out of experience so they don't count as
+    paid work; record accumulated hours if stated."""
+    keep: list[ExperienceItem] = []
+    for exp in parsed.experience:
+        if not _looks_like_rotation(exp):
+            keep.append(exp)
+            continue
+        hours = None
+        for s in (exp.additional_info, *(exp.description or []), exp.role or ""):
+            if s and (m := _HOURS_RE.search(s)):
+                hours = m.group(1)
+                break
+        unit = exp.specialties[0].name if exp.specialties else None
+        parsed.clinical_rotations.append(
+            ClinicalRotation(
+                institution=(exp.company if exp.company != "Unknown" else None),
+                unit=unit,
+                role=(exp.role if exp.role != "Unknown" else None),
+                hours=hours,
+                start_date=exp.start_date,
+                end_date=exp.end_date,
+                description=list(exp.description or []),
+            )
+        )
+    parsed.experience = keep
+
+
+_EMPLOYMENT_PATTERNS = [
+    ("PRN", re.compile(r"\b(prn|per[\s-]*diem)\b", re.IGNORECASE)),
+    ("Part-time", re.compile(r"\bpart[\s-]*time\b", re.IGNORECASE)),
+    ("Full-time", re.compile(r"\bfull[\s-]*time\b", re.IGNORECASE)),
+]
+
+
+def _detect_employment_type(exp: ExperienceItem) -> str | None:
+    hay = " ".join(
+        s for s in (exp.role, exp.position_held, exp.additional_info, exp.shift,
+                    exp.agency_name, *(exp.description or [])) if s
+    )
+    for label, pat in _EMPLOYMENT_PATTERNS:
+        if pat.search(hay):
+            return label
+    return None
+
+
+def _education_tier(degree: str | None) -> str | None:
+    """Classify a nursing degree into ADN / Diploma_in_Nursing / BSN. Non-nursing
+    or higher degrees (MSN, DNP) return None — the spec defines only three tiers."""
+    if not degree:
+        return None
+    d = degree.lower()
+    nursing = "nurs" in d
+    if re.search(r"\bbsn\b", d) or ("bachelor" in d and nursing):
+        return "BSN"
+    if re.search(r"\ba\.?d\.?n\b|\basn\b", d) or ("associate" in d and nursing):
+        return "ADN"
+    if "diploma" in d and nursing:
+        return "Diploma_in_Nursing"
+    return None
+
+
+def _year_month(date_str: str | None) -> tuple[int, int] | None:
+    """Parse a résumé date to (year, month) for gap math. Year-only assumes Jan."""
+    if not date_str:
+        return None
+    s = date_str.strip()
+    if s.lower() in ("present", "current"):
+        return None
+    if m := re.match(r"(\d{1,2})/\d{1,2}/(\d{4})", s):      # MM/DD/YYYY
+        return (int(m.group(2)), int(m.group(1)))
+    if m := re.match(r"(\d{1,2})/(\d{4})", s):               # MM/YYYY
+        return (int(m.group(2)), int(m.group(1)))
+    if m := re.match(r"(\d{4})$", s):                        # YYYY
+        return (int(m.group(1)), 1)
+    return None
+
+
+_CERT_EXPIRY_TRACKED = ("BLS", "ACLS", "PALS", "NRP")
+
+
+def cert_expiry_warnings(parsed: ParsedResumeAI) -> list[str]:
+    """Warn when a tracked life-support certification (BLS/ACLS/PALS/NRP) has no
+    expiration date — a common compliance gap."""
+    missing = [
+        c.name for c in parsed.certifications
+        if c.name and any(t in c.name.upper() for t in _CERT_EXPIRY_TRACKED) and not c.expiry_date
+    ]
+    if missing:
+        return [f"Certification expiration date is missing for: {', '.join(missing)}. Please verify."]
+    return []
+
+
+def scan_compliance(text: str, parsed: ParsedResumeAI) -> ComplianceInfo:
+    """Scan the résumé text for compliance disclosures and roll up a risk flag.
+
+    Booleans are True only when explicitly mentioned; None means not found (never
+    assumed cleared). compliance_risk is True when the résumé lacks an active
+    BLS/ACLS certification OR a cleared TB test.
+    """
+    t = (text or "").lower()
+    covid = True if ("covid" in t and ("vaccin" in t or "immuniz" in t)) else None
+    tb = True if any(k in t for k in ("tb test", "tb skin", "tuberculosis", "ppd", "quantiferon")) else None
+    physical = True if ("annual physical" in t or "annual health assessment" in t) else None
+    certs = " ".join((c.name or "") for c in parsed.certifications).upper()
+    has_bls_acls = any(k in certs for k in ("BLS", "ACLS", "BASIC LIFE SUPPORT", "ADVANCED CARDIAC"))
+    risk = (not has_bls_acls) or (tb is not True)
+    return ComplianceInfo(
+        covid_vaccination=covid, tb_test=tb, annual_physical=physical, compliance_risk=risk
+    )
+
+
+def _flag_employment_gaps(parsed: ParsedResumeAI) -> None:
+    """Set gap_warning on a role when more than ~90 days (3 months) separate it
+    from the previous role. Computed on a chronologically-sorted copy so output
+    order (usually most-recent-first) is preserved."""
+    for exp in parsed.experience:
+        exp.gap_warning = False
+    YM = tuple[int, int]
+    _ongoing: YM = (9999, 12)
+    dated: list[tuple[ExperienceItem, YM, YM | None]] = []
+    for exp in parsed.experience:
+        start = _year_month(exp.start_date)
+        if start is None:
+            continue  # undated role — can't place it on the timeline
+        end = _year_month(exp.end_date)
+        if end is None and (exp.is_current or (exp.end_date or "").lower() == "present"):
+            end = _ongoing
+        dated.append((exp, start, end))
+    dated.sort(key=lambda t: t[1])
+    for i in range(1, len(dated)):
+        prev_end = dated[i - 1][2]
+        cur_start = dated[i][1]
+        if prev_end is None or prev_end == _ongoing:
+            continue
+        gap_months = (cur_start[0] * 12 + cur_start[1]) - (prev_end[0] * 12 + prev_end[1])
+        if gap_months > 3:
+            dated[i][0].gap_warning = True
 
 
 def _normalize_extraction_notes(parsed: ParsedResumeAI) -> None:

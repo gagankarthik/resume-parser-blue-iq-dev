@@ -9,12 +9,87 @@ test_healthcare_normalizer.py for that coverage.
 
 from app.models.schemas import ExperienceItem, ExtractionNote, ParsedResumeAI
 from app.services.normalization.normalizer import (
+    _education_tier,
     _normalize_date,
     _normalize_skills,
     _refine_location_to_street,
     _strip_name_credentials,
+    cert_expiry_warnings,
     normalize,
+    scan_compliance,
 )
+
+
+# ── Nursing enrichments ──────────────────────────────────────────────────────
+def test_clinical_rotation_routed_out_of_experience_with_hours():
+    p = ParsedResumeAI.model_validate({"experience": [
+        {"company": "Mercy", "role": "Staff RN", "start_date": "01/2022", "end_date": "Present", "is_current": True},
+        {"company": "State Univ", "role": "Student Nurse - Clinical Rotation",
+         "start_date": "08/2020", "end_date": "12/2020",
+         "description": ["Completed 240 clinical hours in Med-Surg"], "specialties": [{"name": "Med-Surg"}]},
+    ]})
+    normalize(p)
+    assert len(p.experience) == 1 and p.experience[0].company == "Mercy"
+    assert len(p.clinical_rotations) == 1
+    assert p.clinical_rotations[0].hours == "240"
+    assert p.clinical_rotations[0].institution == "State Univ"
+
+
+def test_employment_type_detected():
+    p = ParsedResumeAI.model_validate({"experience": [
+        {"company": "A", "role": "RN PRN", "start_date": "01/2021", "end_date": "02/2022"},
+    ]})
+    normalize(p)
+    assert p.experience[0].employment_type == "PRN"
+
+
+def test_education_tier_classification():
+    assert _education_tier("Associate Degree in Nursing") == "ADN"
+    assert _education_tier("Bachelor of Science in Nursing") == "BSN"
+    assert _education_tier("Diploma in Nursing") == "Diploma_in_Nursing"
+    assert _education_tier("Master of Science in Nursing") is None  # only 3 tiers
+    assert _education_tier("BS in Biology") is None
+
+
+def test_gap_warning_over_90_days():
+    p = ParsedResumeAI.model_validate({"experience": [
+        {"company": "New", "role": "RN", "start_date": "06/2022", "end_date": "Present", "is_current": True},
+        {"company": "Old", "role": "RN", "start_date": "01/2020", "end_date": "01/2021"},
+    ]})
+    normalize(p)
+    by = {e.company: e.gap_warning for e in p.experience}
+    assert by["New"] is True   # 01/2021 -> 06/2022 is >3 months
+    assert by["Old"] is False  # earliest role, no prior gap
+
+
+def test_no_gap_warning_when_continuous():
+    p = ParsedResumeAI.model_validate({"experience": [
+        {"company": "B", "role": "RN", "start_date": "03/2021", "end_date": "Present", "is_current": True},
+        {"company": "A", "role": "RN", "start_date": "01/2020", "end_date": "02/2021"},
+    ]})
+    normalize(p)
+    assert all(e.gap_warning is False for e in p.experience)
+
+
+def test_compliance_risk_when_no_bls_or_tb():
+    p = ParsedResumeAI.model_validate({"certifications": [{"name": "PALS"}]})
+    c = scan_compliance("Neonatal RN, 5 years.", p)
+    assert c.compliance_risk is True and c.tb_test is None
+
+
+def test_compliance_clear_when_bls_and_tb_present():
+    p = ParsedResumeAI.model_validate({"certifications": [{"name": "BLS", "expiry_date": "12/2025"}]})
+    c = scan_compliance("COVID-19 vaccinated. TB test cleared. BLS current.", p)
+    assert c.compliance_risk is False
+    assert c.covid_vaccination is True and c.tb_test is True
+
+
+def test_cert_expiry_warning_for_missing_expiration():
+    p = ParsedResumeAI.model_validate({"certifications": [
+        {"name": "ACLS"}, {"name": "BLS", "expiry_date": "12/2025"},
+    ]})
+    warns = cert_expiry_warnings(p)
+    assert warns and "ACLS" in warns[0] and "BLS" not in warns[0]
 
 
 # ── Extraction-note confidence normalization ─────────────────────────────────

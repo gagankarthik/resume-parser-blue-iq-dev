@@ -27,6 +27,8 @@ from app.models.schemas.batch import (
 from app.models.schemas.feedback import FeedbackRequest, FeedbackResponse
 from app.models.schemas.resume import (
     CertificationItem,
+    ClinicalRotation,
+    ComplianceInfo,
     EducationItem,
     ExperienceItem,
     ExtractionNote,
@@ -57,6 +59,8 @@ __all__ = [
     "LicenseItem",
     "ProjectItem",
     "ReferenceItem",
+    "ClinicalRotation",
+    "ComplianceInfo",
     "ExtractionNote",
     "ParsedResumeAI",
     # analysis

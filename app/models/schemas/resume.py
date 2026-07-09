@@ -257,8 +257,11 @@ class ExperienceItem(BaseModel):
     agency_name:            str | None = Field(None, description="Staffing/travel agency name, if this was an agency assignment")
     charge_experience:      str | None = Field(None, description="Charge experience, if stated")
     charting_system:        str | None = Field(None, description="EHR/charting system used (e.g. 'Epic', 'Cerner', 'Meditech'), if stated")
-    shift:                  str | None = Field(None, description="Shift worked (e.g. 'Days', 'Nights', 'Rotating'), if stated")
+    shift:                  str | None = Field(None, description="Shift worked (e.g. 'Days', 'Nights', 'Rotating', 'Weekends'), if stated")
+    employment_type:        str | None = Field(None, description="Employment type if stated: 'Full-time', 'Part-time', or 'PRN' (per diem). Null if not stated.")
+    patient_load:           str | None = Field(None, description="Patient load for this role if stated as a count (e.g. 'managed 6 patients' → '6'). Ratios go in nurse_to_patient_ratio. Null if not stated.")
     reason_for_leaving:     str | None = Field(None, description="Reason for leaving, if stated")
+    gap_warning:            bool          = Field(False, description="Set by the system: True when there is an employment gap of more than 90 days before this role. Never fill this yourself.")
     description:   list[str]     = Field(default_factory=list, description="Role responsibilities as an array of short strings — one item per responsibility/bullet, never a single paragraph")
     achievements:  list[str]     = Field(default_factory=list, description="Notable accomplishments in this role")
 
@@ -278,7 +281,8 @@ class ExperienceItem(BaseModel):
         "location", "city", "state", "country", "zip_code", "profession",
         "service_type", "nurse_to_patient_ratio", "facility_beds", "beds_in_unit",
         "trauma_level", "additional_info", "position_held", "agency_name",
-        "charge_experience", "charting_system", "shift", "reason_for_leaving",
+        "charge_experience", "charting_system", "shift", "employment_type",
+        "patient_load", "reason_for_leaving",
         mode="before",
     )
     @classmethod
@@ -388,6 +392,7 @@ class EducationItem(BaseModel):
     start_year:       int | None = Field(None, description="Year started (1900–2035)", ge=1900, le=2035)
     graduation_year:  int | None = Field(None, description="Graduation year (1900–2035)", ge=1900, le=2035)
     gpa:              str | None = Field(None, description="GPA if stated")
+    tier:             str | None = Field(None, description="Set by the system for nursing degrees: 'ADN', 'Diploma_in_Nursing', or 'BSN'. Null for non-nursing or higher degrees. Never fill this yourself.")
 
     @field_validator("institution", mode="before")
     @classmethod
@@ -592,6 +597,44 @@ class ExtractionNote(BaseModel):
         return _sanitize_str(str(v)) or "" if isinstance(v, str) else ""
 
 
+class ClinicalRotation(BaseModel):
+    """A student clinical rotation / practicum / preceptorship — NOT paid work.
+
+    Kept separate from `experience` so it is excluded from years-of-experience
+    totals. Populated when a section reads as a rotation ("Clinical Rotation",
+    "Clinical Placement", "Practicum", "Student Nurse").
+    """
+
+    institution:  str | None = Field(None, description="Facility or school where the rotation took place")
+    unit:         str | None = Field(None, description="Clinical unit/specialty of the rotation (e.g. 'ICU', 'Med-Surg'), if stated")
+    role:         str | None = Field(None, description="Role/title as written (e.g. 'Student Nurse', 'Practicum')")
+    hours:        str | None = Field(None, description="Total accumulated hours if stated (e.g. '120'), else null")
+    start_date:   str | None = Field(None, description="Start date, precision as written (MM/YYYY / YYYY), if stated")
+    end_date:     str | None = Field(None, description="End date, precision as written, or 'Present', if stated")
+    description:  list[str]  = Field(default_factory=list, description="Rotation activities/notes, one per item")
+
+    @field_validator("institution", "unit", "role", "hours", mode="before")
+    @classmethod
+    def _san(cls, v: object) -> str | None:
+        return _sanitize_str(str(v)) if isinstance(v, str) else None
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def _san_date(cls, v: object) -> str | None:
+        return _sanitize_date(str(v)) if isinstance(v, str) else None
+
+
+class ComplianceInfo(BaseModel):
+    """Healthcare compliance disclosures scanned from the résumé, plus a rollup
+    risk flag. Booleans are True only when the document explicitly mentions the
+    item; null means not found (never assumed cleared)."""
+
+    covid_vaccination: bool | None = Field(None, description="True if a COVID-19 vaccination is mentioned; null if not found.")
+    tb_test:           bool | None = Field(None, description="True if a TB test / PPD is mentioned; null if not found.")
+    annual_physical:   bool | None = Field(None, description="True if an annual physical is mentioned; null if not found.")
+    compliance_risk:   bool        = Field(False, description="Set by the system: True when the résumé lacks an active BLS/ACLS certification OR a cleared TB test.")
+
+
 class ParsedResumeAI(BaseModel):
     """
     Structured output schema enforced on the OpenAI response.
@@ -671,9 +714,11 @@ class ParsedResumeAI(BaseModel):
     awards:          list[str]             = Field(default_factory=list, description="Awards, honors, and recognitions (e.g. 'DAISY Award 2023', 'Summa Cum Laude', 'Employee of the Year')")
     publications:    list[str]             = Field(default_factory=list, description="Publications, posters, or research contributions, each as a single citation string")
     professional_associations: list[str]   = Field(default_factory=list, description="Professional associations, society memberships, committees, and collaboratives, each verbatim (e.g. 'Sigma Theta Tau International Honor Society of Nursing Member', 'Sepsis Clinical Services Committee', 'SJHS Sepsis Process Owner')")
+    clinical_rotations: list[ClinicalRotation] = Field(default_factory=list, description="Student clinical rotations / practicums / preceptorships — kept SEPARATE from experience so they are excluded from years-of-experience totals.")
+    compliance:       ComplianceInfo | None  = Field(None, description="Healthcare compliance disclosures (COVID-19 vaccination, TB test, annual physical) and a compliance_risk rollup. Set by the system.")
     extraction_notes: list[ExtractionNote] = Field(default_factory=list, description="Explainable decisions — why an ambiguous fact (bed count, profession, etc.) was assigned to a specific role or deliberately left null. Empty when nothing was ambiguous.")
 
-    @field_validator("experience", "education", "certifications", "licenses", "projects", "references", "extraction_notes", mode="before")
+    @field_validator("experience", "education", "certifications", "licenses", "projects", "references", "clinical_rotations", "extraction_notes", mode="before")
     @classmethod
     def coerce_lists(cls, v: object) -> list:
         return _coerce_list(v)

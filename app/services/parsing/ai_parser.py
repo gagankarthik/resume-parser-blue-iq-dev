@@ -121,7 +121,9 @@ EXPLAINABILITY — extraction_notes[]:
   • employer_phone — the employer/facility phone number written next to that role (verbatim, e.g. "304-287-2120"). Null if not stated. NEVER use the candidate's own contact phone here.
   • profession — the credential for that role as written (e.g. "RN", "LPN", "CRT"); do NOT expand it.
   • specialties — ONLY the unit/specialty named in that role's heading/title or an explicit unit label (e.g. "Med Surg/Tele", "ICU"). Return a list of OBJECTS, one per specialty, each with just the name: [{{"name": "Med Surg/Tele"}}, {{"name": "ICU"}}]. Fill ONLY `name` — leave specialty_id/confidence/group null; the system fills those. Do NOT mine phrases from duty bullets — equipment, therapies, patient populations, or physician groups mentioned in a bullet are NOT specialties.
-  • position_held, agency_name, shift, charting_system (Epic/Cerner/Meditech…), reason_for_leaving.
+  • position_held, agency_name, shift (Days/Nights/Rotating/Weekends), charting_system (Epic/Cerner/Meditech/PointClickCare…), reason_for_leaving.
+  • employment_type — 'Full-time', 'Part-time', or 'PRN' (per diem) ONLY if stated for this role, else null.
+  • patient_load — the patient COUNT if stated (e.g. "managed 6 patients" → "6"). A ratio like "1:4" goes in nurse_to_patient_ratio, not here.
   • nurse_to_patient_ratio, facility_beds, beds_in_unit, service_type, trauma_level, additional_info.
   • teaching_facility, magnet_facility, trauma_facility — only as "Yes"/"No"/"N/A" when the resume says so, else null.
 - Skills: individual items only — not sentences. Clinical specialties, units, and competencies. Do NOT put certifications (CPR, BLS, ACLS, PALS…), licenses, driver's licenses, or academic degrees (BSN, MSN) in skills[] — those go in certifications[]/licenses[].

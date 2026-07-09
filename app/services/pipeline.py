@@ -28,7 +28,11 @@ from app.models.schemas import ConfidenceScores, ParsedResumeAI, PersonalInfo
 from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor, rtf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
 from app.services.normalization import specialty_matcher
-from app.services.normalization.normalizer import normalize
+from app.services.normalization.normalizer import (
+    cert_expiry_warnings,
+    normalize,
+    scan_compliance,
+)
 from app.services.parsing import ai_parser, heuristic_parser, orchestrator, rule_parser, section_detector
 from app.services.scoring.confidence_scorer import score
 
@@ -239,6 +243,11 @@ async def run(inp: PipelineInput) -> PipelineResult:
 
     # ── 7–9. Normalize + score ────────────────────────────────────────────────
     normalized = normalize(parsed_ai)
+
+    # Deterministic compliance scan (needs the full text) + tracked-cert expiry
+    # warnings. Additive; fire only on genuine signals.
+    normalized.compliance = scan_compliance(cleaned, normalized)
+    warnings.extend(cert_expiry_warnings(normalized))
 
     # Tier-4 specialty resolution: one batched LLM call maps any per-role specialty
     # the deterministic tiers missed to a catalog id (no-op without a catalog or
