@@ -89,10 +89,10 @@ Extract structured information from the resume text below.
 EXTRACTION RULES:
 - Extract ONLY what is explicitly stated. NEVER infer, guess, expand, or hallucinate. If a value is not written on the résumé, use null.
 
-ATTRIBUTION — do NOT smear summary facts across jobs (critical for healthcare résumés):
-- A fact stated ONLY in the professional summary/objective (e.g. "experience in a 63-bed ICU", "3:1 ratio", "Level I trauma", a profession/specialty) describes the candidate in general. Attach it to a SPECIFIC experience[] entry ONLY when the résumé ties it to that specific role (it appears in that role's block/heading/bullets).
-- If such a fact is ambiguous because the candidate worked at MULTIPLE facilities and it is not clearly tied to one, LEAVE the role-level field null. Do NOT copy it onto every role and do NOT pick one arbitrarily.
-- This applies especially to facility_beds, beds_in_unit, nurse_to_patient_ratio, trauma_level, service_type, teaching/magnet/trauma flags, and per-role profession/specialties.
+ATTRIBUTION — do NOT smear SUMMARY facts across jobs (critical for healthcare résumés):
+- FACILITY ATTRIBUTES stated ONLY in the professional summary/objective (e.g. "experience in a 64-bed ICU", "3:1 ratio", "Level I trauma center", "Magnet facility") describe the candidate in general. Attach such a fact to a SPECIFIC experience[] entry ONLY when the résumé states it inside THAT role's own block/heading/bullets.
+- If it is ambiguous because the candidate worked at MULTIPLE facilities and it is not clearly tied to one, LEAVE that role-level field null: facility_beds, beds_in_unit, nurse_to_patient_ratio, trauma_level, service_type, teaching/magnet/trauma flags. Do NOT copy it onto every role and do NOT pick one arbitrarily. (Example: summary says "64 bed unit" and the person worked at 3 hospitals → every role's facility_beds is null.)
+- This rule does NOT apply to a role's OWN identity. ALWAYS extract `profession` and the role's `specialties` from that role's title/heading — e.g. role "Critical Care Registered Nurse" → profession "RN"; role "Neonatal Intensive Registered Nurse" → profession "RN". Never leave profession null when the role title states or implies it. Only a specialty that would have to be mined from the SUMMARY or from unrelated duty bullets should be dropped.
 
 EXPLAINABILITY — extraction_notes[]:
 - Whenever you deliberately LEAVE A FIELD NULL because a fact was ambiguous (per the attribution rule above), OR you attach a fact to a role that was not obvious, add an entry to extraction_notes: {{"field": "<dotted path e.g. experience[1].facility_beds>", "value": <the value or null>, "confidence": <0.0-1.0>, "reason": "<short plain-language why>"}}.

@@ -59,6 +59,14 @@ _TOTAL_BUDGET     = 200
 # large enough for a full _TIMEOUT_AI_PARSE fallback attempt after a degrade.
 _FALLBACK_RESERVE = 100
 
+# Wall-clock budget for a SYNCHRONOUS request. A synchronous parse must return
+# through the CloudFront/proxy origin ceiling (~60s), so it cannot use the full
+# _TOTAL_BUDGET — if the AI parse runs long, we must degrade to the deterministic
+# floor and respond with 200 + a rich partial BEFORE the gateway severs the
+# connection and the caller gets a bare 504 with no data. The async (upload →
+# poll) path has no per-request gateway ceiling and uses the full budget.
+_SYNC_WALL_BUDGET = 50
+
 
 @dataclass
 class PipelineInput:
@@ -70,6 +78,11 @@ class PipelineInput:
     # (scanned files, or a digital PDF that falls back to OCR). OR's with the
     # global settings.force_textract default.
     force_textract: bool = False
+    # True when the caller is waiting synchronously on the HTTP response, so the
+    # pipeline must finish within the gateway ceiling (_SYNC_WALL_BUDGET) and
+    # degrade gracefully rather than run to the full budget and 504. The async
+    # worker leaves this False to use the full _TOTAL_BUDGET.
+    sync: bool = False
 
 
 @dataclass
@@ -170,8 +183,12 @@ async def run(inp: PipelineInput) -> PipelineResult:
     tokens    = 0
     parsed_ai = None
 
+    # Synchronous callers must return within the gateway ceiling; async workers
+    # get the full budget. Every AI step is capped by the time left under this.
+    budget = _SYNC_WALL_BUDGET if inp.sync else _TOTAL_BUDGET
+
     def _remaining() -> float:
-        return _TOTAL_BUDGET - (time.monotonic() - start)
+        return budget - (time.monotonic() - start)
 
     use_orchestrator = (
         settings.use_multi_agent

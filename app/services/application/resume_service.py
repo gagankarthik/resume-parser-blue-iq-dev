@@ -41,7 +41,13 @@ async def run_parse(
     company_id: str,
     force_textract: bool,
 ) -> PipelineResult:
-    """Run the full parsing pipeline for one file."""
+    """Run the full parsing pipeline for one file, synchronously.
+
+    Every caller here is an HTTP handler blocking on the response, so the parse
+    runs under the gateway wall-clock budget (sync=True): it degrades to the
+    deterministic floor and returns 200 + a rich partial rather than running long
+    and being severed into a bare 504 by the proxy.
+    """
     return await run_pipeline(
         PipelineInput(
             job_id=job_id,
@@ -49,6 +55,7 @@ async def run_parse(
             content=content,
             company_id=company_id,
             force_textract=force_textract,
+            sync=True,
         )
     )
 

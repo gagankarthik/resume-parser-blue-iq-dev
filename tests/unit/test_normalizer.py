@@ -7,13 +7,63 @@ normalization now uses the healthcare_taxonomy module — see
 test_healthcare_normalizer.py for that coverage.
 """
 
-from app.models.schemas import ParsedResumeAI
+from app.models.schemas import ExperienceItem, ParsedResumeAI
 from app.services.normalization.normalizer import (
     _normalize_date,
     _normalize_skills,
+    _refine_location_to_street,
     _strip_name_credentials,
     normalize,
 )
+
+
+# ── Location: reduce a full address to the street line ───────────────────────
+def _loc(location, **kw):
+    e = ExperienceItem(company="X", role="Y", location=location, **kw)
+    _refine_location_to_street(e)
+    return e
+
+
+def test_location_reduced_to_street_and_parts_backfilled():
+    e = _loc("818 Ellicott Street, Buffalo, NY 14203")
+    assert e.location == "818 Ellicott Street"
+    assert e.city == "Buffalo" and e.state == "NY" and e.zip_code == "14203"
+
+
+def test_location_keeps_suite_on_street_not_city():
+    # Missing comma glues the suite to the city in the source line.
+    e = _loc("705 Maple Road, Suite 300 Williamsville, NY 14221")
+    assert e.location == "705 Maple Road, Suite 300"
+    assert e.city == "Williamsville" and e.zip_code == "14221"
+
+
+def test_location_multiword_city_preserved():
+    e = _loc("500 J Clyde Morris Blvd, Newport News, VA 23601")
+    assert e.location == "500 J Clyde Morris Blvd"
+    assert e.city == "Newport News" and e.state == "VA"
+
+
+def test_location_city_state_only_has_no_street():
+    e = _loc("Houston, TX")
+    assert e.location is None
+    assert e.city == "Houston" and e.state == "TX"
+
+
+def test_location_never_overrides_extracted_parts():
+    e = _loc("818 Ellicott Street, Buffalo, NY 14203", city="Buffalo Heights")
+    assert e.location == "818 Ellicott Street"
+    assert e.city == "Buffalo Heights"  # extracted value wins
+
+
+def test_location_international_left_intact():
+    # No US state/ZIP tail → we cannot split safely, so leave it as-is.
+    e = _loc("135 Brush Hill Road, London, UK")
+    assert e.location == "135 Brush Hill Road, London, UK"
+
+
+def test_location_bare_street_untouched():
+    e = _loc("818 Ellicott Street")
+    assert e.location == "818 Ellicott Street"
 
 # ── Date normalization (MM/DD/YYYY; partial precision preserved) ──────────────
 # Never invent a missing day or month — a month/year value stays month/year.

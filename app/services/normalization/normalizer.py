@@ -386,6 +386,87 @@ def _infer_country(exp: ExperienceItem) -> None:
             exp.country = _US_COUNTRY
 
 
+# A part that reads like a street line (starts with a number, or names a street
+# type / unit) rather than a city — used to decide where the street ends.
+_STREET_HINT_RE = re.compile(
+    r"^\d|\b(?:st|street|ave|avenue|road|rd|blvd|boulevard|dr|drive|lane|ln|way|"
+    r"court|ct|circle|cir|place|pl|square|sq|terrace|trail|hwy|highway|parkway|"
+    r"pkwy|suite|ste|apt|apartment|unit|floor|fl|building|bldg|#)\b",
+    re.IGNORECASE,
+)
+# "NY 14203" / "NY 14203-1234" — a US state abbreviation followed by a ZIP.
+_STATE_ZIP_TAIL_RE = re.compile(r"^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$")
+_ZIP_ONLY_RE = re.compile(r"^\d{5}(?:-\d{4})?$")
+
+
+def _looks_like_street(part: str) -> bool:
+    return bool(_STREET_HINT_RE.search(part.strip()))
+
+
+def _refine_location_to_street(exp: ExperienceItem) -> None:
+    """Reduce a full address in `location` to just the street line.
+
+    An experience entry keeps city / state / zip_code / country as their own
+    fields, so a `location` of "818 Ellicott Street, Buffalo, NY 14203" duplicates
+    them. Split the full line: backfill any missing city/state/zip from the tail
+    (never overriding an extracted value) and set `location` to the street only
+    ("818 Ellicott Street"). Conservative — only acts on an unambiguous US-style
+    "…, City, ST ZIP" tail; an international or unsplittable line is left as-is so
+    no data is lost.
+    """
+    loc = (exp.location or "").strip()
+    if not loc or "," not in loc:
+        return  # already a bare street/city, or nothing to split
+
+    parts = [p.strip() for p in loc.split(",") if p.strip()]
+    state = zip_code = city = None
+
+    tail = parts[-1]
+    m = _STATE_ZIP_TAIL_RE.match(tail)
+    if m and m.group(1).upper() in _US_STATE_ABBREVS:
+        state, zip_code = m.group(1).upper(), m.group(2)
+        parts = parts[:-1]
+    elif tail.upper() in _US_STATE_ABBREVS:
+        state = tail.upper()
+        parts = parts[:-1]
+    elif _ZIP_ONLY_RE.match(tail):
+        zip_code = tail
+        parts = parts[:-1]
+        if parts and parts[-1].upper() in _US_STATE_ABBREVS:
+            state = parts[-1].upper()
+            parts = parts[:-1]
+
+    # Only carve out a city when we found a real state/zip tail — otherwise we
+    # cannot reliably tell a trailing street fragment ("Building B") from a city.
+    if not (state or zip_code):
+        return
+
+    if len(parts) >= 2:
+        city = parts[-1]
+        parts = parts[:-1]
+    elif len(parts) == 1 and not _looks_like_street(parts[0]):
+        city = parts[0]
+        parts = []
+
+    # A missing comma can glue a suite/unit onto the city ("Suite 300 Williamsville").
+    # The suite belongs to the street; keep only the trailing token as the city.
+    if city and _looks_like_street(city):
+        words = city.split()
+        if len(words) >= 2:
+            parts.append(" ".join(words[:-1]))
+            city = words[-1]
+
+    street = ", ".join(parts).strip(" ,") or None
+
+    if city and not exp.city:
+        exp.city = city
+    if state and not exp.state:
+        exp.state = state
+    if zip_code and not exp.zip_code:
+        exp.zip_code = zip_code
+    exp.location = street
+
+
 def _normalize_experience(exp: ExperienceItem) -> None:
     # Backfill a missing/Unknown role from the most specific signal available
     # (the role-level profession or agency) before expansion, so a travel-
@@ -415,6 +496,10 @@ def _normalize_experience(exp: ExperienceItem) -> None:
     # explicit "No"/"N/A" already extracted.
     if exp.trauma_level and exp.trauma_facility is None:
         exp.trauma_facility = "Yes"
+
+    # Reduce a full-address `location` to the street line, backfilling
+    # city/state/zip from the tail (they are their own fields on an experience).
+    _refine_location_to_street(exp)
 
     # Backfill the country from an unambiguous US state/ZIP signal (deterministic;
     # the model is told not to guess it).
