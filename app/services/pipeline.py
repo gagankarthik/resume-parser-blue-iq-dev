@@ -395,13 +395,18 @@ def _backfill_from_floor(primary: ParsedResumeAI, floor: ParsedResumeAI) -> Pars
     recovery. Used on the sync enrich path: `primary` carries the high-quality
     section-agent output (personal / education / credentials); `floor` supplies the
     work history — and any other section the agents could not finish in time — so
-    experience is never silently dropped."""
+    a section is never silently dropped when its agent times out under the tight
+    enrich budget (e.g. a slow CredentialsAgent losing every certification)."""
     if not primary.experience:
         primary.experience = floor.experience
     if not primary.education:
         primary.education = floor.education
     if not primary.skills:
         primary.skills = floor.skills
+    if not primary.certifications:
+        primary.certifications = floor.certifications
+    if not primary.licenses:
+        primary.licenses = floor.licenses
     return primary
 
 
