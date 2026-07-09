@@ -37,8 +37,9 @@ _MONTHS = (
     "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
     "aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
 )
-# A single date token: "November 2024", "Nov 2024", "08/2024", "8/2024", "2024".
-_DATE_TOKEN = rf"(?:(?:{_MONTHS})\.?\s+\d{{4}}|\d{{1,2}}/\d{{4}}|\d{{4}})"
+# A single date token: "November 2024", "Nov 2024", "November, 2024" (a comma
+# between month and year is common — "April, 2025"), "08/2024", "8/2024", "2024".
+_DATE_TOKEN = rf"(?:(?:{_MONTHS})\.?,?\s+\d{{4}}|\d{{1,2}}/\d{{4}}|\d{{4}})"
 # A range: "<date> - <date|Present>" with various dashes/"to" separators.
 _DATE_RANGE = re.compile(
     rf"(?P<start>{_DATE_TOKEN})\s*(?:[-–—]|to)\s*(?P<end>{_DATE_TOKEN}|present|current)",
@@ -71,7 +72,7 @@ def _norm_date(token: str) -> str | None:
     token = token.strip()
     if token.lower() in ("present", "current"):
         return "Present"
-    m = re.match(rf"({_MONTHS})\.?\s+(\d{{4}})", token, re.IGNORECASE)
+    m = re.match(rf"({_MONTHS})\.?,?\s+(\d{{4}})", token, re.IGNORECASE)
     if m:
         return f"{_MONTH_NUM[m.group(1)[:3].lower()]}/{m.group(2)}"
     m = re.match(r"(\d{1,2})/(\d{4})", token)
@@ -122,6 +123,11 @@ def _extract_experience(text: str) -> list[ExperienceItem]:
     date range) become description bullets. Conservative: emits an entry only when
     a date range is present, so prose without dates is never fabricated into jobs.
     """
+    # PDFs often wrap a date range across a line break ("April, 2025 -\npresent",
+    # "December, 2023 - October,\n2025"). The anchoring below is line-based, so
+    # collapse any newline INSIDE a matched range onto one line first — otherwise
+    # every such role is invisible and the record comes back with zero experience.
+    text = _DATE_RANGE.sub(lambda m: m.group(0).replace("\n", " "), text)
     lines = [ln.rstrip() for ln in text.splitlines()]
     entries: list[ExperienceItem] = []
 
