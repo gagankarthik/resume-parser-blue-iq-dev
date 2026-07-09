@@ -70,13 +70,14 @@ _FALLBACK_RESERVE = 100
 # connection and the caller gets a bare 504 with no data. The async (upload →
 # poll) path has no per-request gateway ceiling and uses the full budget.
 _SYNC_WALL_BUDGET = 50
-# Time held back from the orchestrator on the SYNC path. Unlike the async path
-# (_FALLBACK_RESERVE), there is no budget for a full single-shot fallback after a
-# degrade — the deterministic floor is instant — so we reserve only enough for the
-# floor + normalization/scoring. This small reserve is what lets the orchestrator
-# (which returns graceful PARTIALS instead of the single-shot's all-or-nothing
-# timeout) run within the tight sync budget and avoid dropping to the rule floor.
-_SYNC_FALLBACK_RESERVE = 6
+# Time held back from the SYNC single-shot parse for the section-only "enrich"
+# pass that runs when it times out. The single-shot is capped this many seconds
+# BELOW the wall budget so a résumé that would run long is cut early, leaving room
+# to recover the semantic sections (headline, secondary phone, education
+# locations, skills, certs) with fast section agents instead of dropping to the
+# contact-only floor. Sized so the fast ~70% of résumés (which finish well inside
+# the cap) are untouched, while the dense ones still get a rich recovery.
+_SYNC_ENRICH_RESERVE = 14
 
 
 @dataclass
@@ -188,90 +189,113 @@ async def run(inp: PipelineInput) -> PipelineResult:
     # ── 5. Section detection ──────────────────────────────────────────────────
     sections = section_detector.detect(cleaned)
 
-    # ── 6. AI parsing (with per-call timeout) ────────────────────────────────
-    # Three tiers, most accurate first, each degrading into the next so a failure
-    # never produces a silent total failure:
-    #   1. Multi-agent orchestrator (structure → per-role → validate) — most accurate
-    #   2. Single-shot structured-output parser — fast, robust fallback
-    #   3. Partial record built from rule-based contact anchors — last resort, flagged
+    # ── 6. AI parsing ────────────────────────────────────────────────────────
+    # The two request shapes get different ladders because they have very
+    # different budgets:
+    #   ASYNC (worker, full budget): multi-agent orchestrator (structure → per-role
+    #     → validate) → single-shot fallback → deterministic floor.
+    #   SYNC (gateway ceiling ~60s): single-shot PRIMARY — fast AND complete for the
+    #     ~70% of résumés it parses inside its cap. The cap sits below the wall
+    #     budget so a résumé that would run long is cut early, leaving room for a
+    #     section-only "enrich" pass (semantic sections, no slow per-role work
+    #     stage) plus deterministic work history — far richer than the bare floor.
+    #     (The full orchestrator was tried on sync and dropped the per-role work
+    #     stage — cancelled on the tight budget — silently losing all experience.)
     settings  = get_settings()
     warnings: list[str] = []
     partial   = False
     tokens    = 0
     parsed_ai = None
 
-    # Synchronous callers must return within the gateway ceiling; async workers
-    # get the full budget. Every AI step is capped by the time left under this.
     budget = _SYNC_WALL_BUDGET if inp.sync else _TOTAL_BUDGET
 
     def _remaining() -> float:
         return budget - (time.monotonic() - start)
 
-    # How much budget to hold back from the orchestrator for what runs after it.
-    # Async holds back a full single-shot fallback (_FALLBACK_RESERVE); sync has no
-    # room for a second LLM attempt, so it holds back only the instant heuristic
-    # floor + normalization/scoring. This small sync reserve is what lets the
-    # orchestrator — which returns graceful PARTIALS (completed sections) rather
-    # than the single-shot's all-or-nothing timeout — run inside the sync budget.
-    fallback_reserve = _SYNC_FALLBACK_RESERVE if inp.sync else _FALLBACK_RESERVE
+    if not inp.sync:
+        # ── ASYNC: orchestrator primary → single-shot → floor ─────────────────
+        use_orchestrator = (
+            settings.use_multi_agent
+            and len(cleaned) >= settings.multi_agent_min_chars
+            # If extraction (e.g. a slow OCR pass) already ate most of the budget,
+            # go straight to the cheaper single-shot parser.
+            and _remaining() > _FALLBACK_RESERVE + 15
+        )
+        if use_orchestrator:
+            orch_budget = min(_TIMEOUT_ORCHESTRATOR, _remaining() - _FALLBACK_RESERVE)
+            try:
+                parsed_ai, tokens, warnings = await asyncio.wait_for(
+                    orchestrator.parse(cleaned, anchors, budget=orch_budget),
+                    timeout=orch_budget + 10,  # hard net above the self-bounded stages
+                )
+            except (AIParsingError, TimeoutError) as exc:
+                log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))
+                warnings = []  # discard partial orchestrator warnings; the fallback is authoritative
 
-    use_orchestrator = (
-        settings.use_multi_agent
-        and len(cleaned) >= settings.multi_agent_min_chars
-        # If extraction (e.g. a slow OCR pass) already ate most of the budget,
-        # go straight to the cheaper single-shot parser.
-        and _remaining() > fallback_reserve + 15
-    )
-    if use_orchestrator:
-        orch_budget = min(_TIMEOUT_ORCHESTRATOR, _remaining() - fallback_reserve)
-        try:
-            parsed_ai, tokens, warnings = await asyncio.wait_for(
-                orchestrator.parse(cleaned, anchors, budget=orch_budget),
-                timeout=orch_budget + 10,  # hard net above the self-bounded stages
-            )
-        except (AIParsingError, TimeoutError) as exc:
-            log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))
-            warnings = []  # discard partial orchestrator warnings; the fallback is authoritative
-
-    # Single-shot fallback — one big LLM call. Skipped on the sync path once the
-    # orchestrator has already run: the wall budget leaves no room for a second
-    # full attempt, so burning the last seconds on a call that would itself time
-    # out only pushes the response toward the gateway ceiling. Go to the floor.
-    degrade_reason = "the parse did not complete within the request budget"
-    if parsed_ai is None and not (inp.sync and use_orchestrator):
-        # The AI parse gets whatever is left of the wall budget, capped at
-        # _TIMEOUT_AI_PARSE. On the synchronous path that's tighter than the full
-        # 90s, so report the ACTUAL budget applied, not the ceiling constant.
-        ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining()))
+        if parsed_ai is None:
+            ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining()))
+            try:
+                parsed_ai, tokens = await asyncio.wait_for(
+                    ai_parser.parse(sections, anchors), timeout=ai_timeout,
+                )
+            except (AIParsingError, TimeoutError) as exc:
+                reason = (
+                    f"AI parsing timed out after {ai_timeout:.0f}s"
+                    if isinstance(exc, TimeoutError) else f"AI parsing failed: {exc}"
+                )
+                log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
+                parsed_ai = heuristic_parser.parse(cleaned, anchors)
+                partial = True
+                recovered = (
+                    f"{len(parsed_ai.experience)} experience, "
+                    f"{len(parsed_ai.education)} education, {len(parsed_ai.skills)} skill entries"
+                )
+                warnings.append(
+                    "AI parsing did not complete; returned a rule-based partial record "
+                    f"(recovered {recovered}) with no semantic cleanup. This record needs "
+                    f"human review. ({reason})"
+                )
+    else:
+        # ── SYNC: single-shot primary; section-only enrich on timeout ─────────
+        ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining() - _SYNC_ENRICH_RESERVE))
         try:
             parsed_ai, tokens = await asyncio.wait_for(
-                ai_parser.parse(sections, anchors),
-                timeout=ai_timeout,
+                ai_parser.parse(sections, anchors), timeout=ai_timeout,
             )
         except (AIParsingError, TimeoutError) as exc:
-            degrade_reason = (
+            reason = (
                 f"AI parsing timed out after {ai_timeout:.0f}s"
-                if isinstance(exc, TimeoutError)
-                else f"AI parsing failed: {exc}"
+                if isinstance(exc, TimeoutError) else f"AI parsing failed: {exc}"
             )
-            log.warning("ai_parse_degraded", job_id=inp.job_id, reason=degrade_reason)
-
-    # Deterministic floor (open-resume style): when the AI tiers produce nothing we
-    # recover experience/education/skills with rule-based heuristics instead of
-    # returning contact details only. Never times out, never invents data. Still
-    # flagged partial for human review.
-    if parsed_ai is None:
-        parsed_ai = heuristic_parser.parse(cleaned, anchors)
-        partial = True
-        recovered = (
-            f"{len(parsed_ai.experience)} experience, "
-            f"{len(parsed_ai.education)} education, {len(parsed_ai.skills)} skill entries"
-        )
-        warnings.append(
-            "AI parsing did not complete; returned a rule-based partial record "
-            f"(recovered {recovered}) with no semantic cleanup. This record needs "
-            f"human review. ({degrade_reason})"
-        )
+            log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
+            # Deterministic floor is the base — never empty, never times out.
+            floor = heuristic_parser.parse(cleaned, anchors)
+            parsed_ai = floor
+            partial = True
+            # Enrich: recover the high-value semantic sections (headline, secondary
+            # phone, education locations, skills, certs, licenses) with the fast
+            # section-only agents — omitting the slow per-role work stage — and keep
+            # the deterministic work history. Best-effort; a failure leaves the floor.
+            if settings.use_multi_agent and _remaining() > 9:
+                try:
+                    light, ltok, lwarn = await asyncio.wait_for(
+                        orchestrator.parse_light(cleaned, anchors, budget=_remaining() - 3),
+                        timeout=_remaining() - 1,
+                    )
+                    tokens += ltok
+                    parsed_ai = _backfill_from_floor(light, floor)
+                    warnings.extend(lwarn)
+                except (AIParsingError, TimeoutError) as exc2:  # noqa: BLE001 — enrich is optional
+                    log.warning("sync_enrich_failed", job_id=inp.job_id, error=str(exc2))
+            recovered = (
+                f"{len(parsed_ai.experience)} experience, "
+                f"{len(parsed_ai.education)} education, {len(parsed_ai.skills)} skill entries"
+            )
+            warnings.append(
+                "The high-accuracy parse did not finish in time; returned a recovered "
+                f"record (recovered {recovered}; work history not semantically verified). "
+                f"This record needs human review. ({reason})"
+            )
 
     # ── 7–9. Normalize + score ────────────────────────────────────────────────
     normalized = normalize(parsed_ai)
@@ -364,6 +388,21 @@ def _surname_mismatch_warning(parsed: ParsedResumeAI) -> str | None:
             "truncate a hyphenated or double surname — review full_name."
         )
     return None
+
+
+def _backfill_from_floor(primary: ParsedResumeAI, floor: ParsedResumeAI) -> ParsedResumeAI:
+    """Fill sections the semantic parse left empty with the deterministic parser's
+    recovery. Used on the sync enrich path: `primary` carries the high-quality
+    section-agent output (personal / education / credentials); `floor` supplies the
+    work history — and any other section the agents could not finish in time — so
+    experience is never silently dropped."""
+    if not primary.experience:
+        primary.experience = floor.experience
+    if not primary.education:
+        primary.education = floor.education
+    if not primary.skills:
+        primary.skills = floor.skills
+    return primary
 
 
 def _fallback_from_anchors(anchors: rule_parser.RuleExtracted) -> ParsedResumeAI:

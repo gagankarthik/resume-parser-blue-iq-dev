@@ -123,21 +123,26 @@ async def test_short_resume_skips_orchestrator_for_speed(monkeypatch):
     assert result.ai_tokens_used == 42
 
 
-# ── Sync path now uses the orchestrator (graceful partials, no all-or-nothing) ──
+# ── Sync path: single-shot primary, section-only enrich on timeout ─────────────
 
 @pytest.mark.asyncio
-async def test_sync_path_uses_orchestrator(monkeypatch):
-    """A SYNC request must now run the multi-agent orchestrator (previously it was
-    structurally disabled and always used the single-shot parser)."""
-    from app.models.schemas import ParsedResumeAI, PersonalInfo
+async def test_sync_uses_single_shot_primary(monkeypatch):
+    """A SYNC request uses the fast single-shot parser as primary and must NOT run
+    the full multi-agent orchestrator (whose per-role work stage gets cancelled on
+    the tight sync budget and drops all experience)."""
+    from app.models.schemas import ExperienceItem, ParsedResumeAI, PersonalInfo
 
-    async def _orch(_text, _anchors, budget=None):
-        # The sync budget must be positive and comfortably inside the wall budget.
-        assert budget is not None and 10 < budget < pipeline._SYNC_WALL_BUDGET
-        return ParsedResumeAI(personal_info=PersonalInfo(full_name="Sync User")), 555, []
+    async def _orch(_text, _anchors, budget=None):  # must NOT run on sync
+        raise AssertionError("full orchestrator must not run on the sync path")
 
-    async def _single_shot(_sections, _anchors):  # must NOT run when orchestrator succeeds
-        raise AssertionError("single-shot must not run on sync when orchestrator succeeds")
+    async def _single_shot(_sections, _anchors):
+        return (
+            ParsedResumeAI(
+                personal_info=PersonalInfo(full_name="Sync User"),
+                experience=[ExperienceItem(company="Acme", role="RN")],
+            ),
+            321,
+        )
 
     monkeypatch.setattr(pipeline.orchestrator, "parse", _orch)
     monkeypatch.setattr(pipeline.ai_parser, "parse", _single_shot)
@@ -150,23 +155,42 @@ async def test_sync_path_uses_orchestrator(monkeypatch):
     )
     assert result.partial is False
     assert result.parsed.personal_info.full_name == "Sync User"
-    assert result.ai_tokens_used == 555
+    assert len(result.parsed.experience) == 1
+    assert result.ai_tokens_used == 321
 
 
 @pytest.mark.asyncio
-async def test_sync_skips_single_shot_fallback_after_orchestrator(monkeypatch):
-    """On sync, if the orchestrator produces nothing the pipeline goes STRAIGHT to
-    the deterministic floor — it must NOT burn the last seconds on a single-shot
-    call that would itself time out and push past the gateway ceiling."""
+async def test_sync_enrich_backfills_experience_on_timeout(monkeypatch):
+    """When the sync single-shot times out, the section-only enrich pass supplies
+    the semantic sections and the deterministic floor supplies work history — so
+    experience is NEVER silently dropped. Flagged partial for review."""
+    from app.models.schemas import EducationItem, ParsedResumeAI, PersonalInfo
 
-    async def _boom_orch(_text, _anchors, budget=None):
-        raise AIParsingError("orchestrator empty")
+    async def _boom_single_shot(_sections, _anchors):
+        raise TimeoutError("single-shot timed out")
 
-    async def _single_shot(_sections, _anchors):  # must NOT run on the sync path
-        raise AssertionError("single-shot must be skipped on sync after the orchestrator ran")
+    async def _light(_text, _anchors, budget):
+        # Semantic sections only — no experience (that comes from the floor).
+        return (
+            ParsedResumeAI(
+                personal_info=PersonalInfo(full_name="Jane RN", headline="Registered Nurse"),
+                education=[EducationItem(institution="Nursing School")],
+                skills=["ICU"],
+            ),
+            77,
+            [],
+        )
 
-    monkeypatch.setattr(pipeline.orchestrator, "parse", _boom_orch)
-    monkeypatch.setattr(pipeline.ai_parser, "parse", _single_shot)
+    monkeypatch.setattr(pipeline.ai_parser, "parse", _boom_single_shot)
+    monkeypatch.setattr(pipeline.orchestrator, "parse_light", _light)
+    # The heuristic floor is what supplies the work history for the backfill.
+    from app.models.schemas import ExperienceItem
+    monkeypatch.setattr(
+        pipeline.heuristic_parser, "parse",
+        lambda text, anchors: ParsedResumeAI(
+            experience=[ExperienceItem(company="Hospital A", role="RN")]
+        ),
+    )
     _stub_extraction(monkeypatch)
 
     result = await pipeline.run(
@@ -175,7 +199,14 @@ async def test_sync_skips_single_shot_fallback_after_orchestrator(monkeypatch):
         )
     )
     assert result.partial is True
-    assert result.warnings and "human review" in result.warnings[0]
+    # Semantic sections from the enrich pass (normalization may canonicalise the
+    # skill name, e.g. "ICU" -> "Intensive Care Unit").
+    assert result.parsed.personal_info.headline == "Registered Nurse"
+    assert result.parsed.skills  # non-empty — recovered by the enrich pass
+    # ...and work history backfilled from the deterministic floor.
+    assert len(result.parsed.experience) == 1
+    assert result.parsed.experience[0].company == "Hospital A"
+    assert result.warnings and "human review" in result.warnings[-1]
 
 
 # ── Surname/email mismatch review flag ───────────────────────────────────────
