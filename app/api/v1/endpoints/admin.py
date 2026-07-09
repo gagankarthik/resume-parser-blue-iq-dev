@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr, Field
 from ulid import ULID
 
-from app.api.dependencies import require_admin
+from app.api.dependencies import _evict_key_cache, require_admin
 from app.core.errors import ErrorCode, api_error
 from app.core.logging import get_logger
 from app.core.security import (
@@ -213,6 +213,9 @@ async def revoke_key(key_hash: str) -> dict:
     if not existing:
         raise api_error(404, ErrorCode.INVALID_REQUEST, "Key not found")
     db.revoke_api_key(key_hash)
+    # Evict the in-memory auth cache so the revoked key stops authenticating on
+    # THIS instance immediately (other warm instances still expire within the TTL).
+    _evict_key_cache(key_hash)
     return {"key_hash": key_hash, "status": "revoked"}
 
 

@@ -25,12 +25,16 @@ def _has_phone_digits(value: str) -> bool:
 
 
 def score(parsed: ParsedResumeAI) -> ConfidenceScores:
+    personal   = _score_personal(parsed)
+    experience = _score_experience(parsed)
+    education  = _score_education(parsed)
+    skills     = _score_skills(parsed)
     return ConfidenceScores(
-        personal_info=_score_personal(parsed),
-        experience=_score_experience(parsed),
-        education=_score_education(parsed),
-        skills=_score_skills(parsed),
-        overall=_overall(parsed),
+        personal_info=personal,
+        experience=experience,
+        education=education,
+        skills=skills,
+        overall=_overall(personal, experience, education, skills),
     )
 
 
@@ -100,12 +104,8 @@ def _score_skills(parsed: ParsedResumeAI) -> float:
     return round(count / 5, 2)
 
 
-def _overall(parsed: ParsedResumeAI) -> float:
-    weights = {
-        "personal": (_score_personal(parsed), 0.35),
-        "experience": (_score_experience(parsed), 0.35),
-        "education": (_score_education(parsed), 0.20),
-        "skills": (_score_skills(parsed), 0.10),
-    }
-    total = sum(s * w for s, w in weights.values())
+def _overall(personal: float, experience: float, education: float, skills: float) -> float:
+    # Takes the already-computed sub-scores (score() has them) instead of
+    # recomputing all four — same result, half the work.
+    total = personal * 0.35 + experience * 0.35 + education * 0.20 + skills * 0.10
     return round(total, 2)

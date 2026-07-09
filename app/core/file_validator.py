@@ -14,6 +14,9 @@ Supported types and their signatures:
   WEBP : RIFF....WEBP
 """
 
+import io
+import zipfile
+
 from app.core.exceptions import UnsupportedFileTypeError
 
 _SIGNATURES: dict[str, list[bytes]] = {
@@ -67,7 +70,29 @@ def validate_file(filename: str, content: bytes) -> str:
     if declared_type == "webp" and content[8:12] != b"WEBP":
         raise UnsupportedFileTypeError("File is not a valid WEBP image")
 
+    # A .docx signature is just the generic ZIP header, so any ZIP (or a zip bomb)
+    # renamed .docx passes the magic check. Confirm it's actually an OOXML package
+    # by reading the central directory (no decompression) for the required members.
+    if declared_type == "docx" and not _is_ooxml_docx(content):
+        raise UnsupportedFileTypeError(
+            "File is not a valid DOCX document (missing Word/OOXML structure)."
+        )
+
     return declared_type
+
+
+def _is_ooxml_docx(content: bytes) -> bool:
+    """True when `content` is a ZIP holding the members a real .docx must have.
+
+    Reads only the ZIP central directory (namelist does not decompress), so a
+    malicious/huge archive can't be expanded here.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            names = set(zf.namelist())
+    except (zipfile.BadZipFile, OSError):
+        return False
+    return "[Content_Types].xml" in names and any(n.startswith("word/") for n in names)
 
 
 def is_supported_extension(filename: str) -> bool:

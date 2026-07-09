@@ -1,13 +1,32 @@
+import io
+import zipfile
+
 import pytest
 
 from app.core.exceptions import UnsupportedFileTypeError
 from app.services.extraction.classifier import ExtractionStrategy, classify
 
 
+def _minimal_docx() -> bytes:
+    """A minimal but structurally-valid .docx (OOXML zip with the required members)."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("[Content_Types].xml", "<Types/>")
+        zf.writestr("word/document.xml", "<document/>")
+    return buf.getvalue()
+
+
 def test_docx_classified_as_docx():
-    strategy, needs_async = classify("resume.docx", b"PK\x03\x04fake-docx-content")
+    strategy, needs_async = classify("resume.docx", _minimal_docx())
     assert strategy == ExtractionStrategy.DOCX
     assert needs_async is False
+
+
+def test_fake_docx_zip_rejected():
+    # A generic/zip-bomb file renamed .docx (valid ZIP header, no OOXML structure)
+    # must be rejected, not classified as DOCX.
+    with pytest.raises(UnsupportedFileTypeError):
+        classify("resume.docx", b"PK\x03\x04not-a-real-ooxml-zip")
 
 
 def test_rtf_classified_as_rtf():

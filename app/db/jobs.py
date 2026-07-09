@@ -6,8 +6,22 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+from botocore.exceptions import ClientError
+
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.db._client import _get_dynamodb
+
+log = get_logger(__name__)
+
+
+def _is_item_too_large(exc: ClientError) -> bool:
+    """True when a write failed because the item exceeds DynamoDB's 400 KB cap."""
+    err = exc.response.get("Error", {})
+    return (
+        err.get("Code") == "ValidationException"
+        and "size" in err.get("Message", "").lower()
+    )
 
 
 def create_job(
@@ -76,6 +90,59 @@ def update_job_processing(job_id: str) -> None:
     )
 
 
+def claim_upload_job(job_id: str) -> bool:
+    """Atomically transition a job from 'pending_upload' to 'processing'.
+
+    Returns True when THIS caller won the claim, False when the job was already
+    claimed. Closes the check-then-act race in /resume/parse-uploaded where two
+    concurrent calls with the same job_id both pass a `status == pending_upload`
+    read and both run the (billed) parse.
+    """
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
+    try:
+        table.update_item(
+            Key={"job_id": job_id},
+            UpdateExpression="SET #s = :proc, started_at = :t",
+            ConditionExpression="#s = :pending",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":proc": "processing",
+                ":pending": "pending_upload",
+                ":t": datetime.now(UTC).isoformat(),
+            },
+        )
+        return True
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
+
+
+def mark_batch_counted(job_id: str) -> bool:
+    """Atomically claim the batch-counter increment for this job.
+
+    Returns True the first time, False if already counted. An async-Lambda
+    ("Event") invocation that is retried after a hard timeout/OOM would otherwise
+    re-run the pipeline and increment the batch's completed/failed counters a
+    second time (inflating them past `total` and re-firing batch.completed).
+    """
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
+    try:
+        table.update_item(
+            Key={"job_id": job_id},
+            UpdateExpression="SET batch_counted = :t",
+            ConditionExpression="attribute_not_exists(batch_counted)",
+            ExpressionAttributeValues={":t": True},
+        )
+        return True
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
+
+
 def _dynamo_safe(value: dict) -> dict:
     """Make a JSON-able dict storable in DynamoDB: floats become Decimals
     (boto3 rejects Python floats with 'Float types are not supported').
@@ -93,6 +160,40 @@ def update_job_completed(job_id: str, result: dict) -> None:
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
     status = "partial" if result.get("partial") else "completed"
+    try:
+        table.update_item(
+            Key={"job_id": job_id},
+            UpdateExpression="SET #s = :s, completed_at = :t, #r = :r",
+            ExpressionAttributeNames={"#s": "status", "#r": "result"},
+            ExpressionAttributeValues={
+                ":s": status,
+                ":t": datetime.now(UTC).isoformat(),
+                ":r": _dynamo_safe(result),
+            },
+        )
+        return
+    except ClientError as exc:
+        if not _is_item_too_large(exc):
+            raise
+
+    # The parsed result exceeds DynamoDB's 400 KB item limit (a very dense résumé).
+    # Persist a TERMINAL record without the oversized payload so the job never
+    # wedges in 'processing' (pollers would otherwise see 'processing' until the
+    # TTL, then JOB_NOT_FOUND). Real-time consumers already got the full data via
+    # the parse.completed webhook; poll clients get a clear marker + warning.
+    log.warning("job_result_too_large", job_id=job_id)
+    warnings = list(result.get("warnings") or [])
+    warnings.append(
+        "result_omitted: parsed output exceeded the storage size limit; "
+        "retrieve it from the parse.completed webhook or re-parse"
+    )
+    stub = {
+        "data": None,
+        "confidence": result.get("confidence"),
+        "partial": bool(result.get("partial")),
+        "warnings": warnings,
+        "result_too_large": True,
+    }
     table.update_item(
         Key={"job_id": job_id},
         UpdateExpression="SET #s = :s, completed_at = :t, #r = :r",
@@ -100,7 +201,7 @@ def update_job_completed(job_id: str, result: dict) -> None:
         ExpressionAttributeValues={
             ":s": status,
             ":t": datetime.now(UTC).isoformat(),
-            ":r": _dynamo_safe(result),
+            ":r": _dynamo_safe(stub),
         },
     )
 

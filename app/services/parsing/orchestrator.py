@@ -48,9 +48,12 @@ log = get_logger(__name__)
 
 # Each agent receives the full résumé text, and the WorkAgent sends it once PER
 # role. Cap the text so a pathologically long résumé can't blow the model context
-# window or run up unbounded token cost across the fan-out. Generous enough to
-# hold a 25-year multi-page CV.
-_MAX_AGENT_CHARS = 30_000
+# window or run up unbounded token cost across the fan-out. Kept in line with the
+# single-shot parser's MAX_TOTAL_CHARS so the multi-agent path (used for the LONGER
+# résumés that trip multi_agent_min_chars) doesn't silently see LESS text than the
+# fallback would — the earlier 30K cap dropped the tail of 30-60K CVs with no
+# signal. Truncation now emits a warning (see parse()).
+_MAX_AGENT_CHARS = 60_000
 
 # Per-stage soft deadlines. The orchestrator bounds ITSELF so a slow stage returns
 # whatever it has (partial + warning) instead of letting the pipeline's outer
@@ -123,7 +126,13 @@ async def parse(
     deadline = time.monotonic() + budget if budget else None
     meter = TokenMeter()
     warnings: list[str] = []
-    text = text[:_MAX_AGENT_CHARS]
+    if len(text) > _MAX_AGENT_CHARS:
+        log.warning("agent_text_truncated", original_chars=len(text), cap=_MAX_AGENT_CHARS)
+        warnings.append(
+            f"Résumé exceeded {_MAX_AGENT_CHARS} characters and was truncated; "
+            "content beyond that was not parsed."
+        )
+        text = text[:_MAX_AGENT_CHARS]
 
     structure_agent = StructureAgent()
     personal_agent  = PersonalInfoAgent()

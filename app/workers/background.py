@@ -123,23 +123,29 @@ async def process_resume_async(
 
         if batch_id:
             try:
-                batch_done = db.increment_batch_counter(
-                    batch_id=batch_id,
-                    field="completed" if status == "completed" else "failed",
-                )
-                if batch_done:
-                    batch = db.get_batch(batch_id)
-                    if batch:
-                        await _safe_deliver(
-                            company_id,
-                            "batch.completed",
-                            {
-                                "batch_id": batch_id,
-                                "total":     int(batch.get("total", 0)),
-                                "completed": int(batch.get("completed", 0)),
-                                "failed":    int(batch.get("failed", 0)),
-                            },
-                        )
+                # Claim the increment idempotently — an async-Lambda Event retry
+                # (after a hard timeout/OOM) re-runs this whole block, and without
+                # the guard it would double-count the batch's completed/failed.
+                if not db.mark_batch_counted(job_id):
+                    log.info("batch_already_counted", job_id=job_id, batch_id=batch_id)
+                else:
+                    batch_done = db.increment_batch_counter(
+                        batch_id=batch_id,
+                        field="completed" if status == "completed" else "failed",
+                    )
+                    if batch_done:
+                        batch = db.get_batch(batch_id)
+                        if batch:
+                            await _safe_deliver(
+                                company_id,
+                                "batch.completed",
+                                {
+                                    "batch_id": batch_id,
+                                    "total":     int(batch.get("total", 0)),
+                                    "completed": int(batch.get("completed", 0)),
+                                    "failed":    int(batch.get("failed", 0)),
+                                },
+                            )
             except Exception as exc:
                 log.error("batch_bookkeeping_failed", job_id=job_id,
                           batch_id=batch_id, error=str(exc))

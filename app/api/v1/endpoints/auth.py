@@ -12,10 +12,11 @@ The session token is a signed, stateless bearer token (see security.py).
 import re
 import secrets
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from app.api.dependencies import get_current_account
+from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
 from app.core.logging import get_logger
@@ -24,6 +25,23 @@ from app.db import dynamodb as db
 
 router = APIRouter(prefix="/auth", tags=["Account"])
 log = get_logger(__name__)
+
+# Precomputed once at import so a login for a non-existent email still runs a full
+# PBKDF2 verify (against this unknowable hash) instead of short-circuiting — which
+# would leak account existence via response timing.
+_DECOY_PW_HASH = hash_password(secrets.token_hex(16))
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP for per-IP auth throttling.
+
+    Behind the Lambda Function URL / API Gateway the peer is the proxy, so prefer
+    the first hop in X-Forwarded-For; fall back to the socket peer.
+    """
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 class SignupRequest(BaseModel):
@@ -54,7 +72,8 @@ def _public(company: dict) -> dict:
 
 
 @router.post("/signup", status_code=201, summary="Create an account")
-async def signup(payload: SignupRequest) -> dict:
+async def signup(payload: SignupRequest, request: Request) -> dict:
+    rate_limit.check_auth(_client_ip(request))
     if db.get_company_by_email(str(payload.email)):
         raise api_error(409, ErrorCode.INVALID_REQUEST, "An account with this email already exists")
 
@@ -73,11 +92,15 @@ async def signup(payload: SignupRequest) -> dict:
 
 
 @router.post("/login", summary="Sign in")
-async def login(payload: LoginRequest) -> dict:
+async def login(payload: LoginRequest, request: Request) -> dict:
+    rate_limit.check_auth(_client_ip(request))
     company = db.get_company_by_email(str(payload.email))
     pw_hash = company.get("password_hash") if company else None
-    # Always run a verify to reduce timing oracle on account existence.
-    if not company or not pw_hash or not verify_password(payload.password, pw_hash):
+    # Always run a full verify (against a decoy hash when the account/hash is
+    # missing) so an unknown email takes the same ~200k-round PBKDF2 time as a
+    # known one — closes the timing oracle on account existence.
+    ok = verify_password(payload.password, pw_hash or _DECOY_PW_HASH)
+    if not company or not pw_hash or not ok:
         raise api_error(401, ErrorCode.INVALID_API_KEY, "Invalid email or password")
     if company.get("status") != "active":
         raise api_error(403, ErrorCode.REVOKED_API_KEY, "This account is disabled")

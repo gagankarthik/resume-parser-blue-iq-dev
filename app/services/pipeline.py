@@ -108,7 +108,13 @@ async def run(inp: PipelineInput) -> PipelineResult:
     start = time.monotonic()
     loop  = asyncio.get_event_loop()
 
-    log.info("pipeline_start", job_id=inp.job_id, filename=inp.filename)
+    # Don't log the raw filename — résumé filenames routinely embed the candidate's
+    # name ("jane_smith_rn.pdf"), i.e. PII in CloudWatch. Extension + length suffice.
+    log.info(
+        "pipeline_start", job_id=inp.job_id,
+        file_ext=inp.filename.rsplit(".", 1)[-1].lower() if "." in inp.filename else "",
+        filename_len=len(inp.filename),
+    )
 
     # ── 1. Classify ───────────────────────────────────────────────────────────
     strategy, _ = classifier.classify(inp.filename, inp.content)

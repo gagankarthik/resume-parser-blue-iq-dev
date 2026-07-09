@@ -2,9 +2,14 @@
 BaseAgent — shared structured-output LLM calling for every section agent.
 
 Design notes:
-  • One AsyncOpenAI client is reused process-wide (connection-pool reuse across
-    the ~5 Stage-2 agents + N per-role WorkAgent calls).
-  • A global semaphore caps in-flight LLM calls so a long travel-nurse résumé
+  • One AsyncOpenAI client + semaphore are reused *per event loop* (connection-pool
+    reuse across the ~5 Stage-2 agents + N per-role WorkAgent calls). The worker
+    Lambda creates a fresh event loop on every invocation, so a process-global
+    client/semaphore bound to a previous (now-closed) loop would raise
+    "bound to a different event loop" (semaphore) or "Event loop is closed"
+    (httpx pool) on the 2nd+ warm-container invocation. We therefore rebuild both
+    whenever the running loop changes.
+  • The semaphore caps in-flight LLM calls so a long travel-nurse résumé
     (many roles → many parallel per-role calls) can't blow the OpenAI TPM ceiling.
   • Structured outputs (`beta.chat.completions.parse`) keep the per-agent schema
     guarantee — agents never hand-parse JSON.
@@ -33,22 +38,38 @@ _MAX_RETRIES   = 3
 _BACKOFF_BASE  = 5     # seconds
 _JITTER_FACTOR = 0.2
 
-# Shared across all agents in the process.
+# Shared across all agents running on the SAME event loop. Rebuilt when the
+# running loop changes (see module docstring — warm Lambda worker reuse).
 _client: AsyncOpenAI | None = None
 _semaphore: asyncio.Semaphore | None = None
+_bound_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _ensure_for_loop() -> None:
+    """(Re)build the client + semaphore if the running loop changed.
+
+    Called from within an async context, so ``get_running_loop()`` is valid and
+    the (synchronous, await-free) rebuild is atomic w.r.t. concurrent agents on
+    the same loop — no locking needed.
+    """
+    global _client, _semaphore, _bound_loop
+    loop = asyncio.get_running_loop()
+    if _bound_loop is loop and _client is not None and _semaphore is not None:
+        return
+    _client = AsyncOpenAI(api_key=get_settings().openai_api_key)
+    _semaphore = asyncio.Semaphore(get_settings().multi_agent_max_concurrency)
+    _bound_loop = loop
 
 
 def _get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
-        _client = AsyncOpenAI(api_key=get_settings().openai_api_key)
+    _ensure_for_loop()
+    assert _client is not None  # set by _ensure_for_loop
     return _client
 
 
 def _get_semaphore() -> asyncio.Semaphore:
-    global _semaphore
-    if _semaphore is None:
-        _semaphore = asyncio.Semaphore(get_settings().multi_agent_max_concurrency)
+    _ensure_for_loop()
+    assert _semaphore is not None  # set by _ensure_for_loop
     return _semaphore
 
 
@@ -96,6 +117,7 @@ class BaseAgent:
                         model=settings.openai_model,
                         max_tokens=max_tokens or settings.openai_max_tokens,
                         temperature=0.0,
+                        seed=settings.openai_seed,
                         messages=[
                             {"role": "system", "content": system},
                             {"role": "user", "content": user},

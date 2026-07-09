@@ -4,6 +4,11 @@ from pathlib import Path
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Well-known insecure default for the account-token signing secret. Safe for dev,
+# but a production deploy that leaves it in place lets anyone forge account tokens,
+# so `assert_production_ready()` refuses to boot on it.
+INSECURE_AUTH_SECRET_DEFAULT = "dev-insecure-auth-secret-change-me"
+
 
 class Settings(BaseSettings):
     # extra="ignore": an unrecognized env var must never crash the whole service
@@ -40,6 +45,12 @@ class Settings(BaseSettings):
     # the parse endpoints, which OR's with this global default.
     force_textract: bool = False
 
+    # Hard cap on how many pages of a scanned PDF/multi-page image are rasterized
+    # and OCR'd. At 300 DPI each page is several MB of PIL image held in memory, so
+    # an unbounded 100-page fax would OOM/timeout the Lambda. Résumés are a few
+    # pages; the tail past this is dropped (logged).
+    ocr_max_pages: int = 15
+
     # DynamoDB tables
     dynamodb_table_api_keys: str = "resume-parser-api-keys"
     dynamodb_table_jobs: str = "resume-parser-jobs"
@@ -66,8 +77,9 @@ class Settings(BaseSettings):
     admin_api_token: str = ""
 
     # Secret for signing self-serve account session tokens (/api/v1/auth).
-    # MUST be set to a strong random value in production.
-    auth_secret: str = "dev-insecure-auth-secret-change-me"
+    # MUST be set to a strong random value in production — enforced at startup by
+    # `assert_production_ready()`, which refuses to boot on the dev default.
+    auth_secret: str = INSECURE_AUTH_SECRET_DEFAULT
 
     # S3
     # Must match the bucket Terraform provisions (infrastructure/terraform/s3.tf).
@@ -77,6 +89,11 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
+    # Fixed decoding seed. temperature=0 alone is NOT deterministic on gpt-4.1-mini,
+    # so a seed (with a pinned model snapshot) makes identical résumés extract
+    # consistently run-to-run and keeps regressions reproducible. Pin openai_model
+    # to a dated snapshot in production to hold the system_fingerprint stable.
+    openai_seed: int = 7
     # Output-token ceiling. A dense résumé (many roles, each with bullets +
     # facility fields) needs a large JSON; a small ceiling truncates the
     # structured output mid-generation on those, dropping the last roles.
@@ -154,10 +171,23 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = False
     rate_limit_per_minute: int = 600
 
+    # Per-client-IP throttle for the PUBLIC auth routes (/auth/login, /auth/signup).
+    # Always enforced — independent of rate_limit_enabled — because brute-force and
+    # account-enumeration protection must not be disabled just because per-API-key
+    # limiting is off during client testing. Set to 0 to disable.
+    auth_rate_limit_per_minute: int = 20
+
     # Hard upper bound on any accepted request body, checked from Content-Length
     # before the body is read into memory (defense-in-depth above the per-file size
     # check). Sized as the max file size plus multipart/headroom overhead.
     max_request_overhead_bytes: int = 1 * 1024 * 1024
+
+    # A batch request carries MANY files, so the single-file ceiling
+    # (max_request_bytes) would wrongly 413 a legitimate multi-file batch. The
+    # batch route gets its own, larger body ceiling — still bounded so a huge
+    # upload can't exhaust memory. On Lambda the Function URL's ~6 MB cap is the
+    # real limit anyway; this matters for non-Lambda (uvicorn/ECS) deploys.
+    max_batch_request_bytes: int = 60 * 1024 * 1024
 
     # CORS — comma-separated allowed origins. Empty by default so production
     # denies cross-origin browser access unless an operator opts in via
@@ -201,6 +231,23 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    def assert_production_ready(self) -> None:
+        """Refuse to boot a production deployment that is missing critical secrets.
+
+        Called once at app startup (main.lifespan). Today the only fail-closed
+        check is the account-token signing secret: an unset/dev-default value in
+        production would let anyone forge a session token for any company and mint
+        real API keys. (admin_api_token is intentionally optional — empty disables
+        the admin endpoints — so it is not enforced here.)
+        """
+        if not self.is_production:
+            return
+        if not self.auth_secret or self.auth_secret == INSECURE_AUTH_SECRET_DEFAULT:
+            raise RuntimeError(
+                "Refusing to start in production: AUTH_SECRET is unset or still the "
+                "insecure dev default. Set a strong random value via the environment."
+            )
 
 
 @lru_cache

@@ -50,9 +50,23 @@ def get_company_by_email(email: str) -> dict | None:
 
 
 def list_companies() -> list[dict]:
+    """Return every company, following pagination.
+
+    A bare scan() returns only the first ≤1 MB page, so once companies exceed one
+    page the admin listing and platform-wide stats rollups silently under-report.
+    Page through LastEvaluatedKey to get the full set.
+    """
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_companies)
-    return table.scan().get("Items", [])
+    items: list[dict] = []
+    kwargs: dict[str, Any] = {}
+    while True:
+        resp = table.scan(**kwargs)
+        items.extend(resp.get("Items", []))
+        last_key = resp.get("LastEvaluatedKey")
+        if not last_key:
+            return items
+        kwargs["ExclusiveStartKey"] = last_key
 
 
 # Mutable fields an admin may update; everything else (id, email, created_at,

@@ -1,10 +1,10 @@
 """
-OpenAI GPT-4o structured output parser.
+OpenAI (gpt-4.1-mini) structured-output parser.
 
 Retry strategy:
   • MAX_RETRIES=3 total attempts
   • RateLimitError → exponential backoff with ±20% jitter (prevents thundering herd)
-    Delays: ~5s, ~10s, ~20s (before jitter)
+    Delays before the two retries: ~5s, ~10s (before jitter); the 3rd attempt raises
   • Other errors → 1s pause then retry; raise AIParsingError after exhaustion
 
 Token safety:
@@ -36,15 +36,20 @@ JITTER_FACTOR     = 0.2    # ±20 % of backoff delay
 MAX_SECTION_CHARS = 20_000  # per section
 MAX_TOTAL_CHARS   = 60_000  # total résumé text
 
-# One client per process — connection-pool reuse across parses (same pattern as
-# the multi-agent BaseAgent).
+# One client per event loop — connection-pool reuse across parses, rebuilt when the
+# running loop changes (same pattern/rationale as the multi-agent BaseAgent). The
+# worker Lambda creates a fresh loop per invocation, so a client cached from a
+# previous (now-closed) loop would fail on warm-container reuse.
 _client: AsyncOpenAI | None = None
+_bound_loop: asyncio.AbstractEventLoop | None = None
 
 
 def _get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
+    global _client, _bound_loop
+    loop = asyncio.get_running_loop()
+    if _client is None or _bound_loop is not loop:
         _client = AsyncOpenAI(api_key=get_settings().openai_api_key)
+        _bound_loop = loop
     return _client
 
 
@@ -183,6 +188,7 @@ async def parse(
                 model=settings.openai_model,
                 max_tokens=settings.openai_max_tokens,
                 temperature=0.0,
+                seed=settings.openai_seed,
                 messages=[
                     {
                         "role": "system",

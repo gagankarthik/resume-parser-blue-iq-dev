@@ -30,7 +30,15 @@ def _sanitize_url(v: str | None) -> str | None:
     if not v:
         return None
     v = v.strip()
+    if not v:
+        return None
     if not _URL_RE.match(v):
+        # Only promote a scheme-less value to https:// when it actually looks like
+        # a host (has a dot, no whitespace). Otherwise junk the model emits for an
+        # absent link — "N/A", "not provided", "available upon request" — would
+        # become a clickable, broken "https://N/A" link. Better to drop it.
+        if " " in v or "." not in v:
+            return None
         v = f"https://{v}"
     return v if len(v) <= 2048 else None
 
@@ -179,9 +187,17 @@ def _sanitize_yes_no_na(v: str | None) -> str | None:
 
 
 def _coerce_list(v) -> list:
-    """Ensure list fields are always lists — guards against LLM returning null."""
+    """Ensure list fields are always lists.
+
+    Guards against two common LLM slips: returning null (→ []) and returning a
+    lone object where an array of objects was expected (→ wrap it, so the whole
+    section isn't silently dropped). Scalars/other types → []. String-list fields
+    filter out any wrapped object downstream (see coerce_string_lists).
+    """
     if v is None:
         return []
     if isinstance(v, list):
         return v
+    if isinstance(v, dict):
+        return [v]
     return []

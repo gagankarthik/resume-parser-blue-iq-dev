@@ -153,6 +153,7 @@ def test_parse_uploaded_async_path_dispatches(monkeypatch):
     monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"\x89PNG\r\n\x1a\n")
     monkeypatch.setattr(resume, "validate_file", lambda fn, content: "png")
     monkeypatch.setattr(resume, "classify", lambda fn, content: ("ocr", True))
+    monkeypatch.setattr(resume.db, "claim_upload_job", lambda jid: True)
 
     dispatched: dict = {}
 
@@ -183,6 +184,7 @@ def test_parse_uploaded_sync_path_returns_result(monkeypatch):
     monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"%PDF-1.4 digital")
     monkeypatch.setattr(resume, "validate_file", lambda fn, content: "pdf")
     monkeypatch.setattr(resume, "classify", lambda fn, content: ("pdf", False))
+    monkeypatch.setattr(resume.db, "claim_upload_job", lambda jid: True)
 
     result = PipelineResult(
         parsed=ParsedResumeAI(skills=["ICU"]),
@@ -231,6 +233,7 @@ def test_parse_uploaded_partial_result_reports_partial_not_completed(monkeypatch
     monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"%PDF-1.4 digital")
     monkeypatch.setattr(resume, "validate_file", lambda fn, content: "pdf")
     monkeypatch.setattr(resume, "classify", lambda fn, content: ("pdf", False))
+    monkeypatch.setattr(resume.db, "claim_upload_job", lambda jid: True)
 
     result = PipelineResult(
         parsed=ParsedResumeAI(),
