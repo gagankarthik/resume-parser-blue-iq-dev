@@ -274,3 +274,114 @@ def test_healthcare_specialty_normalizes():
     assert "Emergency Room" in skills
     # ACLS isn't in the abbreviation map — passes through unchanged
     assert "ACLS" in skills
+
+
+# ── Education repair: orphaned degrees reattach to their institution ──────────
+
+def test_education_reattaches_orphaned_degrees_and_drops_header_stub():
+    """One school header + multiple degree lines → each degree keeps the school;
+    the degree-less header stub is dropped (no 'Unknown Institution')."""
+    parsed = ParsedResumeAI.model_validate({
+        "education": [
+            {"institution": "ECPI University", "degree": None, "field_of_study": "Nursing"},
+            {"institution": "", "degree": "Associates in Nursing", "graduation_year": 2018},
+            {"institution": "", "degree": "Bachelor of Science in Nursing", "graduation_year": 2019},
+        ]
+    })
+    normalize(parsed)
+    assert [(e.institution, e.degree, e.graduation_year) for e in parsed.education] == [
+        ("ECPI University", "Associate Degree in Nursing", 2018),  # grammar canonicalized
+        ("ECPI University", "Bachelor of Science in Nursing", 2019),
+    ]
+
+
+def test_education_keeps_standalone_institution_without_siblings():
+    """A lone school header with no degree is NOT dropped when nothing reattaches."""
+    parsed = ParsedResumeAI.model_validate({
+        "education": [{"institution": "State University", "field_of_study": "Nursing"}]
+    })
+    normalize(parsed)
+    assert len(parsed.education) == 1
+    assert parsed.education[0].institution == "State University"
+
+
+# ── Country inference: unambiguous US signal only ────────────────────────────
+
+def test_country_inferred_from_us_state_abbrev():
+    parsed = ParsedResumeAI.model_validate({
+        "experience": [{"company": "Oishei", "role": "RN", "state": "NY",
+                        "location": "818 Ellicott Street, Buffalo, NY 14203"}]
+    })
+    normalize(parsed)
+    assert parsed.experience[0].country == "United States"
+
+
+def test_country_inferred_from_location_state_zip_when_state_field_blank():
+    parsed = ParsedResumeAI.model_validate({
+        "experience": [{"company": "Riverside", "role": "RN",
+                        "location": "500 J Clyde Morris Blvd, Newport News, VA 23601"}]
+    })
+    normalize(parsed)
+    assert parsed.experience[0].country == "United States"
+
+
+def test_country_not_overridden_when_stated():
+    parsed = ParsedResumeAI.model_validate({
+        "experience": [{"company": "NHS Trust", "role": "RN", "state": "London",
+                        "country": "United Kingdom"}]
+    })
+    normalize(parsed)
+    assert parsed.experience[0].country == "United Kingdom"
+
+
+def test_country_not_inferred_without_us_signal():
+    parsed = ParsedResumeAI.model_validate({
+        "experience": [{"company": "Clinic", "role": "RN", "city": "Toronto"}]
+    })
+    normalize(parsed)
+    assert parsed.experience[0].country is None
+
+
+# ── Profession id mapping on experience ──────────────────────────────────────
+
+def test_profession_id_and_confidence_mapped(tmp_path):
+    import json
+
+    from app.services.normalization import specialty_catalog
+    path = tmp_path / "cat.json"
+    path.write_text(json.dumps([
+        {"id": "82", "specialty": "NICU", "profession": "RN", "profession_id": "1"},
+    ]), encoding="utf-8")
+    specialty_catalog.reload(str(path))
+    try:
+        parsed = ParsedResumeAI.model_validate({
+            "experience": [{"company": "X", "role": "RN", "profession": "RN"}]
+        })
+        normalize(parsed)
+        exp = parsed.experience[0]
+        assert exp.profession_id == "1"
+        assert exp.profession_confidence == 1.0
+        # Facility mapping is reserved (awaiting the client dataset) → null / 0.0.
+        assert exp.facility_id is None and exp.facility_confidence == 0.0
+    finally:
+        specialty_catalog.reload("")
+
+
+def test_profession_id_null_when_unknown(tmp_path):
+    import json
+
+    from app.services.normalization import specialty_catalog
+    path = tmp_path / "cat.json"
+    path.write_text(json.dumps([
+        {"id": "82", "specialty": "NICU", "profession": "RN", "profession_id": "1"},
+    ]), encoding="utf-8")
+    specialty_catalog.reload(str(path))
+    try:
+        parsed = ParsedResumeAI.model_validate({
+            "experience": [{"company": "X", "role": "Chef", "profession": "Chef"}]
+        })
+        normalize(parsed)
+        assert parsed.experience[0].profession_id is None
+        assert parsed.experience[0].profession_confidence == 0.0
+    finally:
+        specialty_catalog.reload("")

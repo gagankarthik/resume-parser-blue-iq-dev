@@ -30,12 +30,19 @@ You are given:
 
 For EACH unmatched phrase, choose the single best CANDIDATE that means the same
 clinical specialty/unit, and return its exact id. Rules:
-- Use ONLY ids that appear in CANDIDATES. Never invent an id.
+- Use ONLY ids that appear in CANDIDATES. Never invent, guess, or modify an id, and
+  never output an id you were not shown — a fabricated id is worse than no match.
+- Map a phrase ONLY when a candidate is the SAME clinical specialty/unit. Do NOT map
+  a general word to a specific specialty, a specialty to its parent group, or a
+  loose association ("cardiac" → any random cardiology sub-unit). When two candidates
+  are plausible and you cannot tell which, return null.
 - The same specialty name may appear under several professions with different ids;
   prefer the candidate whose profession fits the résumé role when it is clear.
-- If no candidate is a confident match, return specialty_id = null for that phrase
-  (do NOT force a weak match).
+- Prefer null over a weak match: if no candidate is a confident, same-meaning match,
+  return specialty_id = null for that phrase. Unmatched is safe (a human reviews it);
+  a wrong id is not.
 - confidence is your 0.0–1.0 certainty that the chosen id is correct (0.0 when null).
+  Be honest — reserve >0.8 for an unmistakable match.
 - Return one entry per UNMATCHED phrase, echoing the phrase back in `raw`."""
 
 

@@ -40,6 +40,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id   # accessible to error handlers
         structlog.contextvars.bind_contextvars(request_id=request_id)
 
+        settings = get_settings()
+
+        # Reject an over-sized body from its declared Content-Length BEFORE it is
+        # read into memory — defense-in-depth above each endpoint's file-size check.
+        oversized = _content_length_exceeds(request, settings.max_request_bytes)
+        if oversized is not None:
+            structlog.contextvars.unbind_contextvars("request_id")
+            return oversized
+
         response = await call_next(request)
 
         response.headers["X-Request-ID"]           = request_id
@@ -47,13 +56,42 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"]        = "DENY"
         response.headers["Referrer-Policy"]        = "strict-origin-when-cross-origin"
 
-        if get_settings().is_production:
+        if settings.is_production:
+            # Docs (Swagger UI, which needs a CDN) are disabled in production, so a
+            # lock-down CSP is safe here and would only break the dev docs page.
+            response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"
             )
 
         structlog.contextvars.unbind_contextvars("request_id")
         return response
+
+
+def _content_length_exceeds(request: Request, max_bytes: int) -> JSONResponse | None:
+    """Return a 413 response when the request's Content-Length exceeds `max_bytes`.
+
+    Returns None when there is no Content-Length (e.g. chunked) or it is within
+    the limit — those bodies are still bounded by each endpoint's own size check.
+    """
+    raw = request.headers.get("content-length")
+    if raw is None:
+        return None
+    try:
+        declared = int(raw)
+    except ValueError:
+        return None
+    if declared <= max_bytes:
+        return None
+    return JSONResponse(
+        status_code=413,
+        content=_error_body(
+            413, str(ErrorCode.REQUEST_TOO_LARGE),
+            f"Request body of {declared // 1024} KB exceeds the "
+            f"{max_bytes // (1024 * 1024)} MB limit",
+            request,
+        ),
+    )
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -177,7 +215,11 @@ def create_app() -> FastAPI:
             )
         else:
             body = _error_body(exc.status_code, "HTTP_ERROR", str(exc.detail), request)
-        return JSONResponse(status_code=exc.status_code, content=body)
+        # Propagate any headers set on the exception (e.g. Retry-After on a 429).
+        return JSONResponse(
+            status_code=exc.status_code, content=body,
+            headers=getattr(exc, "headers", None),
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

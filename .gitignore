@@ -61,6 +61,17 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
+# ── Local agent / scratch files ──────────────────────────────────────────────
+# Claude Code / AI agent local state (kept out of version control).
+.claude/
+CLAUDE.local.md
+# Ad-hoc parser output dumps produced during manual API testing.
+output.json
+*.output.json
+parsed_*.json
+scratch/
+scratchpad/
+
 # ── Poetry ───────────────────────────────────────────────────────────────────
 # Keep poetry.lock committed for reproducible builds
 # poetry.lock

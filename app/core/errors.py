@@ -60,6 +60,10 @@ class ErrorCode(StrEnum):
     # ── Input Validation ──────────────────────────────────────────────────────
     VALIDATION_ERROR       = "VALIDATION_ERROR"
     INVALID_REQUEST        = "INVALID_REQUEST"
+    REQUEST_TOO_LARGE      = "REQUEST_TOO_LARGE"
+
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    RATE_LIMITED           = "RATE_LIMITED"
 
     # ── Internal ──────────────────────────────────────────────────────────────
     INTERNAL_ERROR         = "INTERNAL_ERROR"
@@ -157,6 +161,14 @@ _HINTS: dict[str, str] = {
     ErrorCode.INVALID_REQUEST: (
         "The request is invalid. Check the API documentation for the correct request format."
     ),
+    ErrorCode.REQUEST_TOO_LARGE: (
+        "The request body is too large. Use the presigned-upload flow "
+        "(POST /resume/upload-url) for large files."
+    ),
+    ErrorCode.RATE_LIMITED: (
+        "You have sent too many requests. Slow down and retry after the period "
+        "indicated by the Retry-After header."
+    ),
     ErrorCode.INTERNAL_ERROR: (
         "An unexpected error occurred on our side. This has been logged automatically. "
         "Please try again in a moment. If it persists, contact support with your X-Request-ID."
@@ -175,11 +187,13 @@ def api_error(
     status_code: int,
     error_code: ErrorCode,
     detail: str,
+    headers: dict[str, str] | None = None,
 ) -> HTTPException:
     """
     Build an HTTPException with a structured detail dict.
     The global HTTPException handler in main.py serialises this into the
-    standard error envelope including the user-facing hint.
+    standard error envelope including the user-facing hint. `headers` (e.g.
+    Retry-After) are propagated onto the response by that handler.
     """
     return HTTPException(
         status_code=status_code,
@@ -188,4 +202,5 @@ def api_error(
             "detail":     detail,
             "hint":       get_hint(str(error_code)),
         },
+        headers=headers,
     )

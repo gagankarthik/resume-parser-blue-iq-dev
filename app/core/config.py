@@ -138,6 +138,21 @@ class Settings(BaseSettings):
     presigned_upload_expiry_seconds: int = 900  # 15 minutes
     job_result_ttl_seconds: int = 3600  # 1 hour
 
+    # Rate limiting — per-API-key, fixed 60s window, evaluated in the auth
+    # dependency so every authenticated request is throttled. BEST-EFFORT per
+    # Lambda instance (each warm environment keeps its own counter); front the API
+    # with a distributed limiter (API Gateway usage plan / Redis) for a strict
+    # global cap.
+    # DISABLED by default while the API is under active client testing — flip
+    # RATE_LIMIT_ENABLED=true (and tune RATE_LIMIT_PER_MINUTE) to turn it back on.
+    rate_limit_enabled: bool = False
+    rate_limit_per_minute: int = 600
+
+    # Hard upper bound on any accepted request body, checked from Content-Length
+    # before the body is read into memory (defense-in-depth above the per-file size
+    # check). Sized as the max file size plus multipart/headroom overhead.
+    max_request_overhead_bytes: int = 1 * 1024 * 1024
+
     # CORS — comma-separated allowed origins. Empty by default so production
     # denies cross-origin browser access unless an operator opts in via
     # CORS_ALLOWED_ORIGINS. Development falls back to "*" for convenience
@@ -167,6 +182,11 @@ class Settings(BaseSettings):
     @property
     def max_file_size_bytes(self) -> int:
         return self.max_file_size_mb * 1024 * 1024
+
+    @property
+    def max_request_bytes(self) -> int:
+        """Ceiling for an accepted request body (file size + overhead)."""
+        return self.max_file_size_bytes + self.max_request_overhead_bytes
 
     @property
     def cors_origins_list(self) -> list[str]:

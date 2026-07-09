@@ -17,6 +17,7 @@ from fastapi.security import APIKeyHeader
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
 from app.core.logging import get_logger
+from app.core.rate_limit import check as check_rate_limit
 from app.core.security import (
     hash_api_key,
     key_display_prefix,
@@ -123,6 +124,10 @@ def get_api_key_record(api_key: str = Depends(_api_key_scheme)) -> dict:
     if not _company_is_active(record["company_id"]):
         log.warning("auth_account_deactivated", company_id=record.get("company_id"))
         raise api_error(403, ErrorCode.ACCOUNT_DEACTIVATED, "This account has been deactivated")
+
+    # Throttle per key AFTER the key is proven valid, so unauthenticated traffic
+    # can never consume a tenant's quota.
+    check_rate_limit(key_hash, company_id=record["company_id"])
 
     record["key_hash"] = key_hash
     return record

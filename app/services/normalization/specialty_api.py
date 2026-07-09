@@ -112,25 +112,28 @@ def _iter_rows(categories: list) -> Iterator[dict]:
     for category in categories:
         if not isinstance(category, dict):
             continue
+        cat = {"category": _clean(category.get("name")), "category_id": _id(category)}
         for profession in category.get("professions") or []:
             if not isinstance(profession, dict):
                 continue
-            prof_name = _clean(profession.get("name"))
+            prof = {**cat, "profession": _clean(profession.get("name")),
+                    "profession_id": _id(profession)}
             for group in profession.get("specialityGroups") or []:
                 if not isinstance(group, dict):
                     continue
-                group_name = _clean(group.get("name"))
+                ctx = {**prof, "group": _clean(group.get("name")), "group_id": _id(group)}
                 for spec in group.get("specialities") or []:
-                    row = _row(spec, prof_name, group_name)
+                    row = _row(spec, ctx)
                     if row is not None:
                         yield row
+            ungrouped = {**prof, "group": None, "group_id": None}
             for spec in profession.get("ungroupedSpecialities") or []:
-                row = _row(spec, prof_name, None)
+                row = _row(spec, ungrouped)
                 if row is not None:
                     yield row
 
 
-def _row(spec: object, profession: str | None, group: str | None) -> dict | None:
+def _row(spec: object, ctx: dict) -> dict | None:
     if not isinstance(spec, dict):
         return None
     spec_id = spec.get("id")
@@ -141,10 +144,19 @@ def _row(spec: object, profession: str | None, group: str | None) -> dict | None
         "id": str(spec_id),
         "specialty": name,                      # EXACT platform name — never re-worded
         "full_name": _clean(spec.get("fullName")),
-        "group": group,
-        "profession": profession,
+        "group": ctx.get("group"),
+        "group_id": ctx.get("group_id"),
+        "profession": ctx.get("profession"),
+        "profession_id": ctx.get("profession_id"),
+        "category": ctx.get("category"),
+        "category_id": ctx.get("category_id"),
         "keywords": list(keywords_for(name)),
     }
+
+
+def _id(obj: dict) -> str | None:
+    raw = obj.get("id")
+    return str(raw) if raw is not None else None
 
 
 def _clean(v: object) -> str | None:

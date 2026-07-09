@@ -94,3 +94,20 @@ def test_loads_csv(tmp_path):
     assert len(cat.records) == 1
     assert cat.records[0].keywords == ("floor nursing", "ms tele")
     assert cat.by_keyword_key[_match_key("ms tele")].id == "1042"
+
+
+def test_profession_id_mapping(tmp_path):
+    import json
+
+    from app.services.normalization import specialty_catalog
+    path = tmp_path / "cat.json"
+    path.write_text(json.dumps([
+        {"id": "82", "specialty": "NICU", "profession": "RN", "profession_id": "1"},
+        {"id": "437", "specialty": "NICU", "profession": "LPN/ LVN", "profession_id": "16"},
+    ]), encoding="utf-8")
+    cat = specialty_catalog.reload(str(path))
+    assert cat.profession_id_for("RN") == "1"
+    assert cat.profession_id_for("Registered Nurse") == "1"   # alias
+    assert cat.profession_id_for("LPN") == "16"               # slash-split part
+    assert cat.profession_id_for("Astronaut") is None
+    specialty_catalog.reload("")

@@ -27,6 +27,7 @@ from app.services.normalization.healthcare_taxonomy import (
     normalize_specialty,
     resolve_specialty,
 )
+from app.services.normalization.specialty_catalog import get_catalog
 
 # ── Degree aliases ────────────────────────────────────────────────────────────
 _DEGREE_MAP: dict[str, str] = {
@@ -47,6 +48,16 @@ _DEGREE_MAP: dict[str, str] = {
     "bsn": "Bachelor of Science in Nursing",
     "msn": "Master of Science in Nursing",
     "dnp": "Doctor of Nursing Practice",
+    # Spelled-out forms — fix grammar ("Associates"→"Associate") to a canonical name.
+    "associates in nursing": "Associate Degree in Nursing",
+    "associate in nursing": "Associate Degree in Nursing",
+    "associates degree in nursing": "Associate Degree in Nursing",
+    "associate degree in nursing": "Associate Degree in Nursing",
+    "associates of science in nursing": "Associate of Science in Nursing",
+    "bachelors of science in nursing": "Bachelor of Science in Nursing",
+    "bachelor of science in nursing": "Bachelor of Science in Nursing",
+    "masters of science in nursing": "Master of Science in Nursing",
+    "master of science in nursing": "Master of Science in Nursing",
 }
 
 # Credential / licence / degree tokens that may trail a candidate's name and must
@@ -69,9 +80,26 @@ _NAME_CREDENTIALS: set[str] = {
     "acls", "bls", "pals", "nrp", "tncc",
 }
 
+# US state / territory postal codes → the country they imply. A résumé that gives
+# a US state abbreviation (optionally with a ZIP) has stated a US address even when
+# it never writes "USA"; we backfill the country deterministically here rather than
+# letting the model guess it (the schema tells the model NOT to infer it).
+_US_STATE_ABBREVS: frozenset[str] = frozenset({
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
+    "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+    "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+    "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+    "DC", "PR", "VI", "GU", "AS", "MP",
+})
+_US_COUNTRY = "United States"
+# "…, NY 14203" / "…, VA 23601" — a two-letter state followed by a 5-digit ZIP.
+_US_STATE_ZIP_RE = re.compile(r",\s*([A-Z]{2})\s+\d{5}(?:-\d{4})?\b")
+
+
 def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
     _normalize_personal(parsed.personal_info)
     parsed.skills = _normalize_skills(parsed.skills)
+    parsed.education = _repair_education(parsed.education)
     for edu in parsed.education:
         _normalize_education(edu)
     for exp in parsed.experience:
@@ -295,9 +323,67 @@ def normalize_specialties_list(specialties: list[str]) -> list[str]:
     return _normalize_skills(specialties)
 
 
+def _norm_institution_key(institution: str | None) -> str:
+    return (institution or "").strip().lower()
+
+
+def _repair_education(items: list[EducationItem]) -> list[EducationItem]:
+    """Reattach orphaned degrees to their institution and drop split-header stubs.
+
+    Résumés list one school header followed by several degree/date lines
+    ("ECPI University" / "Associates in Nursing: 2018" / "BSN: 2019"). The extractor
+    can split that into a degree-less institution entry plus sibling entries whose
+    institution came back blank ("Unknown Institution"). This:
+      1. carries the most recent real institution forward onto those placeholder
+         entries — a degree written under a school belongs to that school; and
+      2. removes the now-redundant degree-less header stub when a sibling entry
+         carries a degree for the same institution,
+    so the ECPI header + two blank degree lines collapse into two clean, correctly
+    attributed degree entries. Order is preserved.
+    """
+    placeholders = {"", "unknown institution", "unknown"}
+
+    last_real: str | None = None
+    for edu in items:
+        if _norm_institution_key(edu.institution) not in placeholders:
+            last_real = edu.institution.strip()
+        elif last_real:
+            edu.institution = last_real
+
+    institutions_with_degree = {
+        _norm_institution_key(edu.institution) for edu in items if edu.degree
+    }
+    kept: list[EducationItem] = []
+    for edu in items:
+        is_header_stub = not (edu.degree or edu.graduation_year or edu.start_year or edu.gpa)
+        if is_header_stub and _norm_institution_key(edu.institution) in institutions_with_degree:
+            continue  # a bare school header whose degrees are captured on sibling rows
+        kept.append(edu)
+    return kept
+
+
 def _normalize_education(edu: EducationItem) -> None:
     if edu.degree:
         edu.degree = _DEGREE_MAP.get(edu.degree.lower().strip(), edu.degree)
+
+
+def _infer_country(exp: ExperienceItem) -> None:
+    """Backfill a US country when the role states a US state (+ZIP) but no country.
+
+    Fires only on an unambiguous US signal — a state field that is a US postal
+    abbreviation, or a "State ZIP" tail in the location line — so an international
+    address is never mislabeled. Never overrides a country the résumé stated.
+    """
+    if exp.country:
+        return
+    state = (exp.state or "").strip().upper()
+    if state in _US_STATE_ABBREVS:
+        exp.country = _US_COUNTRY
+        return
+    if exp.location and _US_STATE_ZIP_RE.search(exp.location):
+        m = _US_STATE_ZIP_RE.search(exp.location)
+        if m and m.group(1).upper() in _US_STATE_ABBREVS:
+            exp.country = _US_COUNTRY
 
 
 def _normalize_experience(exp: ExperienceItem) -> None:
@@ -317,12 +403,22 @@ def _normalize_experience(exp: ExperienceItem) -> None:
     if exp.profession:
         exp.profession = _fix_credential_case(exp.profession)
 
+    # Map the role's credential to its platform profession id. Confidence is 1.0 on
+    # a catalog hit (exact name/alias), 0.0 when unknown or no catalog is loaded.
+    profession_id = get_catalog().profession_id_for(exp.profession)
+    exp.profession_id = profession_id
+    exp.profession_confidence = 1.0 if profession_id else 0.0
+
     # A stated trauma LEVEL means the site IS a trauma facility — backfill the
     # flag the model commonly leaves null when it only captured the level
     # (e.g. "Level 1 Trauma" with trauma_facility=None). Never override an
     # explicit "No"/"N/A" already extracted.
     if exp.trauma_level and exp.trauma_facility is None:
         exp.trauma_facility = "Yes"
+
+    # Backfill the country from an unambiguous US state/ZIP signal (deterministic;
+    # the model is told not to guess it).
+    _infer_country(exp)
 
     # Map each per-role specialty to a catalog id + confidence via the tiered
     # matcher (deterministic tiers 1–3; the AI tier runs later in the pipeline).

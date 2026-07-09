@@ -57,7 +57,7 @@ class SpecialtyMatch(BaseModel):
     group:        str | None = Field(None, description="Specialty group label. Set by the system.")
     confidence:   float      = Field(0.0, ge=0.0, le=1.0, description="Match confidence 0.0–1.0. Set by the system — never fill this yourself.")
     matched:      bool       = Field(False, description="True only when a specialty_id was assigned. Set by the system.")
-    match_tier:   str | None = Field(None, description="Which match tier resolved the id ('name' | 'full_name' | 'keywords' | 'ai'), or null when unmatched. Set by the system.")
+    match_tier:   str | None = Field(None, description="Which match tier resolved the id ('name' | 'full_name' | 'keywords' | 'fuzzy' | 'ai'), or null when unmatched. Set by the system.")
 
     @field_validator("name", mode="before")
     @classmethod
@@ -236,6 +236,11 @@ class ExperienceItem(BaseModel):
     employer_phone: str | None = Field(None, description="Employer/facility phone number exactly as written, only if stated next to this role (e.g. '304-287-2120'). Null if not stated.")
     # ── Clinical classification (Select Profession / Select Specialties) ──────
     profession:    str | None = Field(None, description="Credential/profession for this role exactly as stated (e.g. 'RN', 'LPN', 'CRT'). Do NOT expand the abbreviation.")
+    profession_id: str | None = Field(None, description="Matched platform profession id for `profession` (e.g. RN→'1'). Set by the system from the catalog — never fill this yourself; null when unmatched.")
+    profession_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that profession_id is correct (1.0 on an exact catalog match, 0.0 when unmatched). Set by the system.")
+    # ── Facility mapping (populated once the client's facility directory is wired) ─
+    facility_id: str | None = Field(None, description="Platform facility id for the employer/facility. Reserved — populated only when the client's facilities dataset is available; null until then. Set by the system.")
+    facility_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that facility_id is correct. Set by the system; 0.0 until facility mapping is enabled.")
     specialties:   list[SpecialtyMatch] = Field(default_factory=list, description="Clinical specialties/units for this role, one object per specialty. Fill ONLY the `name` field of each (e.g. {\"name\": \"Med Surg/Tele\"}, {\"name\": \"ICU\"}); the system fills the id/confidence/group.")
     # ── Facility attributes (Additional Details — only if stated) ─────────────
     service_type:           str | None = Field(None, description="Service type, if stated")
@@ -279,6 +284,27 @@ class ExperienceItem(BaseModel):
     @classmethod
     def sanitize_optional_strings(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
+
+    @field_validator("profession_id", "facility_id", mode="before")
+    @classmethod
+    def coerce_catalog_id(cls, v: object) -> str | None:
+        # System-set catalog ids: accept an int/str (e.g. a DynamoDB reload), store
+        # as a trimmed string. Blank/None → None.
+        if v is None or isinstance(v, bool):
+            return None
+        if isinstance(v, int | float):
+            return str(int(v)) if float(v).is_integer() else str(v)
+        return _sanitize_str(str(v)) if isinstance(v, str) else None
+
+    @field_validator("profession_confidence", "facility_confidence", mode="before")
+    @classmethod
+    def coerce_id_confidence(cls, v: object) -> float:
+        if isinstance(v, bool) or not isinstance(v, int | float | str):
+            return 0.0
+        try:
+            return min(max(float(v), 0.0), 1.0)
+        except (TypeError, ValueError):
+            return 0.0
 
     @field_validator("employer_phone", mode="before")
     @classmethod
