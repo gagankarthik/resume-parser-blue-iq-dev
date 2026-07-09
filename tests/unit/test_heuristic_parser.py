@@ -70,6 +70,30 @@ def test_current_role_sets_present_and_is_current():
     assert p.experience[0].is_current is True
 
 
+def test_comma_month_year_and_line_split_ranges():
+    # Real-world PDF shape: "Month, YYYY" with a comma, and ranges wrapped across a
+    # line break. Both defeated the earlier line-anchored, comma-less date logic and
+    # produced ZERO experience — which then silently emptied the sync enrich backfill.
+    text = (
+        "Work Experience\n"
+        "Travel Registered Nurse\n"
+        "Host HealthCare\n"
+        "April, 2025 -\npresent\n"
+        "Registered Nurse (float)\n"
+        "Sisters of Charity Hospital\n"
+        "December, 2023 - October,\n2025\n"
+        "- Managed patient assessments\n"
+    )
+    p = _parse(text)
+    assert len(p.experience) == 2
+    assert p.experience[0].company == "Host HealthCare"
+    assert p.experience[0].start_date == "04/2025"
+    assert p.experience[0].end_date == "Present"
+    assert p.experience[1].company == "Sisters of Charity Hospital"
+    assert p.experience[1].start_date == "12/2023"
+    assert p.experience[1].end_date == "10/2025"
+
+
 def test_never_invents_experience_without_dates():
     # Prose with no date ranges must not become fabricated job entries.
     text = "Experience\nResponsible for patient care and safety across multiple units.\n"
