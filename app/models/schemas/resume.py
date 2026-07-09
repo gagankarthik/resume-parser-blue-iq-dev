@@ -117,8 +117,10 @@ class PersonalInfo(BaseModel):
             "example": {
                 "full_name": "Jane Smith",
                 "credentials": ["RN", "BSN", "CCRN"],
+                "headline": "ICU Registered Nurse",
                 "email": "jane.smith@email.com",
                 "phone": "+1 555 234 5678",
+                "phone_secondary": None,
                 "location": "Houston, TX",
                 "linkedin_url": "https://linkedin.com/in/janesmith",
                 "github_url": None,
@@ -130,15 +132,17 @@ class PersonalInfo(BaseModel):
 
     full_name:      str | None = Field(None, description="Candidate's name ONLY — exclude trailing credential/licence/degree suffixes (e.g. 'Jane Smith', not 'Jane Smith, RN BSN')")
     credentials:    list[str]    = Field(default_factory=list, description="Post-nominal credentials that follow the candidate's name (e.g. 'RN', 'BSN', 'MPH', 'CCRN'), each as a separate item, in the order written. These are stripped from full_name and MUST be preserved here — never drop them.")
+    headline:       str | None = Field(None, description="The professional title/headline shown under the candidate's name (e.g. 'Registered Nurse / Aesthetic Nurse Injector', 'ICU Travel RN'), copied as written. Null when the résumé has no such tagline.")
     email:          str | None = Field(None, description="Primary email address")
     phone:          str | None = Field(None, description="Primary phone number in original format")
+    phone_secondary: str | None = Field(None, description="A SECOND phone number when the résumé lists more than one, in its original format. Null when only one number is given.")
     location:       str | None = Field(None, description="The candidate's FULL address line exactly as written, including street/number if present (e.g. '135 Brush Hill Road, Milton, MA 02186'). Do NOT shorten it to just city/state/zip.")
     linkedin_url:   str | None = Field(None, description="LinkedIn profile URL")
     github_url:     str | None = Field(None, description="GitHub profile URL")
     portfolio_url:  str | None = Field(None, description="Personal website or portfolio URL")
     summary:        str | None = Field(None, description="Professional summary or objective statement")
 
-    @field_validator("full_name", "location", "summary", mode="before")
+    @field_validator("full_name", "headline", "location", "summary", mode="before")
     @classmethod
     def sanitize_strings(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
@@ -159,7 +163,7 @@ class PersonalInfo(BaseModel):
     def sanitize_urls(cls, v: object) -> str | None:
         return _sanitize_url(str(v)) if isinstance(v, str) else None
 
-    @field_validator("phone", mode="before")
+    @field_validator("phone", "phone_secondary", mode="before")
     @classmethod
     def sanitize_phone(cls, v: object) -> str | None:
         return _sanitize_phone(str(v)) if isinstance(v, str) else None
@@ -379,6 +383,7 @@ class EducationItem(BaseModel):
                 "institution": "University of Texas Health Science Center",
                 "degree": "Bachelor of Science in Nursing",
                 "field_of_study": "Nursing",
+                "location": "Houston, TX",
                 "start_year": 2012,
                 "graduation_year": 2016,
                 "gpa": "3.8",
@@ -389,6 +394,7 @@ class EducationItem(BaseModel):
     institution:      str           = Field(..., description="Name of the school or university")
     degree:           str | None = Field(None, description="Degree earned (e.g. 'Bachelor of Science in Nursing')")
     field_of_study:   str | None = Field(None, description="Major or field of study")
+    location:         str | None = Field(None, description="School location as written (e.g. 'Schenectady, NY 12304' or 'Albany, NY'). Null when not stated.")
     start_year:       int | None = Field(None, description="Year started (1900–2035)", ge=1900, le=2035)
     graduation_year:  int | None = Field(None, description="Graduation year (1900–2035)", ge=1900, le=2035)
     gpa:              str | None = Field(None, description="GPA if stated")
@@ -401,7 +407,7 @@ class EducationItem(BaseModel):
             return "Unknown Institution"
         return v.strip()
 
-    @field_validator("degree", "field_of_study", "gpa", mode="before")
+    @field_validator("degree", "field_of_study", "location", "gpa", mode="before")
     @classmethod
     def sanitize_optional(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
