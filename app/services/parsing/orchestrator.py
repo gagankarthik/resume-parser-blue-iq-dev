@@ -229,6 +229,61 @@ async def parse(
     return parsed, meter.total, warnings
 
 
+async def parse_light(
+    text: str, anchors: RuleExtracted, budget: float
+) -> tuple[ParsedResumeAI, int, list[str]]:
+    """Section-only extraction: personal / education / credentials / supplemental
+    in parallel — NO structure, NO per-role work stage, NO validator.
+
+    The per-role work stage is the slow, cancellation-prone part of the full
+    orchestrator; on the tight SYNC budget it gets cancelled and drops the whole
+    work section. This lightweight pass deliberately omits it so the high-value
+    SEMANTIC sections (headline, secondary phone, education locations, skills,
+    certifications, licenses) come back reliably and fast. The caller backfills
+    `experience` from the deterministic parser. `experience` is left empty here.
+    """
+    meter = TokenMeter()
+    warnings: list[str] = []
+    if len(text) > _MAX_AGENT_CHARS:
+        text = text[:_MAX_AGENT_CHARS]
+
+    personal_agent = PersonalInfoAgent()
+    education_agent = EducationAgent()
+    cred_agent      = CredentialsAgent()
+    supp_agent      = SupplementalAgent()
+
+    raw = await _run_sections_bounded(
+        [
+            ("PersonalInfoAgent", personal_agent.run(text, anchors, meter)),
+            ("EducationAgent",    education_agent.run(text, meter)),
+            ("CredentialsAgent",  cred_agent.run(text, meter)),
+            ("SupplementalAgent", supp_agent.run(text, meter)),
+        ],
+        timeout=max(5.0, budget),
+    )
+    pres: PersonalResult        = _unwrap(raw[0], PersonalResult(), "PersonalInfoAgent", warnings)
+    education: list[EducationItem] = _unwrap(raw[1], [], "EducationAgent", warnings)
+    creds: CredentialsResult    = _unwrap(raw[2], CredentialsResult(), "CredentialsAgent", warnings)
+    supp: SupplementalResult    = _unwrap(raw[3], SupplementalResult(), "SupplementalAgent", warnings)
+
+    parsed = ParsedResumeAI(
+        personal_info=pres.personal,
+        education=education,
+        skills=creds.skills,
+        certifications=creds.certifications,
+        licenses=creds.licenses,
+        projects=supp.projects,
+        languages=supp.languages,
+        references=supp.references,
+        awards=supp.awards,
+        publications=supp.publications,
+        professional_associations=creds.professional_associations,
+    )
+    log.info("orchestrator_light_complete", tokens=meter.total, education=len(education),
+             skills=len(creds.skills), warnings=len(warnings))
+    return parsed, meter.total, warnings
+
+
 def _is_empty(p: ParsedResumeAI) -> bool:
     pi = p.personal_info
     has_contact = any([pi.full_name, pi.email, pi.phone])
