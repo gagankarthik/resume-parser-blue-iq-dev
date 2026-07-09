@@ -58,7 +58,11 @@ _MAX_AGENT_CHARS = 30_000
 # comfortably under the pipeline's orchestrator timeout so this graceful path wins,
 # and the whole parse stays inside the pipeline's ≤2-minute budget.
 _STRUCTURE_TIMEOUT = 20   # one sequential call
-_STAGE2_TIMEOUT    = 60   # structure + per-role work fan-out + section agents
+# Per-role work fan-out + section agents. A dense resume (e.g. 12 roles) needs
+# well over 60s here — at 60s the WorkExperienceAgent was cancelled and the parse
+# came back with experience=0. Sized against the larger pipeline budget so the
+# work stage can actually finish before the graceful net fires.
+_STAGE2_TIMEOUT    = 120
 _VALIDATOR_TIMEOUT = 15   # re-extraction of mismatched roles only
 
 

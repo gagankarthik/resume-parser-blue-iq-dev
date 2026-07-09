@@ -29,7 +29,7 @@ from app.services.extraction import classifier, docx_extractor, ocr_extractor, p
 from app.services.extraction.classifier import ExtractionStrategy
 from app.services.normalization import specialty_matcher
 from app.services.normalization.normalizer import normalize
-from app.services.parsing import ai_parser, orchestrator, rule_parser, section_detector
+from app.services.parsing import ai_parser, heuristic_parser, orchestrator, rule_parser, section_detector
 from app.services.scoring.confidence_scorer import score
 
 log = get_logger(__name__)
@@ -43,15 +43,21 @@ _TIMEOUT_OCR        = 90    # Textract on multi-page scans — bounded so OCR al
 # safety net set just above its internal budget. The single-shot fallback is one
 # LLM call, so it gets a tighter cap — together they bound the worst case instead
 # of stacking two full 2-minute timeouts when the orchestrator degrades.
-_TIMEOUT_ORCHESTRATOR = 100
-_TIMEOUT_AI_PARSE     = 45
+_TIMEOUT_ORCHESTRATOR = 130
+# Single-shot cap. Measured single-shot parse time for a dense multi-role resume
+# is 39–55s (e.g. a 12-role radiology resume: 39.1s → 12 roles fully extracted),
+# so a 45s cap sat right on the cliff and normal OpenAI latency variance tipped
+# it into a contact-only "partial". Give it real headroom — the Lambda function
+# timeout is 300s, so the binding constraint is the total budget below, not this.
+_TIMEOUT_AI_PARSE     = 90
 
 # Overall soft budget for one resume. Every AI step is capped by the time left
-# under this budget, so extraction + parsing + fallback together stay under
-# two minutes instead of stacking their individual worst cases.
-_TOTAL_BUDGET     = 115
-# Time held back from the orchestrator for the single-shot fallback + scoring.
-_FALLBACK_RESERVE = 20
+# under this budget. Sized to let a slow orchestrator degrade AND still leave a
+# full single-shot fallback, comfortably inside the 300s Lambda timeout.
+_TOTAL_BUDGET     = 200
+# Time held back from the orchestrator for the single-shot fallback + scoring —
+# large enough for a full _TIMEOUT_AI_PARSE fallback attempt after a degrade.
+_FALLBACK_RESERVE = 100
 
 
 @dataclass
@@ -198,11 +204,20 @@ async def run(inp: PipelineInput) -> PipelineResult:
                 else f"AI parsing failed: {exc}"
             )
             log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
-            parsed_ai = _fallback_from_anchors(anchors)
+            # Deterministic floor (open-resume style): when the AI parse is cut off
+            # we recover experience/education/skills with rule-based heuristics
+            # instead of returning contact details only. Never times out, never
+            # invents data. Still flagged partial for human review.
+            parsed_ai = heuristic_parser.parse(cleaned, anchors)
             partial = True
+            recovered = (
+                f"{len(parsed_ai.experience)} experience, "
+                f"{len(parsed_ai.education)} education, {len(parsed_ai.skills)} skill entries"
+            )
             warnings.append(
-                "AI parsing did not complete; returned a partial record built from "
-                f"detected contact details only. This record needs human review. ({reason})"
+                "AI parsing did not complete; returned a rule-based partial record "
+                f"(recovered {recovered}) with no semantic cleanup. This record needs "
+                f"human review. ({reason})"
             )
 
     # ── 7–9. Normalize + score ────────────────────────────────────────────────

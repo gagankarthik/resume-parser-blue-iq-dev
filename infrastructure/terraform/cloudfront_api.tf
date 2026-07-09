@@ -63,6 +63,12 @@ resource "aws_cloudfront_distribution" "api" {
       http_port              = 80
       https_port             = 443
       origin_ssl_protocols   = ["TLSv1.2"]
+      # Dense resumes parse synchronously in 39–55s. The CloudFront default origin
+      # response timeout (30s) would sever those before the Lambda responds, so
+      # raise it to the max allowed without a quota increase. Requests that need
+      # longer should use the async (upload → poll) path.
+      origin_read_timeout      = 60
+      origin_keepalive_timeout = 60
     }
   }
 
