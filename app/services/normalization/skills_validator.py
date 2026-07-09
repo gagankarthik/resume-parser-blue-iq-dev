@@ -13,6 +13,8 @@ skills, so it can be recomputed on demand (including after an async job is
 reloaded from DynamoDB) without storing anything extra.
 """
 
+import re
+
 from app.models.schemas import ParsedResumeAI, SkillsValidation
 from app.services.normalization.healthcare_taxonomy import (
     get_specialty_group,
@@ -30,6 +32,48 @@ KNOWN_CERTIFICATIONS: frozenset[str] = frozenset(
         "CHPN", "CDE", "CRRN", "SANE", "ONS", "ACLS-EP", "STABLE", "CPR",
     )
 )
+
+# Real clinical skills rarely equal a bare specialty name — they read like
+# "EKG Rhythms", "Telemetry monitoring", "IV/PICC", "Neonatal health monitoring".
+# Recognizing only exact specialties/certs left these at 0% recognized, which
+# looks broken. A skill that CONTAINS one of these clinical terms (as a whole
+# word) is a genuine healthcare skill and is recognized. Terms are precise
+# clinical nouns/acronyms — deliberately not generic words like "monitoring" or
+# "assessment" — to avoid false positives.
+CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
+    # Cardiac / monitoring
+    "ekg", "ecg", "telemetry", "cardiac", "hemodynamic", "arrhythmia", "rhythm",
+    "rhythms", "defibrillation", "cardioversion", "pacemaker", "arterial line",
+    # Respiratory
+    "ventilator", "ventilation", "intubation", "extubation", "tracheostomy",
+    "trach", "bipap", "cpap", "oxygenation", "capnography", "nebulizer",
+    "suctioning", "abg", "airway",
+    # Vascular access / infusion
+    "iv", "picc", "central line", "catheter", "catheterization", "foley",
+    "phlebotomy", "venipuncture", "infusion", "cannulation", "port-a-cath",
+    # Populations / clinical areas
+    "neonatal", "pediatric", "geriatric", "obstetric", "maternal", "perinatal",
+    "nicu", "picu", "icu", "ccu", "sicu", "micu", "pacu", "telemetry",
+    # Procedures / therapies
+    "wound care", "ostomy", "dialysis", "chemotherapy", "transfusion",
+    "medication administration", "triage", "suturing", "casting", "titrating",
+    "titration", "drips", "sedation", "resuscitation", "glucose monitoring",
+    "specimen", "phlebotomy", "wound", "dressing",
+    # Charting / systems
+    "epic", "cerner", "meditech", "emr", "ehr", "charting", "pyxis", "picis",
+})
+_CLINICAL_RE = re.compile(
+    r"\b(?:"
+    + "|".join(re.escape(t) for t in sorted(CLINICAL_SKILL_TERMS, key=len, reverse=True))
+    + r")\b",
+    re.IGNORECASE,
+)
+
+
+def _is_clinical_skill(name: str) -> bool:
+    """True when a free-form skill contains a known clinical term as a whole word
+    (e.g. 'Telemetry monitoring' → 'telemetry'; 'IV/PICC' → 'iv'/'picc')."""
+    return bool(_CLINICAL_RE.search(name))
 
 def validate_skills(parsed: ParsedResumeAI) -> SkillsValidation:
     """
@@ -53,12 +97,7 @@ def validate_skills(parsed: ParsedResumeAI) -> SkillsValidation:
         key = name.lower()
 
         canonical = resolve_specialty(name)
-        if canonical is not None:
-            resolved = canonical
-        elif key in KNOWN_CERTIFICATIONS:
-            resolved = name
-        else:
-            resolved = name
+        resolved = canonical if canonical is not None else name
 
         # Dedup on the resolved value so "ICU" and "Intensive Care Unit" collapse.
         dedup_key = resolved.lower()
@@ -73,6 +112,10 @@ def validate_skills(parsed: ParsedResumeAI) -> SkillsValidation:
                 groups[canonical] = group
         elif key in KNOWN_CERTIFICATIONS:
             recognized.append(name)
+            groups[name] = "Certification"
+        elif _is_clinical_skill(name):
+            recognized.append(name)
+            groups[name] = "Clinical Skill"
         else:
             unrecognized.append(name)
 

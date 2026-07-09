@@ -22,9 +22,9 @@ variable "openai_api_key" {
 }
 
 variable "openai_model" {
-  description = "OpenAI model ID to use for parsing (e.g. gpt-4o, gpt-4.1-mini)"
+  description = "OpenAI model ID to use for parsing (e.g. gpt-4.1-mini, gpt-4o)"
   type        = string
-  default     = "gpt-4o"
+  default     = "gpt-4.1-mini"
 }
 
 variable "admin_api_token" {

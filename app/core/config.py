@@ -76,8 +76,14 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o"
-    openai_max_tokens: int = 4096
+    openai_model: str = "gpt-4.1-mini"
+    # Output-token ceiling. A dense résumé (many roles, each with bullets +
+    # facility fields) needs a large JSON; a small ceiling truncates the
+    # structured output mid-generation on those, dropping the last roles.
+    # gpt-4.1-mini allows up to 32768 output tokens — use generous headroom so
+    # completeness is never capped. This is a CEILING, not a target: short
+    # résumés still finish in ~2k tokens.
+    openai_max_tokens: int = 16384
 
     # Multi-agent parser
     # When True, resumes are parsed by the multi-agent orchestrator (structure →

@@ -29,8 +29,12 @@ log = get_logger(__name__)
 MAX_RETRIES       = 3
 BACKOFF_BASE      = 5      # seconds
 JITTER_FACTOR     = 0.2    # ±20 % of backoff delay
-MAX_SECTION_CHARS = 8_000  # per section — prevents token overflow for long resumes
-MAX_TOTAL_CHARS   = 24_000 # total prompt cap (≈ 6K tokens at ~4 chars/token)
+# Input caps. gpt-4.1-mini has a very large context window, so the constraint is
+# cost/latency, not the model — keep these generous so a long résumé's later
+# sections (more work history, education, references) are never truncated away
+# before the model sees them. ~60K chars ≈ 15K tokens, comfortably inside context.
+MAX_SECTION_CHARS = 20_000  # per section
+MAX_TOTAL_CHARS   = 60_000  # total résumé text
 
 # One client per process — connection-pool reuse across parses (same pattern as
 # the multi-agent BaseAgent).

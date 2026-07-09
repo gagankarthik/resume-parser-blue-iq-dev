@@ -68,6 +68,34 @@ def test_mixed_recognized_and_unrecognized():
     assert result.recognized_ratio == 0.5
 
 
+# ── Free-form clinical skills recognized by clinical-term containment ──────────
+
+def test_clinical_skill_phrases_recognized():
+    """Real nursing skills read like phrases, not bare specialties — they must
+    still be recognized so validation isn't a misleading 0%."""
+    result = _validate([
+        "Neonatal health monitoring", "EKG Rhythms", "IV/PICC",
+        "NICU medical terminology & equipment", "Telemetry monitoring",
+    ])
+    assert result.recognized_count == 5
+    assert result.unrecognized == []
+    assert result.recognized_ratio == 1.0
+    assert result.groups["EKG Rhythms"] == "Clinical Skill"
+
+
+def test_non_clinical_skill_stays_unrecognized():
+    # Generic/administrative skills must NOT be mislabeled as clinical.
+    result = _validate(["Time Management", "Microsoft Excel", "Driving"])
+    assert result.recognized == []
+    assert result.unrecognized_count == 3
+
+
+def test_clinical_term_requires_whole_word():
+    # "derivative" contains "iv" but not as a whole word → not clinical.
+    result = _validate(["Derivative analysis"])
+    assert result.unrecognized == ["Derivative analysis"]
+
+
 # ── Group mapping ─────────────────────────────────────────────────────────────
 
 def test_group_mapping_populated():

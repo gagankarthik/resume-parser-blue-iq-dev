@@ -343,7 +343,7 @@ Key settings (full list in `.env.example`):
 
 | Variable | Default | Description |
 |---|---|---|
-| `OPENAI_MODEL` | `gpt-4o` | Extraction model |
+| `OPENAI_MODEL` | `gpt-4.1-mini` | Extraction model |
 | `USE_MULTI_AGENT` | `true` | Enable the high-accuracy multi-agent path |
 | `MULTI_AGENT_MIN_CHARS` | `3500` | Length gate — shorter résumés use the fast single-shot path |
 | `MULTI_AGENT_MAX_CONCURRENCY` | `4` | Cap on concurrent in-flight model calls |
