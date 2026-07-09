@@ -142,3 +142,43 @@ def test_year_range_not_extracted_as_phone():
 def test_real_phone_still_extracted():
     phones = rule_parser.extract("Reach me at 313-283-5671 anytime").phones
     assert any("313" in p for p in phones)
+
+
+# ── Completeness fields: headline, secondary phone, education location ──────────
+
+def test_personal_info_headline_and_secondary_phone():
+    from app.models.schemas.resume import PersonalInfo
+    p = PersonalInfo(
+        full_name="Juason Allen",
+        headline="Registered Nurse / Aesthetic Nurse Injector",
+        phone="1(518) 986-8089",
+        phone_secondary="1(518) 986-7774",
+    )
+    assert p.headline == "Registered Nurse / Aesthetic Nurse Injector"
+    assert p.phone == "1(518) 986-8089"
+    assert p.phone_secondary == "1(518) 986-7774"
+    # phone_secondary is sanitized like phone (junk / too-short -> None)
+    assert PersonalInfo(phone_secondary="n/a").phone_secondary is None
+
+
+def test_education_item_location():
+    from app.models.schemas.resume import EducationItem
+    e = EducationItem(institution="Belanger School of Nursing", location="Schenectady, NY 12304")
+    assert e.location == "Schenectady, NY 12304"
+
+
+# ── Broadened clinical-skill recognition (previously unrecognized) ─────────────
+
+@pytest.mark.parametrize("skill", [
+    "AED Trained", "Acute Care Assessment", "NG Tube Insertion",
+    "NIHSS stroke Assessment", "G-tube care", "Detox CIWA Scoring",
+    "Seizure Precautions", "Care Plans", "Botulinum toxin injections",
+    "Dermal Filler", "Accessing Implanted Ported Cath", "EMAR",
+])
+def test_more_clinical_skills_recognized(skill):
+    assert _is_clinical_skill(skill) is True
+
+
+@pytest.mark.parametrize("nonclinical", ["Time Management", "Microsoft Excel", "Trauma Level IV"])
+def test_nonclinical_still_unrecognized(nonclinical):
+    assert _is_clinical_skill(nonclinical) is False

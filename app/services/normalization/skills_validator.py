@@ -63,7 +63,14 @@ CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
     "titration", "drips", "sedation", "resuscitation", "glucose monitoring",
     "specimen", "phlebotomy", "wound", "dressing",
     # Charting / systems
-    "epic", "cerner", "meditech", "emr", "ehr", "charting", "pyxis", "picis",
+    "epic", "cerner", "meditech", "emr", "ehr", "emar", "charting", "pyxis", "picis",
+    # Assessments / tubes / procedures / aesthetics — specific multi-word or
+    # acronym forms (no bare ambiguous tokens) to broaden recognition of real
+    # nursing skills without the "Level IV" class of false positives.
+    "aed", "cath", "ng tube", "g-tube", "gtube", "peg tube", "feeding tube",
+    "ciwa", "nihss", "stroke assessment", "care plan", "care plans", "vital signs",
+    "acute care", "seizure", "botox", "botulinum", "dermal filler", "injectable",
+    "aesthetic", "ported cath", "central venous",
 })
 _CLINICAL_RE = re.compile(
     r"\b(?:"

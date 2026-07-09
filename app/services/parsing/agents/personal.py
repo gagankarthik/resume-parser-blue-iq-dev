@@ -17,7 +17,9 @@ _SYSTEM = f"""You extract the PERSONAL / CONTACT section of a healthcare résum�
 RULES:
 - full_name: the candidate's name ONLY — strip trailing credential/licence/degree suffixes.
 - credentials: the post-nominals that follow the name (e.g. "Jane Smith, RN, BSN, MPH, CCRN" → ["RN","BSN","MPH","CCRN"]), each a separate item, in order. NEVER drop these.
+- headline: the professional title/tagline shown under the name (e.g. "Registered Nurse / Aesthetic Nurse Injector"), copied as written. Null if there is none.
 - location: the candidate's FULL home address line as written, including street/number if present — do NOT shorten to city/state/zip.
+- phone / phone_secondary: put the FIRST phone in `phone`. If the résumé lists a SECOND phone number, put it in `phone_secondary` (else leave it null). Never merge two numbers into one field.
 - personal.summary: the professional summary/objective text if present, copied VERBATIM, else null. Do NOT rewrite or clean it.
 - summary_off_topic: set true ONLY when that summary is clearly unrelated to the candidate's healthcare profession/work history — e.g. leftover boilerplate from an unrelated occupation (a dance instructor, retail, etc.). When unsure, leave it false. Either way, still copy the summary verbatim.
 - Contact anchors: the pre-extracted email/phone/URL lists below were found by regex and are authoritative — use them as given. But if a list is EMPTY, the regex found nothing (OCR may have garbled it, e.g. an underlined hyperlink): extract that field from the résumé text YOURSELF, repairing obvious OCR artifacts (stray spaces inside an email address, '(@' for '@'). Never leave the email null when one is visible in the text."""
