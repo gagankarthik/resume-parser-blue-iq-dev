@@ -25,6 +25,44 @@ def test_awards_default_empty():
     assert parsed.publications == []
 
 
+def test_extraction_notes_round_trip():
+    """extraction_notes must validate, survive a model_dump round trip (the
+    persistence path), and default to [] when absent."""
+    assert ParsedResumeAI.model_validate({"skills": []}).extraction_notes == []
+
+    parsed = ParsedResumeAI.model_validate(
+        {
+            "skills": [],
+            "extraction_notes": [
+                {
+                    "field": "experience[1].facility_beds",
+                    "value": None,
+                    "confidence": 0.0,
+                    "reason": "'63 beds' appears only in the summary; 3 facilities listed",
+                },
+                {
+                    "field": "experience[0].profession",
+                    "value": "RN",
+                    "confidence": 1.0,
+                    "reason": "profession stated in the role heading",
+                },
+            ],
+        }
+    )
+    assert len(parsed.extraction_notes) == 2
+    n0 = parsed.extraction_notes[0]
+    assert n0.value is None and n0.confidence == 0.0 and "63 beds" in n0.reason
+    # Round trip through the dict form persisted to DynamoDB.
+    reloaded = ParsedResumeAI.model_validate(parsed.model_dump())
+    assert reloaded.extraction_notes[1].value == "RN"
+
+
+def test_extraction_notes_malformed_is_sanitized_not_raised():
+    """A non-list / junk value must not crash validation."""
+    parsed = ParsedResumeAI.model_validate({"skills": [], "extraction_notes": None})
+    assert parsed.extraction_notes == []
+
+
 def test_awards_null_coerced_to_list():
     # LLM may emit null instead of [] — must coerce, not crash.
     parsed = ParsedResumeAI.model_validate({"awards": None, "publications": None})

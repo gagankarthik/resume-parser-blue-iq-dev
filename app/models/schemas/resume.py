@@ -569,6 +569,29 @@ class ReferenceItem(BaseModel):
         return _sanitize_phone(str(v)) if isinstance(v, str) else None
 
 
+class ExtractionNote(BaseModel):
+    """One explainable extraction decision — why a value was assigned or, more
+    often, why it was deliberately left null.
+
+    The point is transparency for the reviewer: healthcare résumés state facts
+    ambiguously (e.g. "63-bed unit" in the summary while the person worked at
+    three hospitals), and we do NOT guess which role such a fact belongs to. When
+    we cannot attribute a fact with confidence we leave the field null and record
+    the reason here, so the reviewer can correct it via feedback rather than
+    wonder why it is missing.
+    """
+
+    field:      str          = Field(..., description="Dotted path of the affected field (e.g. 'experience[1].facility_beds', 'experience[0].profession')")
+    value:      str | None   = Field(None, description="The value that was assigned, or null when the fact could not be attributed")
+    confidence: float        = Field(0.0, ge=0.0, le=1.0, description="Confidence in this decision (1.0 = certain, 0.0 = deliberately left null)")
+    reason:     str          = Field(..., description="Plain-language explanation of the decision and the evidence behind it")
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _clean_reason(cls, v: object) -> str:
+        return _sanitize_str(str(v)) or "" if isinstance(v, str) else ""
+
+
 class ParsedResumeAI(BaseModel):
     """
     Structured output schema enforced on the OpenAI response.
@@ -648,8 +671,9 @@ class ParsedResumeAI(BaseModel):
     awards:          list[str]             = Field(default_factory=list, description="Awards, honors, and recognitions (e.g. 'DAISY Award 2023', 'Summa Cum Laude', 'Employee of the Year')")
     publications:    list[str]             = Field(default_factory=list, description="Publications, posters, or research contributions, each as a single citation string")
     professional_associations: list[str]   = Field(default_factory=list, description="Professional associations, society memberships, committees, and collaboratives, each verbatim (e.g. 'Sigma Theta Tau International Honor Society of Nursing Member', 'Sepsis Clinical Services Committee', 'SJHS Sepsis Process Owner')")
+    extraction_notes: list[ExtractionNote] = Field(default_factory=list, description="Explainable decisions — why an ambiguous fact (bed count, profession, etc.) was assigned to a specific role or deliberately left null. Empty when nothing was ambiguous.")
 
-    @field_validator("experience", "education", "certifications", "licenses", "projects", "references", mode="before")
+    @field_validator("experience", "education", "certifications", "licenses", "projects", "references", "extraction_notes", mode="before")
     @classmethod
     def coerce_lists(cls, v: object) -> list:
         return _coerce_list(v)

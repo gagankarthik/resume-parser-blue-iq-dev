@@ -88,6 +88,16 @@ Extract structured information from the resume text below.
 
 EXTRACTION RULES:
 - Extract ONLY what is explicitly stated. NEVER infer, guess, expand, or hallucinate. If a value is not written on the résumé, use null.
+
+ATTRIBUTION — do NOT smear summary facts across jobs (critical for healthcare résumés):
+- A fact stated ONLY in the professional summary/objective (e.g. "experience in a 63-bed ICU", "3:1 ratio", "Level I trauma", a profession/specialty) describes the candidate in general. Attach it to a SPECIFIC experience[] entry ONLY when the résumé ties it to that specific role (it appears in that role's block/heading/bullets).
+- If such a fact is ambiguous because the candidate worked at MULTIPLE facilities and it is not clearly tied to one, LEAVE the role-level field null. Do NOT copy it onto every role and do NOT pick one arbitrarily.
+- This applies especially to facility_beds, beds_in_unit, nurse_to_patient_ratio, trauma_level, service_type, teaching/magnet/trauma flags, and per-role profession/specialties.
+
+EXPLAINABILITY — extraction_notes[]:
+- Whenever you deliberately LEAVE A FIELD NULL because a fact was ambiguous (per the attribution rule above), OR you attach a fact to a role that was not obvious, add an entry to extraction_notes: {{"field": "<dotted path e.g. experience[1].facility_beds>", "value": <the value or null>, "confidence": <0.0-1.0>, "reason": "<short plain-language why>"}}.
+- Example: summary says "worked in 63-bed units" and there are 3 hospitals → for each such role add {{"field":"experience[0].facility_beds","value":null,"confidence":0.0,"reason":"'63 beds' stated only in the summary; 3 facilities listed, cannot attribute to one"}}.
+- Keep notes brief and only for genuine decisions. An empty list is correct when nothing was ambiguous. NEVER invent data just to fill a note.
 - Use null for any field not present in the text.
 - full_name: the candidate's name ONLY. Do NOT include trailing credential, licence, or degree suffixes (e.g. "Jane Smith, RN BSN" → "Jane Smith").
 - personal_info.credentials: the post-nominal credentials that follow the name (e.g. "Jane Smith, RN, BSN, MPH, CCRN" → ["RN", "BSN", "MPH", "CCRN"]), each as a SEPARATE item in the order written. These are stripped from full_name and MUST be captured here — never drop them. Post-nominals live ONLY here: do NOT copy them into skills[], and NEVER fabricate a certifications[] or licenses[] entry from a post-nominal alone — only from items the résumé actually lists.

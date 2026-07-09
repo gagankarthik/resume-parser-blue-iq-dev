@@ -29,6 +29,7 @@ from app.models.schemas.resume import (
     CertificationItem,
     EducationItem,
     ExperienceItem,
+    ExtractionNote,
     LicenseItem,
     ParsedResumeAI,
     PersonalInfo,
@@ -56,6 +57,7 @@ __all__ = [
     "LicenseItem",
     "ProjectItem",
     "ReferenceItem",
+    "ExtractionNote",
     "ParsedResumeAI",
     # analysis
     "ConfidenceScores",
