@@ -183,12 +183,14 @@ async def test_sync_enrich_backfills_experience_on_timeout(monkeypatch):
 
     monkeypatch.setattr(pipeline.ai_parser, "parse", _boom_single_shot)
     monkeypatch.setattr(pipeline.orchestrator, "parse_light", _light)
-    # The heuristic floor is what supplies the work history for the backfill.
-    from app.models.schemas import ExperienceItem
+    # The heuristic floor supplies the work history AND any section the enrich
+    # agents dropped (here: certifications, when the CredentialsAgent times out).
+    from app.models.schemas import CertificationItem, ExperienceItem
     monkeypatch.setattr(
         pipeline.heuristic_parser, "parse",
         lambda text, anchors: ParsedResumeAI(
-            experience=[ExperienceItem(company="Hospital A", role="RN")]
+            experience=[ExperienceItem(company="Hospital A", role="RN")],
+            certifications=[CertificationItem(name="BLS")],
         ),
     )
     _stub_extraction(monkeypatch)
@@ -203,10 +205,12 @@ async def test_sync_enrich_backfills_experience_on_timeout(monkeypatch):
     # skill name, e.g. "ICU" -> "Intensive Care Unit").
     assert result.parsed.personal_info.headline == "Registered Nurse"
     assert result.parsed.skills  # non-empty — recovered by the enrich pass
-    # ...and work history backfilled from the deterministic floor.
+    # ...work history backfilled from the deterministic floor...
     assert len(result.parsed.experience) == 1
     assert result.parsed.experience[0].company == "Hospital A"
-    assert result.warnings and "human review" in result.warnings[-1]
+    # ...and certifications backfilled too when the enrich CredentialsAgent yields none.
+    assert [c.name for c in result.parsed.certifications] == ["BLS"]
+    assert any("human review" in w for w in result.warnings)
 
 
 # ── Surname/email mismatch review flag ───────────────────────────────────────
