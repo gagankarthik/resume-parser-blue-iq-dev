@@ -596,6 +596,31 @@ class ExtractionNote(BaseModel):
     def _clean_reason(cls, v: object) -> str:
         return _sanitize_str(str(v)) or "" if isinstance(v, str) else ""
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def _coerce_value(cls, v: object) -> str | None:
+        # The model fills this freely and Pydantic v2 will NOT coerce int/float/bool
+        # → str, so a numeric note value (e.g. "value": 30) would raise and — via
+        # the generic except in ai_parser — discard the whole parse into a partial.
+        # Sanitize like every other free-text field instead of crashing.
+        if v is None:
+            return None
+        return _sanitize_str(str(v))
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _clamp_confidence(cls, v: object) -> float:
+        # Structured output does NOT enforce numeric minimum/maximum, so a model
+        # that misreads the 0-1 scale (e.g. "confidence": 5) must be clamped here
+        # rather than raise past the Field ge/le bounds. Uninterpretable → neutral.
+        if isinstance(v, bool) or not isinstance(v, int | float | str):
+            return 0.5
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return 0.5
+        return min(max(f, 0.0), 1.0)
+
 
 class ClinicalRotation(BaseModel):
     """A student clinical rotation / practicum / preceptorship — NOT paid work.
@@ -727,5 +752,12 @@ class ParsedResumeAI(BaseModel):
     @classmethod
     def coerce_string_lists(cls, v: object) -> list[str]:
         items = _coerce_list(v)
-        return [str(i).strip() for i in items if i and str(i).strip()]
+        # Only scalar items are real strings — drop any dict/list the model nested
+        # here (e.g. a lone object _coerce_list wrapped) instead of stringifying it
+        # into a "{'name': ...}" pseudo-skill.
+        return [
+            str(i).strip()
+            for i in items
+            if isinstance(i, str | int | float) and not isinstance(i, bool) and str(i).strip()
+        ]
 

@@ -35,9 +35,11 @@ from app.db.feedback import create_feedback, list_feedback_for_company
 from app.db.jobs import (
     _dynamo_safe,
     _plain,
+    claim_upload_job,
     create_job,
     create_upload_job,
     get_job,
+    mark_batch_counted,
     update_job_completed,
     update_job_failed,
     update_job_processing,
@@ -65,6 +67,8 @@ __all__ = [
     # jobs (+ serde helpers)
     "create_job",
     "create_upload_job",
+    "claim_upload_job",
+    "mark_batch_counted",
     "update_job_processing",
     "update_job_completed",
     "update_job_failed",

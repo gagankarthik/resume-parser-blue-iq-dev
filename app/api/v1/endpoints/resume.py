@@ -237,6 +237,16 @@ async def parse_uploaded(
         s3_client.delete_file(s3_key)
         raise api_error(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
 
+    # Atomically claim the job (pending_upload → processing) before the billed
+    # parse. Two concurrent parse-uploaded calls for the same job_id both pass the
+    # status read above; only the claim winner proceeds — the loser gets 409 and
+    # we do NOT delete the S3 file (the winner still needs it).
+    if not db.claim_upload_job(payload.job_id):
+        raise api_error(
+            409, ErrorCode.UPLOAD_ALREADY_PARSED,
+            "This upload has already been processed",
+        )
+
     strategy, needs_async = classify(filename, content)
     log.info("parse_uploaded_request", job_id=payload.job_id, company_id=company_id,
              strategy=strategy, needs_async=needs_async, size_bytes=len(content))

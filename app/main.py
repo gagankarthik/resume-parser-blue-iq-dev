@@ -26,7 +26,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.v1.router import router
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, get_hint
-from app.core.exceptions import ResumeParserError
+from app.core.exceptions import (
+    ExtractionError,
+    FileValidationError,
+    OCRError,
+    ResumeParserError,
+)
 from app.core.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -44,7 +49,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Reject an over-sized body from its declared Content-Length BEFORE it is
         # read into memory — defense-in-depth above each endpoint's file-size check.
-        oversized = _content_length_exceeds(request, settings.max_request_bytes)
+        # The batch route carries many files, so it gets a larger ceiling than the
+        # single-file cap (which would otherwise 413 a valid multi-file batch).
+        max_bytes = settings.max_request_bytes
+        if request.method == "POST" and request.url.path.rstrip("/").endswith("/resume/batch"):
+            max_bytes = settings.max_batch_request_bytes
+        oversized = _content_length_exceeds(request, max_bytes)
         if oversized is not None:
             structlog.contextvars.unbind_contextvars("request_id")
             return oversized
@@ -146,6 +156,9 @@ def _error_body(
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging()
     settings = get_settings()
+    # Fail closed before serving a single request if a prod deploy is missing
+    # critical secrets (e.g. the account-token signing key).
+    settings.assert_production_ready()
     log.info(
         "startup",
         app=settings.app_name,
@@ -194,7 +207,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=cors_origins,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["X-API-Key", "X-Request-ID", "Content-Type"],
+        allow_headers=["X-API-Key", "Authorization", "X-Request-ID", "Content-Type"],
         expose_headers=["X-Request-ID"],
     )
 
@@ -239,13 +252,25 @@ def create_app() -> FastAPI:
     @app.exception_handler(ResumeParserError)
     async def domain_error_handler(request: Request, exc: ResumeParserError) -> JSONResponse:
         log.warning("domain_error", error_type=type(exc).__name__, error=str(exc))
+        # These are client-input problems (an unreadable/encrypted PDF, a scan OCR
+        # can't decode, a spoofed type), not server faults — surface them as 4xx so
+        # callers know retrying the same file won't help, rather than a blanket 500.
+        if isinstance(exc, OCRError):
+            status, code = 422, ErrorCode.OCR_FAILED
+        elif isinstance(exc, ExtractionError):
+            status, code = 422, ErrorCode.EXTRACTION_FAILED
+        elif isinstance(exc, FileValidationError):
+            status, code = 415, ErrorCode.UNSUPPORTED_FILE_TYPE
+        else:
+            status, code = 500, ErrorCode.PARSE_FAILED
         return JSONResponse(
-            status_code=500,
+            status_code=status,
             content=_error_body(
-                500, type(exc).__name__,
-                "Resume processing failed. See the X-Request-ID header for support tickets.",
+                status, type(exc).__name__,
+                "Resume processing failed. See the X-Request-ID header for support tickets."
+                if status >= 500 else str(exc),
                 request,
-                hint=get_hint(str(ErrorCode.PARSE_FAILED)),
+                hint=get_hint(str(code)),
             ),
         )
 

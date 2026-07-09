@@ -26,11 +26,49 @@ from app.core.logging import get_logger
 log = get_logger(__name__)
 
 _WINDOW_SECONDS = 60
-# identifier → (window_index, count_in_window)
+# identifier → (window_index, count_in_window). Two separate maps so the public
+# auth throttle and the per-API-key throttle can't evict each other's counters.
 _WINDOWS: dict[str, tuple[int, int]] = {}
+_AUTH_WINDOWS: dict[str, tuple[int, int]] = {}
 # Cap the counter map so a churn of distinct identifiers cannot grow it without
 # bound; when exceeded we drop everything outside the current window.
 _MAX_TRACKED = 50_000
+
+
+def _hit(
+    windows: dict[str, tuple[int, int]],
+    identifier: str,
+    limit: int,
+    *,
+    company_id: str | None = None,
+    detail: str | None = None,
+) -> None:
+    """Record one request in `windows`; raise HTTP 429 when over `limit`."""
+    now = time.time()
+    window = int(now // _WINDOW_SECONDS)
+    current = windows.get(identifier)
+
+    if current is None or current[0] != window:
+        if len(windows) >= _MAX_TRACKED:
+            _prune(windows, window)
+        windows[identifier] = (window, 1)
+        return
+
+    count = current[1] + 1
+    if count > limit:
+        retry_after = max(1, _WINDOW_SECONDS - int(now % _WINDOW_SECONDS))
+        log.warning("rate_limited", company_id=company_id, limit=limit,
+                    window_seconds=_WINDOW_SECONDS)
+        raise api_error(
+            429, ErrorCode.RATE_LIMITED,
+            detail or (
+                f"Rate limit of {limit} requests per minute exceeded. "
+                f"Retry in {retry_after}s."
+            ),
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    windows[identifier] = (window, count)
 
 
 def check(identifier: str, *, company_id: str | None = None) -> None:
@@ -46,38 +84,32 @@ def check(identifier: str, *, company_id: str | None = None) -> None:
     limit = settings.rate_limit_per_minute
     if limit <= 0:
         return
+    _hit(_WINDOWS, identifier, limit, company_id=company_id)
 
-    now = time.time()
-    window = int(now // _WINDOW_SECONDS)
-    current = _WINDOWS.get(identifier)
 
-    if current is None or current[0] != window:
-        if len(_WINDOWS) >= _MAX_TRACKED:
-            _prune(window)
-        _WINDOWS[identifier] = (window, 1)
+def check_auth(identifier: str) -> None:
+    """Throttle the public auth routes (login/signup) per client IP.
+
+    Always enforced (independent of `rate_limit_enabled`) so brute-force and
+    account-enumeration protection stays on even while per-API-key limiting is off
+    during client testing. No-op only when the configured limit is non-positive.
+    """
+    limit = get_settings().auth_rate_limit_per_minute
+    if limit <= 0:
         return
-
-    count = current[1] + 1
-    if count > limit:
-        retry_after = max(1, _WINDOW_SECONDS - int(now % _WINDOW_SECONDS))
-        log.warning("rate_limited", company_id=company_id, limit=limit,
-                    window_seconds=_WINDOW_SECONDS)
-        raise api_error(
-            429, ErrorCode.RATE_LIMITED,
-            f"Rate limit of {limit} requests per minute exceeded. "
-            f"Retry in {retry_after}s.",
-            headers={"Retry-After": str(retry_after)},
-        )
-
-    _WINDOWS[identifier] = (window, count)
+    _hit(
+        _AUTH_WINDOWS, f"auth:{identifier}", limit,
+        detail=f"Too many authentication attempts. Retry in up to {_WINDOW_SECONDS}s.",
+    )
 
 
-def _prune(current_window: int) -> None:
+def _prune(windows: dict[str, tuple[int, int]], current_window: int) -> None:
     """Drop counters from windows other than the current one."""
-    for key in [k for k, (w, _) in _WINDOWS.items() if w != current_window]:
-        del _WINDOWS[key]
+    for key in [k for k, (w, _) in windows.items() if w != current_window]:
+        del windows[key]
 
 
 def reset() -> None:
     """Clear all counters — for tests."""
     _WINDOWS.clear()
+    _AUTH_WINDOWS.clear()

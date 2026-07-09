@@ -12,6 +12,8 @@ GET /api/v1/resume/batch/{batch_id}
   Poll overall progress: total / completed / failed / processing counts.
 """
 
+import asyncio
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from ulid import ULID
 
@@ -115,8 +117,15 @@ async def batch_parse(
     )
 
     if settings.use_lambda_worker:
-        for job in accepted_jobs:
-            if not invoke_worker(settings, job):
+        # Fan out the worker invocations concurrently (each invoke_worker is a
+        # blocking boto3 call); doing them sequentially on the event loop risks the
+        # API gateway timeout before the 202 is returned for a large batch.
+        loop = asyncio.get_running_loop()
+        dispatched = await asyncio.gather(
+            *(loop.run_in_executor(None, invoke_worker, settings, job) for job in accepted_jobs)
+        )
+        for job, ok in zip(accepted_jobs, dispatched):
+            if not ok:
                 # Mark the job failed immediately so the batch status converges
                 # instead of counting a never-started job as "processing" forever.
                 db.update_job_failed(

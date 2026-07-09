@@ -1,10 +1,17 @@
 """
 Regex-based extraction for high-confidence fields.
-These run before the AI parser so GPT-4o receives pre-extracted anchors.
+These run before the AI parser so the model receives pre-extracted anchors.
 """
 
 import re
 from dataclasses import dataclass, field
+
+# A bare year range ("2015 - 2019") has 8 digits and otherwise looks phone-shaped,
+# so it must be rejected before it lands in `phones` and is handed to the model as
+# an authoritative contact number.
+_YEAR_RANGE = re.compile(
+    r"^\s*(?:19|20)\d{2}\s*[-–—]\s*(?:(?:19|20)\d{2}|present)\s*$", re.I
+)
 
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
 # OCR fallback: Tesseract often injects a space next to the @ when reading
@@ -46,9 +53,12 @@ def extract(text: str) -> RuleExtracted:
         ))
 
     raw_phones = _PHONE.findall(text)
-    # Normalize: strip non-digit chars, keep only plausible lengths
+    # Normalize: strip non-digit chars, keep only plausible lengths, and drop bare
+    # year ranges that the digit-count gate would otherwise accept as phones.
     seen: set[str] = set()
     for p in raw_phones:
+        if _YEAR_RANGE.match(p):
+            continue
         digits = re.sub(r"\D", "", p)
         if 7 <= len(digits) <= 15 and digits not in seen:
             seen.add(digits)

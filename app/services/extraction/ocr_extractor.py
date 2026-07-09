@@ -66,12 +66,24 @@ def extract(content: bytes, filename: str, force_textract: bool = False) -> tupl
 
 def _to_images(content: bytes, filename: str) -> list[Image.Image]:
     ext = filename.rsplit(".", 1)[-1].lower()
+    max_pages = max(1, get_settings().ocr_max_pages)
     if ext == "pdf":
-        return convert_from_bytes(content, dpi=300)
+        # last_page bounds work INSIDE pdftoppm, so we never rasterize (and hold in
+        # memory) more than max_pages at 300 DPI — an unbounded scan would OOM.
+        images = convert_from_bytes(content, dpi=300, first_page=1, last_page=max_pages)
+        if len(images) >= max_pages:
+            log.info("ocr_page_cap_applied", max_pages=max_pages)
+        return images
     # Iterate every frame so multi-page TIFFs are OCR'd in full, not just page 1.
-    # Single-frame formats (PNG/JPG/WEBP) yield exactly one image.
+    # Single-frame formats (PNG/JPG/WEBP) yield exactly one image. Bounded the same.
     img = Image.open(io.BytesIO(content))
-    return [frame.copy() for frame in ImageSequence.Iterator(img)]
+    frames: list[Image.Image] = []
+    for frame in ImageSequence.Iterator(img):
+        if len(frames) >= max_pages:
+            log.info("ocr_page_cap_applied", max_pages=max_pages)
+            break
+        frames.append(frame.copy())
+    return frames
 
 
 # ── Preprocessing pipeline ────────────────────────────────────────────────────

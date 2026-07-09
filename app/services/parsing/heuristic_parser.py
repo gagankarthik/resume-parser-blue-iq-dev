@@ -158,18 +158,30 @@ def _extract_experience(text: str) -> list[ExperienceItem]:
         role = heading[0] if heading else None
         company = heading[1] if len(heading) > 1 else None
 
-        # Description: bullets/lines below this anchor until the next anchor.
+        # Description: bullets/lines below this anchor until the next anchor —
+        # but the 1–2 non-bullet lines immediately above the NEXT anchor are that
+        # entry's heading (role/company), not this entry's description. Find where
+        # the next heading starts and stop there (mirrors the heading look-back).
         next_anchor = anchors[pos + 1] if pos + 1 < len(anchors) else len(lines)
+        desc_end = next_anchor
+        if pos + 1 < len(anchors):
+            taken = 0
+            j2 = next_anchor - 1
+            while j2 > idx and taken < 2:
+                cand2 = lines[j2].strip()
+                if cand2 and not _BULLET.match(lines[j2]) and not _DATE_RANGE.search(cand2):
+                    desc_end = j2
+                    taken += 1
+                elif not cand2:
+                    if taken:
+                        break
+                j2 -= 1
         desc: list[str] = []
-        for k in range(idx + 1, next_anchor):
+        for k in range(idx + 1, desc_end):
             cand = lines[k].strip()
             if not cand:
                 continue
-            # Stop if we hit the next entry's heading (kept for that entry).
             desc.append(re.sub(r"^\s*[•\-\*▪–•o]\s+", "", cand))
-        # Trim trailing heading lines that belong to the next entry.
-        if desc and pos + 1 < len(anchors):
-            desc = desc[: max(0, len(desc) - 0)]
 
         entries.append(
             ExperienceItem(

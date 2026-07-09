@@ -48,8 +48,11 @@ CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
     "ventilator", "ventilation", "intubation", "extubation", "tracheostomy",
     "trach", "bipap", "cpap", "oxygenation", "capnography", "nebulizer",
     "suctioning", "abg", "airway",
-    # Vascular access / infusion
-    "iv", "picc", "central line", "catheter", "catheterization", "foley",
+    # Vascular access / infusion. NOTE: no bare "iv" — as a whole word it also
+    # matches the Roman numeral in "Level IV" / "Grade IV", inflating recognition.
+    # The real skills carry a qualifier, so match those forms instead.
+    "iv therapy", "iv insertion", "iv access", "iv push", "peripheral iv",
+    "iv/picc", "picc", "central line", "catheter", "catheterization", "foley",
     "phlebotomy", "venipuncture", "infusion", "cannulation", "port-a-cath",
     # Populations / clinical areas
     "neonatal", "pediatric", "geriatric", "obstetric", "maternal", "perinatal",

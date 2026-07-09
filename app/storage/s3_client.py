@@ -5,6 +5,7 @@ Files are uploaded for processing and deleted immediately after.
 We never retain raw resume files.
 """
 
+from functools import lru_cache
 from typing import Any
 
 import boto3
@@ -16,12 +17,24 @@ from app.core.logging import get_logger
 log = get_logger(__name__)
 
 
+@lru_cache(maxsize=8)
+def _s3_client(region: str, endpoint_url: str):
+    """Build (once per region/endpoint) and cache the boto3 S3 client.
+
+    boto3 clients are thread-safe and expensive to construct (session/config/
+    endpoint resolution). Caching mirrors the DynamoDB resource in db/_client.py
+    and keeps client creation off the per-request hot path (every parse + every
+    batch file previously built a fresh client).
+    """
+    kwargs: dict[str, Any] = {"region_name": region}
+    if endpoint_url:
+        kwargs["endpoint_url"] = endpoint_url
+    return boto3.client("s3", **kwargs)
+
+
 def _get_s3():
     settings = get_settings()
-    kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-    if settings.s3_endpoint_url:
-        kwargs["endpoint_url"] = settings.s3_endpoint_url
-    return boto3.client("s3", **kwargs)
+    return _s3_client(settings.aws_region, settings.s3_endpoint_url)
 
 
 def upload_temp_file(job_id: str, filename: str, content: bytes) -> str:
