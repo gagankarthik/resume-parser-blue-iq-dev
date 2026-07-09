@@ -7,7 +7,7 @@ normalization now uses the healthcare_taxonomy module — see
 test_healthcare_normalizer.py for that coverage.
 """
 
-from app.models.schemas import ExperienceItem, ParsedResumeAI
+from app.models.schemas import ExperienceItem, ExtractionNote, ParsedResumeAI
 from app.services.normalization.normalizer import (
     _normalize_date,
     _normalize_skills,
@@ -15,6 +15,34 @@ from app.services.normalization.normalizer import (
     _strip_name_credentials,
     normalize,
 )
+
+
+# ── Extraction-note confidence normalization ─────────────────────────────────
+def test_extraction_note_zero_confidence_null_decision_becomes_high():
+    parsed = ParsedResumeAI(extraction_notes=[
+        ExtractionNote(field="experience[0].facility_beds", value=None,
+                       confidence=0.0, reason="only in summary; 3 facilities"),
+    ])
+    normalize(parsed)
+    # A confident decision to leave a field null must not read as 0.
+    assert parsed.extraction_notes[0].confidence == 0.9
+
+
+def test_extraction_note_zero_confidence_assigned_value_becomes_moderate():
+    parsed = ParsedResumeAI(extraction_notes=[
+        ExtractionNote(field="experience[0].facility_beds", value="64",
+                       confidence=0.0, reason="attached from role block"),
+    ])
+    normalize(parsed)
+    assert parsed.extraction_notes[0].confidence == 0.7
+
+
+def test_extraction_note_model_confidence_respected():
+    parsed = ParsedResumeAI(extraction_notes=[
+        ExtractionNote(field="x", value=None, confidence=0.45, reason="judgment call"),
+    ])
+    normalize(parsed)
+    assert parsed.extraction_notes[0].confidence == 0.45
 
 
 # ── Location: reduce a full address to the street line ───────────────────────

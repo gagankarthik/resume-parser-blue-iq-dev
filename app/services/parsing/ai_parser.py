@@ -100,7 +100,8 @@ ATTRIBUTION — do NOT smear SUMMARY facts across jobs (critical for healthcare 
 
 EXPLAINABILITY — extraction_notes[]:
 - Whenever you deliberately LEAVE A FIELD NULL because a fact was ambiguous (per the attribution rule above), OR you attach a fact to a role that was not obvious, add an entry to extraction_notes: {{"field": "<dotted path e.g. experience[1].facility_beds>", "value": <the value or null>, "confidence": <0.0-1.0>, "reason": "<short plain-language why>"}}.
-- Example: summary says "worked in 63-bed units" and there are 3 hospitals → for each such role add {{"field":"experience[0].facility_beds","value":null,"confidence":0.0,"reason":"'63 beds' stated only in the summary; 3 facilities listed, cannot attribute to one"}}.
+- `confidence` is how sure you are of THE DECISION, not of a value. A confident, evidence-backed decision to LEAVE A FIELD NULL is HIGH (0.85-0.95) — you are sure it should be null. Use a LOWER value (0.3-0.6) only for a genuine judgment call. NEVER default confidence to 0.
+- Example: summary says "worked in 64-bed units" and there are 3 hospitals → for each such role add {{"field":"experience[0].facility_beds","value":null,"confidence":0.9,"reason":"'64 beds' stated only in the summary; 3 facilities listed, cannot attribute to one"}}.
 - Keep notes brief and only for genuine decisions. An empty list is correct when nothing was ambiguous. NEVER invent data just to fill a note.
 - Use null for any field not present in the text.
 - full_name: the candidate's name ONLY. Do NOT include trailing credential, licence, or degree suffixes (e.g. "Jane Smith, RN BSN" → "Jane Smith").

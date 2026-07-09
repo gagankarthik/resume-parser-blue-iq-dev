@@ -583,7 +583,7 @@ class ExtractionNote(BaseModel):
 
     field:      str          = Field(..., description="Dotted path of the affected field (e.g. 'experience[1].facility_beds', 'experience[0].profession')")
     value:      str | None   = Field(None, description="The value that was assigned, or null when the fact could not be attributed")
-    confidence: float        = Field(0.0, ge=0.0, le=1.0, description="Confidence in this decision (1.0 = certain, 0.0 = deliberately left null)")
+    confidence: float        = Field(0.5, ge=0.0, le=1.0, description="Confidence in THIS DECISION on a 0-1 scale (not in the value). A confident decision to leave a field null — because the evidence clearly says it can't be attributed — is HIGH (~0.9), NOT 0. Use a low value only for a genuine judgment call.")
     reason:     str          = Field(..., description="Plain-language explanation of the decision and the evidence behind it")
 
     @field_validator("reason", mode="before")

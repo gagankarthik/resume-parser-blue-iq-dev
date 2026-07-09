@@ -109,7 +109,23 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
         lic.name = _fix_credential_case(lic.name)
         if lic.license_type:
             lic.license_type = _fix_credential_case(lic.license_type)
+    _normalize_extraction_notes(parsed)
     return parsed
+
+
+def _normalize_extraction_notes(parsed: ParsedResumeAI) -> None:
+    """Give an extraction note a meaningful confidence.
+
+    A note is only ever emitted when the parser made a deliberate, evidence-backed
+    decision (attach a fact to a role, or leave a field null because it can't be
+    attributed). A literal 0.0 is therefore the model defaulting the field, not a
+    genuine zero-confidence signal — replace it: a confident decision to leave a
+    field null is high (0.9); an assigned-value judgment call is moderate (0.7).
+    Any model-provided non-zero confidence is respected as-is.
+    """
+    for note in parsed.extraction_notes:
+        if note.confidence == 0.0:
+            note.confidence = 0.9 if note.value is None else 0.7
 
 
 def _normalize_personal(personal: PersonalInfo) -> None:
