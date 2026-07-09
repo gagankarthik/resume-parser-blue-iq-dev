@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from app.db import audit_logs
 from app.db import dynamodb as db
+from app.db import jobs as jobs_db
 from app.db.dynamodb import _dynamo_safe, _plain
 from app.models.schemas import ParsedResumeAI
 
@@ -52,6 +53,39 @@ def test_write_audit_log_omits_empty_key_fields(monkeypatch):
     )
     assert "key_hash" not in table.item
     assert "key_prefix" not in table.item
+
+
+class _UpdateCapturingTable:
+    def __init__(self):
+        self.kwargs = None
+
+    def update_item(self, **kwargs):
+        self.kwargs = kwargs
+
+
+def _patch_jobs_table(monkeypatch) -> _UpdateCapturingTable:
+    table = _UpdateCapturingTable()
+    monkeypatch.setattr(
+        jobs_db, "_get_dynamodb",
+        lambda settings: type("R", (), {"Table": lambda self, name: table})(),
+    )
+    return table
+
+
+def test_update_job_completed_clean_parse_stores_completed(monkeypatch):
+    table = _patch_jobs_table(monkeypatch)
+    jobs_db.update_job_completed("j1", {"data": {}, "partial": False, "warnings": []})
+    assert table.kwargs["ExpressionAttributeValues"][":s"] == "completed"
+
+
+def test_update_job_completed_partial_parse_stores_partial(monkeypatch):
+    """A degraded parse must persist status 'partial', not 'completed', so the
+    poll endpoint reports the true state to a consumer."""
+    table = _patch_jobs_table(monkeypatch)
+    jobs_db.update_job_completed(
+        "j2", {"data": {}, "partial": True, "warnings": ["needs human review"]}
+    )
+    assert table.kwargs["ExpressionAttributeValues"][":s"] == "partial"
 
 
 def test_dynamo_safe_converts_floats_to_decimals():

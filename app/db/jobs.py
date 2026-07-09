@@ -85,14 +85,20 @@ def _dynamo_safe(value: dict) -> dict:
 
 
 def update_job_completed(job_id: str, result: dict) -> None:
+    # A degraded parse (AI timed out / failed → only contact anchors recovered)
+    # gets its own terminal status "partial", NOT "completed". A consumer that
+    # gates ingestion on status == "completed" must not silently accept a record
+    # that carries a "needs human review" warning. `result["partial"]` is set by
+    # the pipeline and always present via result_record()/the worker payload.
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
+    status = "partial" if result.get("partial") else "completed"
     table.update_item(
         Key={"job_id": job_id},
         UpdateExpression="SET #s = :s, completed_at = :t, #r = :r",
         ExpressionAttributeNames={"#s": "status", "#r": "result"},
         ExpressionAttributeValues={
-            ":s": "completed",
+            ":s": status,
             ":t": datetime.now(UTC).isoformat(),
             ":r": _dynamo_safe(result),
         },

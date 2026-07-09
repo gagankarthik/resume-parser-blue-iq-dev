@@ -216,3 +216,57 @@ def test_parse_uploaded_sync_path_returns_result(monkeypatch):
     # Sync path persists the result and deletes the temp file.
     assert completed["jid"] == "J1"
     assert deleted["key"] == "temp/J1/cv.pdf"
+
+
+def test_parse_uploaded_partial_result_reports_partial_not_completed(monkeypatch):
+    """A degraded parse (AI timed out → contact anchors only) must report
+    status 'partial', never 'completed' — so a consumer gating ingestion on
+    'completed' doesn't silently accept a record flagged for human review."""
+    _authenticate(monkeypatch, company_id="acme-1")
+    monkeypatch.setattr(
+        resume.db, "get_job",
+        lambda jid: {"company_id": "acme-1", "status": "pending_upload",
+                     "s3_key": "temp/J2/cv.pdf", "filename": "cv.pdf"},
+    )
+    monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"%PDF-1.4 digital")
+    monkeypatch.setattr(resume, "validate_file", lambda fn, content: "pdf")
+    monkeypatch.setattr(resume, "classify", lambda fn, content: ("pdf", False))
+
+    result = PipelineResult(
+        parsed=ParsedResumeAI(),
+        confidence=ConfidenceScores(
+            overall=0.2, personal_info=0.4, experience=0.0, education=0.0, skills=0.0
+        ),
+        file_type="pdf", ocr_used=False, ai_tokens_used=0, duration_ms=45000,
+        partial=True,
+        warnings=["AI parsing did not complete; ... needs human review. "
+                  "(AI parsing timed out after 45s)"],
+    )
+
+    async def _fake_pipeline(inp):
+        return result
+
+    monkeypatch.setattr(resume_service, "run_pipeline", _fake_pipeline)
+
+    persisted: dict = {}
+    monkeypatch.setattr(resume.db, "write_audit_log", lambda **kw: None)
+    monkeypatch.setattr(resume.s3_client, "delete_file", lambda key: None)
+    # Use the real persistence-record shaping so the status the DB would store
+    # is derived from the same `partial` flag the response reports.
+    monkeypatch.setattr(
+        resume.db, "update_job_completed",
+        lambda jid, r: persisted.update(jid=jid, record=r),
+    )
+
+    resp = client.post(
+        "/api/v1/resume/parse-uploaded",
+        headers={"X-API-Key": VALID_KEY},
+        json={"job_id": "J2"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "partial"
+    assert body["partial"] is True
+    assert "human review" in body["warnings"][0]
+    # The persisted record still carries the partial flag for the poll path.
+    assert persisted["record"]["partial"] is True

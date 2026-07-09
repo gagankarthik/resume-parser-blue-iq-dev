@@ -117,7 +117,8 @@ async def parse_resume(
             job_id=job_id, company_id=company_id, result=result,
             file_size_bytes=len(content), record=record,
         )
-        return ParseResponse(job_id=job_id, status="completed",
+        return ParseResponse(job_id=job_id,
+                             status=resume_service.terminal_status(result),
                              data=result.parsed, confidence=result.confidence,
                              skills_validation=validate_skills(result.parsed),
                              partial=result.partial, warnings=result.warnings)
@@ -251,7 +252,8 @@ async def parse_uploaded(
             file_size_bytes=len(content), record=record,
         )
         s3_client.delete_file(s3_key)
-        return ParseResponse(job_id=payload.job_id, status="completed",
+        return ParseResponse(job_id=payload.job_id,
+                             status=resume_service.terminal_status(result),
                              data=result.parsed, confidence=result.confidence,
                              skills_validation=validate_skills(result.parsed),
                              partial=result.partial, warnings=result.warnings)
@@ -298,7 +300,7 @@ async def get_job_status(
     partial  = False
     warnings: list[str] = []
 
-    if raw_result and status == "completed":
+    if raw_result and status in ("completed", "partial"):
         parsed_data = ParsedResumeAI.model_validate(raw_result.get("data", {}))
         confidence  = ConfidenceScores.model_validate(raw_result.get("confidence", {}))
         skills_validation = validate_skills(parsed_data)
@@ -378,7 +380,8 @@ async def retry_parse(
         db.update_job_completed(new_job_id, resume_service.result_record(result))
         return RetryResponse(
             job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
-            status="completed", data=result.parsed, confidence=result.confidence,
+            status=resume_service.terminal_status(result),
+            data=result.parsed, confidence=result.confidence,
             skills_validation=validate_skills(result.parsed),
             partial=result.partial, warnings=result.warnings,
         )

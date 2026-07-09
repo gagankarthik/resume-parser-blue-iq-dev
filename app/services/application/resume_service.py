@@ -22,6 +22,17 @@ from app.workers.dispatch import invoke_worker
 log = get_logger(__name__)
 
 
+def terminal_status(result: PipelineResult) -> str:
+    """Client-facing terminal status for a finished parse.
+
+    Returns "partial" when the parse degraded — `result.parsed` holds only what
+    rule-based extraction could recover (contact anchors) and the record needs
+    human review. Returns "completed" only for a clean parse. A partial parse
+    must never be reported as "completed"; consumers gate ingestion on this.
+    """
+    return "partial" if result.partial else "completed"
+
+
 async def run_parse(
     *,
     job_id: str,
