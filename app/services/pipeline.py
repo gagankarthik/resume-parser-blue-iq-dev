@@ -70,6 +70,13 @@ _FALLBACK_RESERVE = 100
 # connection and the caller gets a bare 504 with no data. The async (upload →
 # poll) path has no per-request gateway ceiling and uses the full budget.
 _SYNC_WALL_BUDGET = 50
+# Time held back from the orchestrator on the SYNC path. Unlike the async path
+# (_FALLBACK_RESERVE), there is no budget for a full single-shot fallback after a
+# degrade — the deterministic floor is instant — so we reserve only enough for the
+# floor + normalization/scoring. This small reserve is what lets the orchestrator
+# (which returns graceful PARTIALS instead of the single-shot's all-or-nothing
+# timeout) run within the tight sync budget and avoid dropping to the rule floor.
+_SYNC_FALLBACK_RESERVE = 6
 
 
 @dataclass
@@ -200,15 +207,23 @@ async def run(inp: PipelineInput) -> PipelineResult:
     def _remaining() -> float:
         return budget - (time.monotonic() - start)
 
+    # How much budget to hold back from the orchestrator for what runs after it.
+    # Async holds back a full single-shot fallback (_FALLBACK_RESERVE); sync has no
+    # room for a second LLM attempt, so it holds back only the instant heuristic
+    # floor + normalization/scoring. This small sync reserve is what lets the
+    # orchestrator — which returns graceful PARTIALS (completed sections) rather
+    # than the single-shot's all-or-nothing timeout — run inside the sync budget.
+    fallback_reserve = _SYNC_FALLBACK_RESERVE if inp.sync else _FALLBACK_RESERVE
+
     use_orchestrator = (
         settings.use_multi_agent
         and len(cleaned) >= settings.multi_agent_min_chars
         # If extraction (e.g. a slow OCR pass) already ate most of the budget,
         # go straight to the cheaper single-shot parser.
-        and _remaining() > _FALLBACK_RESERVE + 25
+        and _remaining() > fallback_reserve + 15
     )
     if use_orchestrator:
-        orch_budget = min(_TIMEOUT_ORCHESTRATOR, _remaining() - _FALLBACK_RESERVE)
+        orch_budget = min(_TIMEOUT_ORCHESTRATOR, _remaining() - fallback_reserve)
         try:
             parsed_ai, tokens, warnings = await asyncio.wait_for(
                 orchestrator.parse(cleaned, anchors, budget=orch_budget),
@@ -216,12 +231,17 @@ async def run(inp: PipelineInput) -> PipelineResult:
             )
         except (AIParsingError, TimeoutError) as exc:
             log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))
-            warnings = []  # discard partial orchestrator warnings; single-shot is authoritative
+            warnings = []  # discard partial orchestrator warnings; the fallback is authoritative
 
-    if parsed_ai is None:
+    # Single-shot fallback — one big LLM call. Skipped on the sync path once the
+    # orchestrator has already run: the wall budget leaves no room for a second
+    # full attempt, so burning the last seconds on a call that would itself time
+    # out only pushes the response toward the gateway ceiling. Go to the floor.
+    degrade_reason = "the parse did not complete within the request budget"
+    if parsed_ai is None and not (inp.sync and use_orchestrator):
         # The AI parse gets whatever is left of the wall budget, capped at
-        # _TIMEOUT_AI_PARSE. On the synchronous path that's ~40s (not the full 90s),
-        # so report the ACTUAL budget applied, not the ceiling constant.
+        # _TIMEOUT_AI_PARSE. On the synchronous path that's tighter than the full
+        # 90s, so report the ACTUAL budget applied, not the ceiling constant.
         ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining()))
         try:
             parsed_ai, tokens = await asyncio.wait_for(
@@ -229,27 +249,29 @@ async def run(inp: PipelineInput) -> PipelineResult:
                 timeout=ai_timeout,
             )
         except (AIParsingError, TimeoutError) as exc:
-            reason = (
+            degrade_reason = (
                 f"AI parsing timed out after {ai_timeout:.0f}s"
                 if isinstance(exc, TimeoutError)
                 else f"AI parsing failed: {exc}"
             )
-            log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
-            # Deterministic floor (open-resume style): when the AI parse is cut off
-            # we recover experience/education/skills with rule-based heuristics
-            # instead of returning contact details only. Never times out, never
-            # invents data. Still flagged partial for human review.
-            parsed_ai = heuristic_parser.parse(cleaned, anchors)
-            partial = True
-            recovered = (
-                f"{len(parsed_ai.experience)} experience, "
-                f"{len(parsed_ai.education)} education, {len(parsed_ai.skills)} skill entries"
-            )
-            warnings.append(
-                "AI parsing did not complete; returned a rule-based partial record "
-                f"(recovered {recovered}) with no semantic cleanup. This record needs "
-                f"human review. ({reason})"
-            )
+            log.warning("ai_parse_degraded", job_id=inp.job_id, reason=degrade_reason)
+
+    # Deterministic floor (open-resume style): when the AI tiers produce nothing we
+    # recover experience/education/skills with rule-based heuristics instead of
+    # returning contact details only. Never times out, never invents data. Still
+    # flagged partial for human review.
+    if parsed_ai is None:
+        parsed_ai = heuristic_parser.parse(cleaned, anchors)
+        partial = True
+        recovered = (
+            f"{len(parsed_ai.experience)} experience, "
+            f"{len(parsed_ai.education)} education, {len(parsed_ai.skills)} skill entries"
+        )
+        warnings.append(
+            "AI parsing did not complete; returned a rule-based partial record "
+            f"(recovered {recovered}) with no semantic cleanup. This record needs "
+            f"human review. ({degrade_reason})"
+        )
 
     # ── 7–9. Normalize + score ────────────────────────────────────────────────
     normalized = normalize(parsed_ai)
