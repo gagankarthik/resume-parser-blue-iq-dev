@@ -123,6 +123,61 @@ async def test_short_resume_skips_orchestrator_for_speed(monkeypatch):
     assert result.ai_tokens_used == 42
 
 
+# ── Sync path now uses the orchestrator (graceful partials, no all-or-nothing) ──
+
+@pytest.mark.asyncio
+async def test_sync_path_uses_orchestrator(monkeypatch):
+    """A SYNC request must now run the multi-agent orchestrator (previously it was
+    structurally disabled and always used the single-shot parser)."""
+    from app.models.schemas import ParsedResumeAI, PersonalInfo
+
+    async def _orch(_text, _anchors, budget=None):
+        # The sync budget must be positive and comfortably inside the wall budget.
+        assert budget is not None and 10 < budget < pipeline._SYNC_WALL_BUDGET
+        return ParsedResumeAI(personal_info=PersonalInfo(full_name="Sync User")), 555, []
+
+    async def _single_shot(_sections, _anchors):  # must NOT run when orchestrator succeeds
+        raise AssertionError("single-shot must not run on sync when orchestrator succeeds")
+
+    monkeypatch.setattr(pipeline.orchestrator, "parse", _orch)
+    monkeypatch.setattr(pipeline.ai_parser, "parse", _single_shot)
+    _stub_extraction(monkeypatch)
+
+    result = await pipeline.run(
+        pipeline.PipelineInput(
+            job_id="s1", filename="r.docx", content=b"x", company_id="c1", sync=True
+        )
+    )
+    assert result.partial is False
+    assert result.parsed.personal_info.full_name == "Sync User"
+    assert result.ai_tokens_used == 555
+
+
+@pytest.mark.asyncio
+async def test_sync_skips_single_shot_fallback_after_orchestrator(monkeypatch):
+    """On sync, if the orchestrator produces nothing the pipeline goes STRAIGHT to
+    the deterministic floor — it must NOT burn the last seconds on a single-shot
+    call that would itself time out and push past the gateway ceiling."""
+
+    async def _boom_orch(_text, _anchors, budget=None):
+        raise AIParsingError("orchestrator empty")
+
+    async def _single_shot(_sections, _anchors):  # must NOT run on the sync path
+        raise AssertionError("single-shot must be skipped on sync after the orchestrator ran")
+
+    monkeypatch.setattr(pipeline.orchestrator, "parse", _boom_orch)
+    monkeypatch.setattr(pipeline.ai_parser, "parse", _single_shot)
+    _stub_extraction(monkeypatch)
+
+    result = await pipeline.run(
+        pipeline.PipelineInput(
+            job_id="s2", filename="r.docx", content=b"x", company_id="c1", sync=True
+        )
+    )
+    assert result.partial is True
+    assert result.warnings and "human review" in result.warnings[0]
+
+
 # ── Surname/email mismatch review flag ───────────────────────────────────────
 
 def _parsed_with(name, email):

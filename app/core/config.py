@@ -116,10 +116,14 @@ class Settings(BaseSettings):
     multi_agent_max_concurrency: int = 8
     # Complexity gate: résumés with at least this many cleaned characters use the
     # multi-agent orchestrator; shorter/simpler ones use the fast single-shot
-    # parser. This keeps the synchronous path snappy for one-page résumés while
-    # reserving the costlier multi-agent accuracy for long / travel-nurse CVs that
-    # actually benefit. Set to 0 to always use multi-agent (when enabled).
-    multi_agent_min_chars: int = 3500
+    # parser. Kept LOW because résumé density (roles × bullets) — not input length —
+    # drives the single-shot's latency: compact multi-role CVs (e.g. 12 roles in
+    # ~2.9K chars, or a dense skills-heavy RN in ~1.3K chars) blow the sync single-
+    # shot budget and degrade to the rule floor. Routing them to the orchestrator,
+    # which parallelises and returns graceful partials, fixes that; only genuinely
+    # sparse one-role résumés (< ~1K chars) stay on the fast single-shot path.
+    # Set to 0 to always use multi-agent (when enabled).
+    multi_agent_min_chars: int = 1000
 
     # Specialty → ID matching
     # Path to the specialty reference catalog (JSON list, or CSV) of

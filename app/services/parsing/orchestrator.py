@@ -142,12 +142,19 @@ async def parse(
     supp_agent      = SupplementalAgent()
     validator_agent = ValidatorAgent()
 
+    # Budget to hold back for the stages AFTER structure (Stage 2 + validation).
+    # The fixed 40s suits the large async budget, but on the tighter SYNC budget it
+    # would starve the structure call (e.g. only ~6s of a 43s budget), so scale it
+    # down proportionally. Capped at 40 so any budget ≥ ~67s (the async path) keeps
+    # today's exact behaviour.
+    struct_reserve = min(40.0, budget * 0.6) if budget else 40.0
+
     # ── Stage 1: structure ────────────────────────────────────────────────────
     try:
         structure = await asyncio.wait_for(
             structure_agent.run(text, meter),
             # Hold back enough budget for Stage 2 to do real work.
-            _stage_timeout(_STRUCTURE_TIMEOUT, deadline, reserve=40),
+            _stage_timeout(_STRUCTURE_TIMEOUT, deadline, reserve=struct_reserve),
         )
     except (AIParsingError, TimeoutError) as exc:
         log.warning("structure_failed", error=str(exc))
