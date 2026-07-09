@@ -219,14 +219,18 @@ async def run(inp: PipelineInput) -> PipelineResult:
             warnings = []  # discard partial orchestrator warnings; single-shot is authoritative
 
     if parsed_ai is None:
+        # The AI parse gets whatever is left of the wall budget, capped at
+        # _TIMEOUT_AI_PARSE. On the synchronous path that's ~40s (not the full 90s),
+        # so report the ACTUAL budget applied, not the ceiling constant.
+        ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining()))
         try:
             parsed_ai, tokens = await asyncio.wait_for(
                 ai_parser.parse(sections, anchors),
-                timeout=min(_TIMEOUT_AI_PARSE, max(15.0, _remaining())),
+                timeout=ai_timeout,
             )
         except (AIParsingError, TimeoutError) as exc:
             reason = (
-                f"AI parsing timed out after {_TIMEOUT_AI_PARSE}s"
+                f"AI parsing timed out after {ai_timeout:.0f}s"
                 if isinstance(exc, TimeoutError)
                 else f"AI parsing failed: {exc}"
             )
