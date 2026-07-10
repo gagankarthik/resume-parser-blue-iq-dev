@@ -40,6 +40,7 @@ async def run_parse(
     content: bytes,
     company_id: str,
     force_textract: bool,
+    sync_probe: bool = False,
 ) -> PipelineResult:
     """Run the full parsing pipeline for one file, synchronously.
 
@@ -47,6 +48,10 @@ async def run_parse(
     runs under the gateway wall-clock budget (sync=True): it degrades to the
     deterministic floor and returns 200 + a rich partial rather than running long
     and being severed into a bare 504 by the proxy.
+
+    `sync_probe=True` means the caller will PROMOTE any partial to the async worker
+    (full budget, complete parse) instead of returning it — so the pipeline skips
+    the section-only enrich pass and gives the single-shot the reserve time.
     """
     return await run_pipeline(
         PipelineInput(
@@ -56,6 +61,7 @@ async def run_parse(
             company_id=company_id,
             force_textract=force_textract,
             sync=True,
+            sync_probe=sync_probe,
         )
     )
 

@@ -95,6 +95,12 @@ class PipelineInput:
     # degrade gracefully rather than run to the full budget and 504. The async
     # worker leaves this False to use the full _TOTAL_BUDGET.
     sync: bool = False
+    # True when this sync run is only a fast PROBE: if the single-shot can't finish
+    # in the budget, the caller will re-dispatch the file to the async worker (full
+    # budget, complete parse) instead of returning the partial. So skip the costly
+    # section-only enrich pass (it would be thrown away) and give the single-shot
+    # the reserve time instead. Only meaningful together with sync=True.
+    sync_probe: bool = False
 
 
 @dataclass
@@ -256,8 +262,14 @@ async def run(inp: PipelineInput) -> PipelineResult:
                     f"human review. ({reason})"
                 )
     else:
-        # ── SYNC: single-shot primary; section-only enrich on timeout ─────────
-        ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining() - _SYNC_ENRICH_RESERVE))
+        # ── SYNC: single-shot primary ─────────────────────────────────────────
+        # In PROBE mode the caller promotes any partial to the async worker (full
+        # budget, complete parse), so the section-only enrich would be thrown away
+        # — skip it and hand the single-shot the reserve time instead (bigger cap →
+        # more résumés finish synchronously). Otherwise (a caller that returns the
+        # partial directly) keep the enrich reserve.
+        enrich_reserve = 3.0 if inp.sync_probe else _SYNC_ENRICH_RESERVE
+        ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining() - enrich_reserve))
         try:
             parsed_ai, tokens = await asyncio.wait_for(
                 ai_parser.parse(sections, anchors), timeout=ai_timeout,
@@ -275,8 +287,9 @@ async def run(inp: PipelineInput) -> PipelineResult:
             # Enrich: recover the high-value semantic sections (headline, secondary
             # phone, education locations, skills, certs, licenses) with the fast
             # section-only agents — omitting the slow per-role work stage — and keep
-            # the deterministic work history. Best-effort; a failure leaves the floor.
-            if settings.use_multi_agent and _remaining() > 9:
+            # the deterministic work history. Skipped in probe mode (the partial is
+            # not returned to the caller — it triggers an async re-parse instead).
+            if not inp.sync_probe and settings.use_multi_agent and _remaining() > 9:
                 try:
                     light, ltok, lwarn = await asyncio.wait_for(
                         orchestrator.parse_light(cleaned, anchors, budget=_remaining() - 3),

@@ -34,16 +34,41 @@ def extract(content: bytes) -> str:
         raise ExtractionError(f"DOCX extraction failed: {exc}") from exc
 
 
+def _runs_text(element) -> str:
+    """Text of a paragraph, preserving intra-paragraph structure: soft line breaks
+    (w:br) become newlines and tabs (w:tab) become spaces. Without this a wrapped
+    line ("Degree: July 21, 2018" then "Next Degree: …") collapses into one run-on
+    string and the AI loses the dates / entry boundaries."""
+    out: list[str] = []
+    for node in element.iter():
+        tag = node.tag.split("}")[-1]
+        if tag == "t":
+            out.append(node.text or "")
+        elif tag == "tab":
+            out.append(" ")
+        elif tag == "br":
+            out.append("\n")
+    return "".join(out)
+
+
 def _para_text(para_element) -> str:
-    return "".join(r.text for r in para_element.iter(qn("w:t")))
+    return _runs_text(para_element)
 
 
 def _table_text(tbl_element) -> str:
     rows: list[str] = []
     for row in tbl_element.iter(qn("w:tr")):
-        cells = [
-            "".join(r.text for r in cell.iter(qn("w:t")))
-            for cell in row.iter(qn("w:tc"))
-        ]
-        rows.append(" | ".join(c.strip() for c in cells if c.strip()))
+        cells = []
+        for cell in row.iter(qn("w:tc")):
+            # Join each paragraph in the cell on its OWN line so a multi-line cell
+            # (e.g. a school header + several degree/date lines) keeps its structure
+            # instead of collapsing into one run-on string.
+            cell_text = "\n".join(
+                line for line in (
+                    _runs_text(p).strip() for p in cell.iter(qn("w:p"))
+                ) if line
+            )
+            if cell_text.strip():
+                cells.append(cell_text)
+        rows.append(" | ".join(cells))
     return "\n".join(r for r in rows if r)

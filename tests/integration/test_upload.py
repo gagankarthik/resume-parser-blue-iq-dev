@@ -220,10 +220,11 @@ def test_parse_uploaded_sync_path_returns_result(monkeypatch):
     assert deleted["key"] == "temp/J1/cv.pdf"
 
 
-def test_parse_uploaded_partial_result_reports_partial_not_completed(monkeypatch):
-    """A degraded parse (AI timed out → contact anchors only) must report
-    status 'partial', never 'completed' — so a consumer gating ingestion on
-    'completed' doesn't silently accept a record flagged for human review."""
+def test_parse_uploaded_partial_is_promoted_to_async(monkeypatch):
+    """A degraded sync parse (AI couldn't finish in the gateway budget) must NOT be
+    returned as a partial — it is PROMOTED to the full-budget async worker so the
+    caller polls for a COMPLETE record. The response is 'processing' + poll_url and
+    the S3 file is kept for the worker."""
     _authenticate(monkeypatch, company_id="acme-1")
     monkeypatch.setattr(
         resume.db, "get_job",
@@ -247,19 +248,20 @@ def test_parse_uploaded_partial_result_reports_partial_not_completed(monkeypatch
     )
 
     async def _fake_pipeline(inp):
+        # The probe must NOT waste the enrich pass — it will be promoted to async.
+        assert inp.sync is True and inp.sync_probe is True
         return result
 
     monkeypatch.setattr(resume_service, "run_pipeline", _fake_pipeline)
 
-    persisted: dict = {}
-    monkeypatch.setattr(resume.db, "write_audit_log", lambda **kw: None)
-    monkeypatch.setattr(resume.s3_client, "delete_file", lambda key: None)
-    # Use the real persistence-record shaping so the status the DB would store
-    # is derived from the same `partial` flag the response reports.
-    monkeypatch.setattr(
-        resume.db, "update_job_completed",
-        lambda jid, r: persisted.update(jid=jid, record=r),
-    )
+    deleted: list = []
+    dispatched: dict = {}
+    monkeypatch.setattr(resume.s3_client, "delete_file", lambda key: deleted.append(key))
+
+    async def _fake_dispatch(settings, background_tasks, payload):
+        dispatched.update(payload)
+
+    monkeypatch.setattr(resume_service, "dispatch_async", _fake_dispatch)
 
     resp = client.post(
         "/api/v1/resume/parse-uploaded",
@@ -268,8 +270,10 @@ def test_parse_uploaded_partial_result_reports_partial_not_completed(monkeypatch
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] == "partial"
-    assert body["partial"] is True
-    assert "human review" in body["warnings"][0]
-    # The persisted record still carries the partial flag for the poll path.
-    assert persisted["record"]["partial"] is True
+    # Promoted, not returned as a partial.
+    assert body["status"] == "processing"
+    assert body["poll_url"] and "J2" in body["poll_url"]
+    assert body.get("partial") in (False, None)
+    # Handed to the worker, and the S3 file kept for it (not deleted).
+    assert dispatched.get("job_id") == "J2"
+    assert deleted == []

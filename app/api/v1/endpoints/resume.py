@@ -108,28 +108,55 @@ async def parse_resume(
              strategy=strategy, needs_async=needs_async, size_bytes=len(content),
              force_textract=force_textract)
 
+    # Fast synchronous PROBE for digital files. If it parses cleanly inside the
+    # gateway budget, return the complete JSON inline. If it can't finish (a dense
+    # résumé that would otherwise degrade to a partial), PROMOTE it to the async
+    # worker — which runs the full multi-agent parse with no gateway ceiling — and
+    # hand back a poll URL, so the caller always ends up with a COMPLETE record and
+    # never a partial.
+    sync_result = None
     if not needs_async:
-        result = await resume_service.run_parse(
+        sync_result = await resume_service.run_parse(
             job_id=job_id, filename=filename, content=content,
-            company_id=company_id, force_textract=force_textract,
+            company_id=company_id, force_textract=force_textract, sync_probe=True,
         )
-        resume_service.audit_parse(
-            job_id=job_id, company_id=company_id, result=result,
-            file_size_bytes=len(content), record=record,
-        )
-        return ParseResponse(job_id=job_id,
-                             status=resume_service.terminal_status(result),
-                             data=result.parsed, confidence=result.confidence,
-                             skills_validation=validate_skills(result.parsed),
-                             partial=result.partial, warnings=result.warnings)
+        if not sync_result.partial:
+            resume_service.audit_parse(
+                job_id=job_id, company_id=company_id, result=sync_result,
+                file_size_bytes=len(content), record=record,
+            )
+            return ParseResponse(job_id=job_id,
+                                 status=resume_service.terminal_status(sync_result),
+                                 data=sync_result.parsed, confidence=sync_result.confidence,
+                                 skills_validation=validate_skills(sync_result.parsed),
+                                 partial=False, warnings=sync_result.warnings)
+        log.info("sync_partial_promoted_to_async", job_id=job_id)
 
-    s3_key = s3_client.upload_temp_file(job_id, filename, content)
-    db.create_job(job_id, company_id)
-    await resume_service.dispatch_async(settings, background_tasks,
-        resume_service.build_async_payload(
-            job_id=job_id, company_id=company_id, s3_key=s3_key, filename=filename,
-            file_size_bytes=len(content), force_textract=force_textract, record=record,
-        ))
+    # Async: originally needed (scanned files) OR a sync partial promoted to be
+    # completed end-to-end on the full-budget worker.
+    try:
+        s3_key = s3_client.upload_temp_file(job_id, filename, content)
+        db.create_job(job_id, company_id)
+        await resume_service.dispatch_async(settings, background_tasks,
+            resume_service.build_async_payload(
+                job_id=job_id, company_id=company_id, s3_key=s3_key, filename=filename,
+                file_size_bytes=len(content), force_textract=force_textract, record=record,
+            ))
+    except Exception:
+        # Couldn't hand off to the worker. If we at least have a probe result,
+        # return it (flagged partial) rather than failing the whole request.
+        log.exception("async_dispatch_failed", job_id=job_id)
+        if sync_result is not None:
+            resume_service.audit_parse(
+                job_id=job_id, company_id=company_id, result=sync_result,
+                file_size_bytes=len(content), record=record, status="partial",
+            )
+            return ParseResponse(job_id=job_id,
+                                 status=resume_service.terminal_status(sync_result),
+                                 data=sync_result.parsed, confidence=sync_result.confidence,
+                                 skills_validation=validate_skills(sync_result.parsed),
+                                 partial=sync_result.partial, warnings=sync_result.warnings)
+        raise
     return ParseResponse(job_id=job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{job_id}")
 
@@ -251,29 +278,53 @@ async def parse_uploaded(
     log.info("parse_uploaded_request", job_id=payload.job_id, company_id=company_id,
              strategy=strategy, needs_async=needs_async, size_bytes=len(content))
 
+    # Fast synchronous PROBE; promote a partial to the full-budget async worker so
+    # the caller always ends up with a COMPLETE record (see parse_resume).
+    sync_result = None
     if not needs_async:
-        result = await resume_service.run_parse(
+        sync_result = await resume_service.run_parse(
             job_id=payload.job_id, filename=filename, content=content,
-            company_id=company_id, force_textract=payload.force_textract,
+            company_id=company_id, force_textract=payload.force_textract, sync_probe=True,
         )
-        db.update_job_completed(payload.job_id, resume_service.result_record(result))
-        resume_service.audit_parse(
-            job_id=payload.job_id, company_id=company_id, result=result,
-            file_size_bytes=len(content), record=record,
-        )
-        s3_client.delete_file(s3_key)
-        return ParseResponse(job_id=payload.job_id,
-                             status=resume_service.terminal_status(result),
-                             data=result.parsed, confidence=result.confidence,
-                             skills_validation=validate_skills(result.parsed),
-                             partial=result.partial, warnings=result.warnings)
+        if not sync_result.partial:
+            db.update_job_completed(payload.job_id, resume_service.result_record(sync_result))
+            resume_service.audit_parse(
+                job_id=payload.job_id, company_id=company_id, result=sync_result,
+                file_size_bytes=len(content), record=record,
+            )
+            s3_client.delete_file(s3_key)
+            return ParseResponse(job_id=payload.job_id,
+                                 status=resume_service.terminal_status(sync_result),
+                                 data=sync_result.parsed, confidence=sync_result.confidence,
+                                 skills_validation=validate_skills(sync_result.parsed),
+                                 partial=False, warnings=sync_result.warnings)
+        log.info("sync_partial_promoted_to_async", job_id=payload.job_id)
 
-    # Async: the file is already in S3; the worker downloads and deletes it.
-    await resume_service.dispatch_async(settings, background_tasks,
-        resume_service.build_async_payload(
-            job_id=payload.job_id, company_id=company_id, s3_key=s3_key, filename=filename,
-            file_size_bytes=len(content), force_textract=payload.force_textract, record=record,
-        ))
+    # Async: the file is already in S3; the worker downloads and deletes it. This
+    # covers scanned files AND a promoted sync partial — do NOT delete the S3 file
+    # here (the worker needs it) and leave the job "processing" for the worker to
+    # finish.
+    try:
+        await resume_service.dispatch_async(settings, background_tasks,
+            resume_service.build_async_payload(
+                job_id=payload.job_id, company_id=company_id, s3_key=s3_key, filename=filename,
+                file_size_bytes=len(content), force_textract=payload.force_textract, record=record,
+            ))
+    except Exception:
+        log.exception("async_dispatch_failed", job_id=payload.job_id)
+        if sync_result is not None:
+            db.update_job_completed(payload.job_id, resume_service.result_record(sync_result))
+            resume_service.audit_parse(
+                job_id=payload.job_id, company_id=company_id, result=sync_result,
+                file_size_bytes=len(content), record=record, status="partial",
+            )
+            s3_client.delete_file(s3_key)
+            return ParseResponse(job_id=payload.job_id,
+                                 status=resume_service.terminal_status(sync_result),
+                                 data=sync_result.parsed, confidence=sync_result.confidence,
+                                 skills_validation=validate_skills(sync_result.parsed),
+                                 partial=sync_result.partial, warnings=sync_result.warnings)
+        raise
     return ParseResponse(job_id=payload.job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{payload.job_id}")
 
