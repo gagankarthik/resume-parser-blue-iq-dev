@@ -71,6 +71,16 @@ CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
     "ciwa", "nihss", "stroke assessment", "care plan", "care plans", "vital signs",
     "acute care", "seizure", "botox", "botulinum", "dermal filler", "injectable",
     "aesthetic", "ported cath", "central venous",
+    # Imaging / allied-health (radiologic, CT, MRI, mammography, sonography…). The
+    # taxonomy and the terms above are nurse-centric, so a rad-tech résumé's real
+    # skills ("X-Ray", "Medical Imaging") were landing 0% recognized. Whole-word
+    # modality names and clear acronyms only — no bare ambiguous tokens.
+    "x-ray", "xray", "radiography", "radiologic", "radiography", "fluoroscopy",
+    "fluoro", "mammography", "mammogram", "mammo", "sonography", "sonographer",
+    "ultrasound", "ct", "mri", "mra", "computed tomography", "magnetic resonance",
+    "nuclear medicine", "pet scan", "bone density", "dexa", "densitometry",
+    "angiography", "venography", "myelography", "c-arm", "pacs", "medical imaging",
+    "diagnostic imaging", "digital radiography", "contrast media", "arthrography",
 })
 _CLINICAL_RE = re.compile(
     r"\b(?:"
