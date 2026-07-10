@@ -179,6 +179,21 @@ def test_more_clinical_skills_recognized(skill):
     assert _is_clinical_skill(skill) is True
 
 
-@pytest.mark.parametrize("nonclinical", ["Time Management", "Microsoft Excel", "Trauma Level IV"])
+@pytest.mark.parametrize("skill", [
+    "X-Ray", "Medical Imaging", "CT Technologist", "MRI", "Mammography",
+    "Fluoroscopy", "Sonography", "Nuclear Medicine", "Bone Density", "PACS",
+])
+def test_allied_health_imaging_skills_recognized(skill):
+    # A rad-tech résumé's real skills must not land 0% recognized just because the
+    # taxonomy is nurse-centric.
+    assert _is_clinical_skill(skill) is True
+
+
+@pytest.mark.parametrize("nonclinical", [
+    # "ct" is an imaging term now — make sure the whole-word boundary keeps it from
+    # matching inside ordinary words.
+    "Time Management", "Microsoft Excel", "Trauma Level IV",
+    "Contract negotiation", "Reactive", "Practical skills", "Act with integrity",
+])
 def test_nonclinical_still_unrecognized(nonclinical):
     assert _is_clinical_skill(nonclinical) is False
