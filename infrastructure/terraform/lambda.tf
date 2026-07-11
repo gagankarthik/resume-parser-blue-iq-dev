@@ -64,6 +64,16 @@ resource "aws_lambda_function" "api" {
     aws_iam_role_policy.lambda_app,
   ]
 
+  lifecycle {
+    # CI owns the running image: the deploy workflow builds a SHA-tagged image and
+    # updates the function via `aws lambda update-function-code`. `var.ecr_image_uri`
+    # here only seeds the FIRST create (and pins a valid image if the function is
+    # ever recreated). Ignoring image_uri stops Terraform from reverting CI's
+    # SHA-tagged image back to `:latest` on every apply — so `terraform apply` only
+    # touches env/config, never the code.
+    ignore_changes = [image_uri]
+  }
+
   tags = local.common_tags
 }
 
