@@ -8,6 +8,12 @@ github_repo  = "resume-parser-blue-iq-dev"
 # Passed via CI env var (TF_VAR_openai_api_key) or secrets manager — do NOT put real key here
 openai_api_key = "sk-proj-..."
 
+# GigHealth Partner API key (x-api-key). Enables the LIVE cities lookup at parse
+# time; facility/geography/specialty ids resolve offline and do NOT need it. Leave
+# empty to keep city mapping a safe no-op. Provide via TF_VAR_gig_specialties_api_key
+# or here in your local (uncommitted) terraform.tfvars — do NOT commit a real key.
+gig_specialties_api_key = ""
+
 # Bearer token gating /api/v1/admin/* (product platform). Generate: openssl rand -hex 32
 admin_api_token = ""
 

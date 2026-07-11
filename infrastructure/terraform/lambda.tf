@@ -23,6 +23,10 @@ locals {
     OPENAI_API_KEY              = var.openai_api_key
     ADMIN_API_TOKEN             = var.admin_api_token
     AUTH_SECRET                 = var.auth_secret
+    # GigHealth Partner API key — enables the live cities lookup at parse time.
+    # Facility/geography/specialty ids resolve offline from bundled snapshots and
+    # do NOT need this; when empty, city mapping is a safe no-op.
+    GIG_SPECIALTIES_API_KEY = var.gig_specialties_api_key
   }
 }
 

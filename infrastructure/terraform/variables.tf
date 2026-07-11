@@ -27,6 +27,13 @@ variable "openai_model" {
   default     = "gpt-4.1-mini"
 }
 
+variable "gig_specialties_api_key" {
+  description = "GigHealth Partner API key (x-api-key) — passed to the Lambda as GIG_SPECIALTIES_API_KEY. Enables the live cities lookup at parse time; the facility/geography/specialty snapshots resolve offline and do NOT need it. Provide via TF_VAR_gig_specialties_api_key or the local terraform.tfvars (never commit it). Marked sensitive so it is redacted from CLI output; note it is still present in Terraform state — keep the state backend encrypted and access-restricted. Empty leaves city mapping a safe no-op."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "admin_api_token" {
   description = "Bearer token gating the /api/v1/admin/* endpoints (product platform)"
   type        = string
