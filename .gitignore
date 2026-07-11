@@ -108,3 +108,7 @@ temp/
 
 # ── Local AWS IAM policy scratch files (account-specific ARNs) ────────────────
 rp-s3-policy.json
+
+# Source-data spreadsheets — the catalog JSON is the committed artifact
+*.xlsx
+*.xls

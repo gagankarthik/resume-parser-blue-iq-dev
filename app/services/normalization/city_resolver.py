@@ -20,6 +20,8 @@ Guardrails:
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 
 from app.core.config import get_settings
@@ -33,6 +35,10 @@ log = get_logger(__name__)
 # Minimum API score for a city match to be trusted; below it the role is left
 # unmatched (city_id null) rather than stamped with a low-confidence guess.
 CITY_ACCEPT_MIN = 0.5
+
+# Cap concurrent city lookups so a résumé with many distinct cities can't open an
+# unbounded number of sockets or hammer the partner's per-second rate limit.
+_MAX_CONCURRENCY = 8
 
 
 async def resolve_cities(parsed: ParsedResumeAI) -> int:
@@ -66,22 +72,30 @@ async def resolve_cities(parsed: ParsedResumeAI) -> int:
     if not keys:
         return 0
 
-    lookups = 0
-    async with httpx.AsyncClient() as client:
-        for country_id, state_id, _city_key in keys:
-            exps = pending[(country_id, state_id, _city_key)]
-            city_name = (exps[0].city or "").strip()
+    # Look the distinct city/state/country triples up CONCURRENTLY (bounded) — one
+    # résumé's roles are independent lookups, so serialising them would add
+    # per-role latency for no reason. Each result is applied to every role that
+    # shares its lookup key.
+    sem = asyncio.Semaphore(_MAX_CONCURRENCY)
+
+    async def _resolve(client: httpx.AsyncClient, key: tuple[str, str, str]) -> None:
+        country_id, state_id, _city_key = key
+        exps = pending[key]
+        city_name = (exps[0].city or "").strip()
+        async with sem:
             matches = await city_api.search(
                 client, settings.gig_cities_api_url, api_key,
                 country_id=country_id, state_id=state_id, city_name=city_name,
             )
-            lookups += 1
-            best = matches[0] if matches else None
-            if best is None or best.score < CITY_ACCEPT_MIN:
-                continue
-            for exp in exps:
-                exp.city_id = best.id
-                exp.city_confidence = best.score
+        best = matches[0] if matches else None
+        if best is None or best.score < CITY_ACCEPT_MIN:
+            return
+        for exp in exps:
+            exp.city_id = best.id
+            exp.city_confidence = best.score
 
-    log.info("city_api_tier", lookups=lookups, groups=len(keys))
-    return lookups
+    async with httpx.AsyncClient() as client:
+        await asyncio.gather(*(_resolve(client, k) for k in keys))
+
+    log.info("city_api_tier", lookups=len(keys), groups=len(keys))
+    return len(keys)
