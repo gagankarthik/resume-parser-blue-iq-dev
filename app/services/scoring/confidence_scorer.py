@@ -29,12 +29,14 @@ def score(parsed: ParsedResumeAI) -> ConfidenceScores:
     experience = _score_experience(parsed)
     education  = _score_education(parsed)
     skills     = _score_skills(parsed)
+    mapping    = _score_catalog_mapping(parsed)
     return ConfidenceScores(
         personal_info=personal,
         experience=experience,
         education=education,
         skills=skills,
-        overall=_overall(personal, experience, education, skills),
+        catalog_mapping=mapping,
+        overall=_overall(personal, experience, education, skills, mapping),
     )
 
 
@@ -104,8 +106,46 @@ def _score_skills(parsed: ParsedResumeAI) -> float:
     return round(count / 5, 2)
 
 
-def _overall(personal: float, experience: float, education: float, skills: float) -> float:
+def _score_catalog_mapping(parsed: ParsedResumeAI) -> float:
+    """Mean match confidence of the role entities resolved to platform catalog ids.
+
+    Reflects how confidently a résumé's structured entities mapped to Gig ids —
+    the "accuracy" dimension of the parse. For each role, every entity whose SOURCE
+    field is present contributes its match confidence (0.0 when it went unmatched):
+    profession, facility (a real company, not the "Unknown" placeholder), country,
+    state, and each specialty. City is counted only when it actually resolved to an
+    id (its lookup is a best-effort live search that may be disabled or unreachable,
+    so an absent city_id must not be read as a mapping failure). 0.0 when there is
+    nothing to map (no experience / no mappable entities).
+    """
+    vals: list[float] = []
+    for exp in parsed.experience:
+        if exp.profession:
+            vals.append(exp.profession_confidence)
+        if exp.company and exp.company != "Unknown":
+            vals.append(exp.facility_confidence)
+        if exp.country:
+            vals.append(exp.country_confidence)
+        if exp.state:
+            vals.append(exp.state_confidence)
+        if exp.city and exp.city_id is not None:
+            vals.append(exp.city_confidence)
+        for sm in exp.specialties:
+            vals.append(sm.confidence)
+    if not vals:
+        return 0.0
+    return round(sum(vals) / len(vals), 2)
+
+
+def _overall(
+    personal: float, experience: float, education: float, skills: float, mapping: float
+) -> float:
     # Takes the already-computed sub-scores (score() has them) instead of
-    # recomputing all four — same result, half the work.
-    total = personal * 0.35 + experience * 0.35 + education * 0.20 + skills * 0.10
+    # recomputing them — same result, less work. catalog_mapping earns real weight
+    # so a résumé whose entities resolve cleanly to platform ids scores higher than
+    # one that parsed but barely mapped.
+    total = (
+        personal * 0.30 + experience * 0.30 + education * 0.15
+        + skills * 0.10 + mapping * 0.15
+    )
     return round(total, 2)

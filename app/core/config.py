@@ -147,6 +147,49 @@ class Settings(BaseSettings):
             "gig_specialties_api_key", "gig_speciailities_api_key"
         ),
     )
+    # Facility → ID matching
+    # Path to the facility reference catalog (JSON list, or CSV) of
+    # {id, name, health_system?, health_system_id?} used to map each role's
+    # employer/facility name to a platform facility id + confidence. Defaults to the
+    # snapshot bundled at app/data/facility_catalog.json (generated from the Gig
+    # facilities API by scripts/refresh_facility_catalog.py). When unset/missing, the
+    # matcher leaves facility_id null (matched=False) for admin review — parsing is
+    # never broken by an absent catalog.
+    facility_catalog_path: str | None = str(
+        Path(__file__).resolve().parents[1] / "data" / "facility_catalog.json"
+    )
+    # GigHealth facilities API — source of truth for the facility snapshot. Only the
+    # refresh script reads this (never the request hot path); it authenticates with
+    # the same platform key as the specialties API (gig_specialties_api_key).
+    gig_facilities_api_url: str = "https://api.gighealth.com/api/v1/external/facilities"
+
+    # Geography (country/state) → ID matching
+    # Path to the geographies reference snapshot (countries + their states, with
+    # platform ids) used to resolve each role's country/state to a platform
+    # country_id/state_id offline. Defaults to the snapshot bundled at
+    # app/data/geography_catalog.json (generated from the Gig geographies API by
+    # scripts/refresh_geography_catalog.py). When unset/missing the ids stay null.
+    geography_catalog_path: str | None = str(
+        Path(__file__).resolve().parents[1] / "data" / "geography_catalog.json"
+    )
+    # GigHealth geographies API — source of truth for the geography snapshot. Only
+    # the refresh script reads it (never the request hot path).
+    gig_geographies_api_url: str = "https://api.gighealth.com/api/v1/external/geographies"
+
+    # City → ID matching (LIVE, opt-in)
+    # The cities endpoint is a per-lookup fuzzy search, not bulk reference data, so
+    # it cannot be snapshotted. When enabled, the city_resolver enrichment calls it
+    # per role (using the offline-resolved country_id/state_id) to stamp city_id +
+    # the API score as confidence. ON by default so every résumé gets a city_id
+    # alongside facility/geography/specialty ids; it degrades to a no-op when no API
+    # key is configured (the country/state ids still resolve offline). Lookups are
+    # de-duplicated and capped per résumé. Uses the same platform key as the other
+    # Gig endpoints.
+    gig_cities_api_url: str = "https://api.gighealth.com/api/v1/external/cities"
+    enable_city_api_match: bool = True
+    # Upper bound on distinct city lookups per résumé (protects latency + quota).
+    city_api_max_lookups: int = 25
+
     # When True, specialties that miss the deterministic tiers (name/full_name/
     # keywords) are resolved by one batched LLM call against a filtered shortlist
     # from the catalog. No-op when the catalog is empty or nothing is unmatched.

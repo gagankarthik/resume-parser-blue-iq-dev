@@ -274,7 +274,12 @@ def match(raw: str, profession: str | None = None) -> SpecialtyMatch:
     that profession's id (RN "ICU"=56 vs CNA "ICU"=757), falling back to the flat
     index when the profession has no such specialty.
     """
-    text = (raw or "").strip()
+    # De-duplicate the phrase BEFORE matching: a doubled/run-on specialty ("ICU ICU",
+    # "Med Surg Med Surg") otherwise misses the deterministic tiers and falls through
+    # to the AI tier (capped at 0.70). Cleaning it first lets an exact catalog match
+    # resolve deterministically at 1.0 — fixing both the spurious 0.7 confidence and
+    # the duplicated text in the payload at the same root.
+    text = _dedup_text(raw)
     if not text:
         return SpecialtyMatch(name="Unknown", raw=raw or None,
                               confidence=CONF_UNMATCHED, matched=False)
@@ -337,32 +342,45 @@ def _matched(rec: SpecialtyRecord, raw: str, confidence: float, tier: str) -> Sp
 _MAX_RAW_WORDS = 8
 
 
-def _tidy_raw(raw: str | None) -> str | None:
-    """Clean an extractor-emitted raw specialty phrase for legible auditing.
+def _dedup_text(text: str | None) -> str:
+    """Collapse whitespace and remove duplicated runs/phrases (no length bound).
 
     The extractor occasionally doubles a specialty string or runs it on
     ("Neonatal Intensive Care Unit (NICU) Level III and Level IV Neonatal Care Unit
     (NICU) Level III and Level IV including …"). This:
       1. collapses whitespace,
-      2. removes an ADJACENT duplicated run of 1–6 words,
-      3. drops a later EXACT repeat of a 2–6 word phrase (non-adjacent), and
-      4. trims a very long trailing tail,
-    so the preserved `raw` stays legible — without inventing or reordering content.
+      2. removes an ADJACENT duplicated run of 1–6 words, repeatedly, and
+      3. drops a later EXACT repeat of a 2–6 word phrase (non-adjacent),
+    without inventing or reordering content. Applied BEFORE matching so a duplicated
+    phrase resolves deterministically (its clean form hits the catalog at full
+    confidence) instead of falling through to the AI tier — and reused by
+    `_tidy_raw` for the audit `raw`.
     """
-    if not raw:
-        return raw
-    text = re.sub(r"\s+", " ", raw).strip()
+    if not text:
+        return ""
+    out = re.sub(r"\s+", " ", text).strip()
 
     # (2) Adjacent duplicated run of up to 6 words, repeatedly.
     prev = None
-    while prev != text:
-        prev = text
-        text = re.sub(r"\b(\w[\w /()&-]{0,80}?)\s+\1\b", r"\1", text, flags=re.I)
+    while prev != out:
+        prev = out
+        out = re.sub(r"\b(\w[\w /()&-]{0,80}?)\s+\1\b", r"\1", out, flags=re.I)
 
     # (3) Non-adjacent exact phrase repeat: keep the first occurrence, drop later ones.
-    text = _drop_repeated_phrases(text)
+    return _drop_repeated_phrases(out)
 
-    # (4) Bound the length.
+
+def _tidy_raw(raw: str | None) -> str | None:
+    """Clean an extractor-emitted raw specialty phrase for legible auditing.
+
+    De-duplicates (see `_dedup_text`) then trims a very long trailing tail, so the
+    preserved `raw` stays legible without inventing or reordering content.
+    """
+    if not raw:
+        return raw
+    text = _dedup_text(raw)
+
+    # Bound the length.
     words = text.split()
     if len(words) > _MAX_RAW_WORDS:
         text = " ".join(words[:_MAX_RAW_WORDS]).rstrip(" ,;:-") + "…"

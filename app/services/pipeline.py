@@ -27,7 +27,7 @@ from app.core.logging import get_logger
 from app.models.schemas import ConfidenceScores, ParsedResumeAI, PersonalInfo
 from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor, rtf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
-from app.services.normalization import specialty_matcher
+from app.services.normalization import city_resolver, specialty_matcher
 from app.services.normalization.normalizer import (
     cert_expiry_warnings,
     normalize,
@@ -331,6 +331,17 @@ async def run(inp: PipelineInput) -> PipelineResult:
             )
         except Exception as exc:  # noqa: BLE001 — tier 4 is optional, never fatal
             log.warning("specialty_ai_tier_skipped", job_id=inp.job_id, error=str(exc))
+
+    # City id enrichment: opt-in, live fuzzy match against the cities endpoint using
+    # the offline-resolved country_id/state_id. No-op unless enabled + keyed. Best-
+    # effort and time-bounded — a failure leaves the deterministic result intact.
+    if get_settings().enable_city_api_match and _remaining() > 3:
+        try:
+            await asyncio.wait_for(
+                city_resolver.resolve_cities(normalized), timeout=_remaining() - 1,
+            )
+        except Exception as exc:  # noqa: BLE001 — city enrichment is optional, never fatal
+            log.warning("city_api_tier_skipped", job_id=inp.job_id, error=str(exc))
 
     confidence = score(normalized)
 

@@ -71,9 +71,17 @@ _SECTION_KEYWORDS: dict[str, list[str]] = {
     ],
 }
 
+# A header may be the bare keyword ("Education") OR a compound header that joins it
+# to a sibling with a connector ("Education & Training", "Education and Certifications",
+# "Licenses / Certifications", "Awards, Honors"). The optional connector clause
+# requires an explicit &/and///,/+ right after the keyword, so a prose line that
+# merely STARTS with the word ("Experience in a 64-bed ICU") is NOT mistaken for a
+# header. `_match_section_header` still bounds the line to a short length.
 _HEADER_PATTERNS: dict[str, re.Pattern] = {
     section: re.compile(
-        r"^\s*(?:" + "|".join(re.escape(k) for k in keywords) + r")\s*[:\-]?\s*$",
+        r"^\s*(?:" + "|".join(re.escape(k) for k in keywords) + r")"
+        r"(?:\s*(?:&|/|\+|,|and)\s+[\w&/,\s+-]+?)?"
+        r"\s*[:\-]?\s*$",
         re.IGNORECASE,
     )
     for section, keywords in _SECTION_KEYWORDS.items()

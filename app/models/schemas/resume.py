@@ -237,6 +237,13 @@ class ExperienceItem(BaseModel):
     state:         str | None = Field(None, description="Facility state/province, only if stated — copied exactly as written (keep 'NY', do NOT expand to 'New York')")
     country:       str | None = Field(None, description="Facility country — ONLY if explicitly written on the résumé; otherwise null. Do NOT infer 'United States'.")
     zip_code:      str | None = Field(None, description="Facility postal/ZIP code, only if stated — never guessed from the city")
+    # ── Structured location ids (platform geographies) ────────────────────────
+    country_id:    str | None = Field(None, description="Matched platform country id for `country`. Set by the system from the geographies catalog — never fill this yourself; null when unmatched.")
+    country_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that country_id is correct (1.0 on an exact catalog match). Set by the system.")
+    state_id:      str | None = Field(None, description="Matched platform state id for `state` (scoped to country_id). Set by the system from the geographies catalog — never fill this yourself; null when unmatched.")
+    state_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that state_id is correct (1.0 on an exact catalog match). Set by the system.")
+    city_id:       str | None = Field(None, description="Matched platform city id for `city`. Set by the system via the live cities fuzzy-match (only when enabled); null otherwise. Never fill this yourself.")
+    city_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that city_id is correct (the cities API match score). Set by the system.")
     employer_phone: str | None = Field(None, description="Employer/facility phone number exactly as written, only if stated next to this role (e.g. '304-287-2120'). Null if not stated.")
     # ── Clinical classification (Select Profession / Select Specialties) ──────
     profession:    str | None = Field(None, description="Credential/profession for this role exactly as stated (e.g. 'RN', 'LPN', 'CRT'). Do NOT expand the abbreviation.")
@@ -293,7 +300,10 @@ class ExperienceItem(BaseModel):
     def sanitize_optional_strings(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
 
-    @field_validator("profession_id", "facility_id", mode="before")
+    @field_validator(
+        "profession_id", "facility_id", "country_id", "state_id", "city_id",
+        mode="before",
+    )
     @classmethod
     def coerce_catalog_id(cls, v: object) -> str | None:
         # System-set catalog ids: accept an int/str (e.g. a DynamoDB reload), store
@@ -304,7 +314,10 @@ class ExperienceItem(BaseModel):
             return str(int(v)) if float(v).is_integer() else str(v)
         return _sanitize_str(str(v)) if isinstance(v, str) else None
 
-    @field_validator("profession_confidence", "facility_confidence", mode="before")
+    @field_validator(
+        "profession_confidence", "facility_confidence", "country_confidence",
+        "state_confidence", "city_confidence", mode="before",
+    )
     @classmethod
     def coerce_id_confidence(cls, v: object) -> float:
         if isinstance(v, bool) or not isinstance(v, int | float | str):

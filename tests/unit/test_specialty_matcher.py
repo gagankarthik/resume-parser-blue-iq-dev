@@ -140,6 +140,19 @@ def test_base_specialty_preferred_over_variant_on_shared_full_name(tmp_path):
     assert m.specialty_id == "45" and m.name == "ER"
 
 
+def test_duplicated_exact_phrase_matches_deterministically_at_one(icu_catalog):
+    # A doubled specialty ("NICU NICU") must resolve deterministically at 1.0 via the
+    # NAME tier — it must NOT miss the deterministic tiers and fall to the AI cap
+    # (0.7). Regression guard for the "exact match returning 0.7" bug.
+    for raw in ("NICU NICU", "CCU CCU CCU"):
+        m = specialty_matcher.match(raw)
+        assert m.matched is True
+        assert m.match_tier == "name"
+        assert m.confidence == 1.0
+    m = specialty_matcher.match("NICU NICU")
+    assert m.specialty_id == "82" and m.raw == "NICU"      # raw also de-duplicated
+
+
 def test_tidy_raw_collapses_adjacent_and_phrase_repeats():
     assert specialty_matcher._tidy_raw("ICU ICU ICU") == "ICU"
     assert specialty_matcher._tidy_raw("Critical Care Unit Critical Care Unit") == "Critical Care Unit"

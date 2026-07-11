@@ -32,3 +32,26 @@ def test_overall_is_weighted_average():
     )
     scores = score(parsed)
     assert 0.0 <= scores.overall <= 1.0
+
+
+def test_catalog_mapping_averages_entity_confidences():
+    # A role whose entities all resolved to platform ids at high confidence yields a
+    # high catalog_mapping; unmatched entities (0.0) pull it down.
+    exp = ExperienceItem(
+        company="Mercy Hospital", role="RN", profession="RN", state="NY", country="United States",
+    )
+    exp.profession_id, exp.profession_confidence = "1", 1.0
+    exp.facility_id, exp.facility_confidence = "500", 1.0
+    exp.country_id, exp.country_confidence = "1", 1.0
+    exp.state_id, exp.state_confidence = "35", 1.0
+    parsed = ParsedResumeAI(experience=[exp])
+    assert score(parsed).catalog_mapping == 1.0
+
+    exp2 = ExperienceItem(company="Unknown Clinic", role="RN", profession="RN", state="ZZ")
+    # nothing resolved → confidences stay 0.0
+    parsed2 = ParsedResumeAI(experience=[exp2])
+    assert score(parsed2).catalog_mapping == 0.0
+
+
+def test_catalog_mapping_zero_when_no_experience():
+    assert score(ParsedResumeAI()).catalog_mapping == 0.0

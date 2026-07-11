@@ -1,0 +1,78 @@
+#!/usr/bin/env python
+"""
+Regenerate the bundled geography catalog snapshot from the GigHealth API.
+
+    python -m scripts.refresh_geography_catalog          # uses env / settings
+    python -m scripts.refresh_geography_catalog --dry-run
+    GIG_SPECIAILITIES_API_KEY=... python -m scripts.refresh_geography_catalog
+
+Fetches the platform's countries + states (with their stable ids) and writes them to
+app/data/geography_catalog.json — the snapshot the parser loads to resolve a role's
+country/state to a platform country_id/state_id offline. Run this whenever the
+platform's geographies change, then commit the regenerated JSON. Authenticates with
+the same platform key as the other refresh scripts (GIG_SPECIAILITIES_API_KEY).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# Allow running as a plain script (python scripts/refresh_geography_catalog.py).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.core.config import get_settings  # noqa: E402
+from app.services.normalization import geography_api  # noqa: E402
+
+DEFAULT_OUT = Path(__file__).resolve().parents[1] / "app" / "data" / "geography_catalog.json"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT,
+                        help=f"Output JSON path (default: {DEFAULT_OUT})")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Fetch + summarise but do not write the file")
+    args = parser.parse_args(argv)
+
+    settings = get_settings()
+    api_key = settings.gig_specialties_api_key
+    if not api_key:
+        print(
+            "ERROR: no API key. Set GIG_SPECIAILITIES_API_KEY in .env or the "
+            "environment.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(f"Fetching {settings.gig_geographies_api_url} ...", file=sys.stderr)
+    payload = geography_api.fetch_payload(settings.gig_geographies_api_url, api_key)
+    rows = geography_api.flatten_payload(payload)
+    if not rows:
+        print("ERROR: API returned no geographies; refusing to overwrite the "
+              "snapshot.", file=sys.stderr)
+        return 1
+
+    total_states = sum(len(r["states"]) for r in rows)
+    print(
+        f"Flattened {len(rows)} countries with {total_states} states.",
+        file=sys.stderr,
+    )
+
+    if args.dry_run:
+        print("--dry-run: not writing.", file=sys.stderr)
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(
+        json.dumps({"geographies": rows}, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Wrote {args.out}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

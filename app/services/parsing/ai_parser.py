@@ -142,6 +142,11 @@ EXPLAINABILITY — extraction_notes[]:
   • Capture: name (as written), license_type (the credential, e.g. "RN"/"RT" — do NOT expand), state (as written, keep "NY"), license_number (verbatim, INCLUDING any letter prefix like "RN9411204" — never drop the number), status ("Active"/"In progress"…), and issued/expiry dates only if stated.
   • Set is_compact=true ONLY if the résumé literally says compact/multistate/eNLC.
   • A licence in progress / pending (e.g. "MSN in progress", "license pending") is still captured with status reflecting that — never omit it.
+- EDUCATION — populate education[] for EVERY degree/diploma; NEVER leave it empty when the résumé lists any schooling:
+  • One entry per DEGREE with institution, degree, field_of_study, location, start_year, graduation_year, gpa — only when stated.
+  • INSTITUTION INHERITANCE: when ONE school name is written once above MULTIPLE degrees/dates (e.g. "ECPI University" then "Associates in Nursing 2018" then "BSN 2019"), repeat that SAME institution on EACH degree entry; never leave it blank or emit "Unknown Institution", and do NOT create a separate degree-less entry just for the school header.
+  • Capture any 4-digit year tied to the entry wherever it sits — end of the institution/degree line, a separate date column, or after "Graduated/Completed/Class of/Conferred/Expected". A year RANGE ("2013–2015") means start_year = first, graduation_year = last; a single year is the graduation_year. Output years as integers, never a month/day string.
+  • A DEGREE belongs in education[] even when listed under a CERTIFICATIONS/LICENSES/CREDENTIALS heading — a diploma/degree is education, never a certification. Include in-progress/expected degrees (put the expected year in graduation_year only if given).
 - Preserve credential abbreviations exactly (RN, LPN, CRT, RRT, OT, PT, SLP, RT(R), RT(CT), RT(M), ARRT…). Do NOT expand them.
 - Float pool / per-diem / agency / travel assignments: list each as its OWN experience[] entry.
 - personal_info.location: the candidate's FULL home address line exactly as written, including the street/number if present (e.g. "135 Brush Hill Road, Milton, MA 02186"). Do NOT shorten it to just city/state/zip.

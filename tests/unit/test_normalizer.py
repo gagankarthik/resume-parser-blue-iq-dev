@@ -7,6 +7,10 @@ normalization now uses the healthcare_taxonomy module — see
 test_healthcare_normalizer.py for that coverage.
 """
 
+import json
+
+import pytest
+
 from app.models.schemas import ExperienceItem, ExtractionNote, ParsedResumeAI
 from app.services.normalization.normalizer import (
     _education_tier,
@@ -167,6 +171,124 @@ def test_location_international_left_intact():
 def test_location_bare_street_untouched():
     e = _loc("818 Ellicott Street")
     assert e.location == "818 Ellicott Street"
+
+
+# ── Facility mapping wired into normalize() ──────────────────────────────────
+def _facility_catalog(tmp_path):
+    from app.services.normalization import facility_catalog
+    path = tmp_path / "fac.json"
+    path.write_text(
+        json.dumps({"facilities": [
+            {"id": "2974", "name": "Fort Sanders Regional Medical Center"},
+        ]}),
+        encoding="utf-8",
+    )
+    facility_catalog.reload(str(path))
+    return facility_catalog
+
+
+def test_facility_id_and_confidence_stamped(tmp_path):
+    cat = _facility_catalog(tmp_path)
+    try:
+        parsed = ParsedResumeAI(experience=[
+            ExperienceItem(company="Fort Sanders Regional Medical Center", role="RN"),
+        ])
+        normalize(parsed)
+        exp = parsed.experience[0]
+        assert exp.facility_id == "2974"
+        assert exp.facility_confidence == 1.0
+    finally:
+        cat.reload("")
+
+
+def test_facility_unmatched_leaves_id_null(tmp_path):
+    cat = _facility_catalog(tmp_path)
+    try:
+        parsed = ParsedResumeAI(experience=[
+            ExperienceItem(company="Acme Widgets LLC", role="RN"),
+        ])
+        normalize(parsed)
+        assert parsed.experience[0].facility_id is None
+        assert parsed.experience[0].facility_confidence == 0.0
+    finally:
+        cat.reload("")
+
+
+# ── Geography (country/state) mapping wired into normalize() ──────────────────
+def _geography_catalog(tmp_path):
+    from app.services.normalization import geography_catalog
+    path = tmp_path / "geo.json"
+    path.write_text(
+        json.dumps({"geographies": [
+            {"id": "1", "country": "United States", "code": "US", "states": [
+                {"id": "35", "state": "New York", "statecode": "NY"},
+            ]},
+        ]}),
+        encoding="utf-8",
+    )
+    geography_catalog.reload(str(path))
+    return geography_catalog
+
+
+def test_country_and_state_ids_stamped(tmp_path):
+    cat = _geography_catalog(tmp_path)
+    try:
+        parsed = ParsedResumeAI(experience=[
+            ExperienceItem(company="X", role="RN", city="Buffalo", state="NY"),
+        ])
+        normalize(parsed)
+        exp = parsed.experience[0]
+        # country was blank but backfilled to "United States" from the US state,
+        # then resolved to its platform id; state resolves scoped to that country.
+        assert exp.country == "United States"
+        assert exp.country_id == "1" and exp.country_confidence == 1.0
+        assert exp.state_id == "35" and exp.state_confidence == 1.0
+        # city_id is NOT resolved offline (live cities search is opt-in).
+        assert exp.city_id is None
+    finally:
+        cat.reload("")
+
+
+def test_unmatched_state_leaves_id_null(tmp_path):
+    cat = _geography_catalog(tmp_path)
+    try:
+        parsed = ParsedResumeAI(experience=[
+            ExperienceItem(company="X", role="RN", state="ZZ", country="Freedonia"),
+        ])
+        normalize(parsed)
+        assert parsed.experience[0].country_id is None
+        assert parsed.experience[0].state_id is None
+    finally:
+        cat.reload("")
+
+
+# ── Bed-count guard ──────────────────────────────────────────────────────────
+from app.services.normalization.normalizer import _sanitize_bed_count  # noqa: E402
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("30", "30"),
+    ("30-bed", "30"),
+    ("approx 250 beds", "250"),
+    ("1,200 beds", "1200"),
+    ("large", None),
+    ("N/A", None),
+    ("", None),
+    (None, None),
+])
+def test_sanitize_bed_count(raw, expected):
+    assert _sanitize_bed_count(raw) == expected
+
+
+def test_bed_counts_guarded_in_normalize():
+    parsed = ParsedResumeAI(experience=[
+        ExperienceItem(company="X", role="RN", facility_beds="a big hospital",
+                       beds_in_unit="30-bed unit"),
+    ])
+    normalize(parsed)
+    exp = parsed.experience[0]
+    assert exp.facility_beds is None          # non-numeric → dropped
+    assert exp.beds_in_unit == "30"           # explicit count → kept as the number
 
 # ── Date normalization (MM/DD/YYYY; partial precision preserved) ──────────────
 # Never invent a missing day or month — a month/year value stays month/year.

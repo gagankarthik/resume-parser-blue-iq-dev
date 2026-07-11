@@ -23,7 +23,11 @@ from app.models.schemas import (
     PersonalInfo,
     _sanitize_date,
 )
-from app.services.normalization import specialty_matcher
+from app.services.normalization import (
+    facility_matcher,
+    geography_matcher,
+    specialty_matcher,
+)
 from app.services.normalization.healthcare_taxonomy import (
     PROFESSION_ABBREVIATIONS,
     normalize_specialty,
@@ -568,6 +572,44 @@ def _infer_country(exp: ExperienceItem) -> None:
             exp.country = _US_COUNTRY
 
 
+_BED_COUNT_RE = re.compile(r"\d[\d,]*")
+
+
+def _sanitize_bed_count(value: str | None) -> str | None:
+    """Return the explicit bed COUNT stated in `value`, or None.
+
+    Bed metrics must not carry uncertain data, so a value is trusted only when it
+    contains a clear number: the first run of digits is extracted (dropping thousands
+    commas and any surrounding words like "bed"/"approx"). A value with no digits at
+    all is dropped to None rather than stored as-is.
+    """
+    if not value:
+        return None
+    m = _BED_COUNT_RE.search(value)
+    if not m:
+        return None
+    return m.group(0).replace(",", "")
+
+
+def _resolve_geography(exp: ExperienceItem) -> None:
+    """Stamp platform country_id / state_id + confidence from the geographies catalog.
+
+    Deterministic and offline: a country/state name or code resolves at confidence
+    1.0, else the id stays null (0.0) for review. State resolution is scoped to the
+    resolved country. Never overrides an id already present (e.g. a DynamoDB reload).
+    """
+    if exp.country_id is None:
+        country = geography_matcher.resolve_country(exp.country)
+        if country.matched:
+            exp.country_id = country.id
+            exp.country_confidence = country.confidence
+    if exp.state_id is None:
+        state = geography_matcher.resolve_state(exp.state, exp.country_id)
+        if state.matched:
+            exp.state_id = state.id
+            exp.state_confidence = state.confidence
+
+
 # A part that reads like a street line (starts with a number, or names a street
 # type / unit) rather than a city — used to decide where the street ends.
 _STREET_HINT_RE = re.compile(
@@ -672,6 +714,22 @@ def _normalize_experience(exp: ExperienceItem) -> None:
     exp.profession_id = profession_id
     exp.profession_confidence = 1.0 if profession_id else 0.0
 
+    # Map the employer/facility name to its platform facility id + confidence
+    # (exact name 1.0, near-miss graded, 0.0/null when unmatched or no catalog is
+    # loaded). Never override an id the model was fed on a DynamoDB reload.
+    if exp.facility_id is None:
+        facility = facility_matcher.match(exp.company)
+        if facility.matched:
+            exp.facility_id = facility.facility_id
+            exp.facility_confidence = facility.confidence
+
+    # Bed counts must never carry uncertain/corrupted data: keep only an explicit
+    # stated number (e.g. "30", "30-bed", "approx 250 beds" → the digits), null
+    # anything without a clear count. Prevents a non-numeric/garbled value from ever
+    # populating a bed-count metric.
+    exp.facility_beds = _sanitize_bed_count(exp.facility_beds)
+    exp.beds_in_unit = _sanitize_bed_count(exp.beds_in_unit)
+
     # A stated trauma LEVEL means the site IS a trauma facility — backfill the
     # flag the model commonly leaves null when it only captured the level
     # (e.g. "Level 1 Trauma" with trauma_facility=None). Never override an
@@ -686,6 +744,13 @@ def _normalize_experience(exp: ExperienceItem) -> None:
     # Backfill the country from an unambiguous US state/ZIP signal (deterministic;
     # the model is told not to guess it).
     _infer_country(exp)
+
+    # Resolve the country/state strings to platform ids + confidence offline (from
+    # the geographies catalog). State is scoped to the resolved country so a shared
+    # statecode picks the right one. City id is NOT resolved here — cities are a
+    # live fuzzy search handled by the opt-in city_resolver enrichment. Never
+    # override an id the model was fed on a DynamoDB reload.
+    _resolve_geography(exp)
 
     # Map each per-role specialty to a catalog id + confidence via the tiered
     # matcher (deterministic tiers 1–3; the AI tier runs later in the pipeline).

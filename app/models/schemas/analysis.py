@@ -6,11 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConfidenceScores(BaseModel):
-    overall:       float = Field(..., ge=0.0, le=1.0, description="Weighted overall confidence (0.0 = no data, 1.0 = complete)")
-    personal_info: float = Field(..., ge=0.0, le=1.0, description="Confidence in personal contact fields")
-    experience:    float = Field(..., ge=0.0, le=1.0, description="Confidence in experience entries")
-    education:     float = Field(..., ge=0.0, le=1.0, description="Confidence in education entries")
-    skills:        float = Field(..., ge=0.0, le=1.0, description="Confidence in skills / specialties list")
+    overall:         float = Field(..., ge=0.0, le=1.0, description="Weighted overall confidence (0.0 = no data, 1.0 = complete)")
+    personal_info:   float = Field(..., ge=0.0, le=1.0, description="Confidence in personal contact fields")
+    experience:      float = Field(..., ge=0.0, le=1.0, description="Confidence in experience entries")
+    education:       float = Field(..., ge=0.0, le=1.0, description="Confidence in education entries")
+    skills:          float = Field(..., ge=0.0, le=1.0, description="Confidence in skills / specialties list")
+    catalog_mapping: float = Field(0.0, ge=0.0, le=1.0, description="Mean match confidence of the role entities resolved to platform ids (profession, facility, country, state, city, specialties). 1.0 = every entity matched a catalog id exactly; low = several fell back or went unmatched. 0.0 when there is nothing to map.")
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -20,6 +21,7 @@ class ConfidenceScores(BaseModel):
                 "experience": 0.88,
                 "education": 0.90,
                 "skills": 1.0,
+                "catalog_mapping": 0.94,
             }
         }
     )
