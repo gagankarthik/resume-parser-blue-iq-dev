@@ -1,1 +1,1 @@
-"""Multi-agent healthcare résumé parser — see app/services/parsing/orchestrator.py."""
+"""Multi-agent healthcare resume parser - see app/services/parsing/orchestrator.py."""

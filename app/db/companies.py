@@ -52,7 +52,7 @@ def get_company_by_email(email: str) -> dict | None:
 def list_companies() -> list[dict]:
     """Return every company, following pagination.
 
-    A bare scan() returns only the first ≤1 MB page, so once companies exceed one
+    A bare scan() returns only the first <=1 MB page, so once companies exceed one
     page the admin listing and platform-wide stats rollups silently under-report.
     Page through LastEvaluatedKey to get the full set.
     """

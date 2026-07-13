@@ -8,7 +8,7 @@ Regenerate the bundled specialty catalog snapshot from the GigHealth API.
 
 Fetches the platform's specialty taxonomy, flattens it into the flat catalog rows
 the matcher consumes (id, specialty, full_name, group, profession, keywords[]) with
-the platform's EXACT names, and writes them to app/data/specialty_catalog.json —
+the platform's EXACT names, and writes them to app/data/specialty_catalog.json -
 the snapshot the parser loads at runtime. Run this whenever the platform's
 specialties change, then commit the regenerated JSON.
 """

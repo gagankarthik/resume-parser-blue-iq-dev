@@ -34,7 +34,7 @@ def create_batch(
             "failed": 0,
             "status": "processing",
             "created_at": datetime.now(UTC).isoformat(),
-            # 24-hour TTL — batches don't need to live as long as job results
+            # 24-hour TTL - batches don't need to live as long as job results
             "ttl": int(time.time()) + 86400,
         }
     )

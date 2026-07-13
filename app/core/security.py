@@ -6,7 +6,7 @@ import re
 import secrets
 import time
 
-# API key must match this pattern — validated before any DynamoDB call
+# API key must match this pattern - validated before any DynamoDB call
 _API_KEY_PATTERN = re.compile(r"^rp_live_[A-Za-z0-9_\-]{32,}$")
 
 
@@ -16,7 +16,7 @@ def validate_key_format(raw_key: str) -> bool:
 
 
 def generate_api_key() -> tuple[str, str]:
-    """Return (raw_key, key_hash). Store only the hash — never the raw key."""
+    """Return (raw_key, key_hash). Store only the hash - never the raw key."""
     raw_key = f"rp_live_{secrets.token_urlsafe(32)}"
     return raw_key, hash_api_key(raw_key)
 
@@ -27,7 +27,7 @@ def hash_api_key(raw_key: str) -> str:
 
 def key_display_prefix(raw_key: str) -> str:
     """Return the first 12 chars + ellipsis for safe logging/display."""
-    return raw_key[:12] + "…"
+    return raw_key[:12] + "..."
 
 
 def generate_webhook_secret() -> str:
@@ -48,7 +48,7 @@ def verify_webhook_signature(
     return hmac.compare_digest(expected, signature)
 
 
-# ── Account passwords (self-serve signup) ─────────────────────────────────────
+# -- Account passwords (self-serve signup) -------------------------------------
 
 _PBKDF2_ROUNDS = 200_000
 
@@ -71,7 +71,7 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-# ── Account session tokens (signed, stateless) ────────────────────────────────
+# -- Account session tokens (signed, stateless) --------------------------------
 
 def create_account_token(company_id: str, secret: str, ttl_seconds: int = 60 * 60 * 24 * 7) -> str:
     """Signed token: base64url(payload).hmac. Payload carries company_id + exp."""

@@ -1,9 +1,9 @@
 """
 Date and credential/specialty normalization tests.
 
-Generic skill aliases (JS → JavaScript, postgres → PostgreSQL, etc.) were
+Generic skill aliases (JS -> JavaScript, postgres -> PostgreSQL, etc.) were
 intentionally removed when the parser became healthcare-only. Skill
-normalization now uses the healthcare_taxonomy module — see
+normalization now uses the healthcare_taxonomy module - see
 test_healthcare_normalizer.py for that coverage.
 """
 
@@ -24,7 +24,7 @@ from app.services.normalization.normalizer import (
 )
 
 
-# ── Nursing enrichments ──────────────────────────────────────────────────────
+# -- Nursing enrichments ------------------------------------------------------
 def test_clinical_rotation_routed_out_of_experience_with_hours():
     p = ParsedResumeAI.model_validate({"experience": [
         {"company": "Mercy", "role": "Staff RN", "start_date": "01/2022", "end_date": "Present", "is_current": True},
@@ -96,7 +96,7 @@ def test_cert_expiry_warning_for_missing_expiration():
     assert warns and "ACLS" in warns[0] and "BLS" not in warns[0]
 
 
-# ── Extraction-note confidence normalization ─────────────────────────────────
+# -- Extraction-note confidence normalization ---------------------------------
 def test_extraction_note_zero_confidence_null_decision_becomes_high():
     parsed = ParsedResumeAI(extraction_notes=[
         ExtractionNote(field="experience[0].facility_beds", value=None,
@@ -124,7 +124,7 @@ def test_extraction_note_model_confidence_respected():
     assert parsed.extraction_notes[0].confidence == 0.45
 
 
-# ── Location: reduce a full address to the street line ───────────────────────
+# -- Location: reduce a full address to the street line -----------------------
 def _loc(location, **kw):
     e = ExperienceItem(company="X", role="Y", location=location, **kw)
     _refine_location_to_street(e)
@@ -163,7 +163,7 @@ def test_location_never_overrides_extracted_parts():
 
 
 def test_location_international_left_intact():
-    # No US state/ZIP tail → we cannot split safely, so leave it as-is.
+    # No US state/ZIP tail -> we cannot split safely, so leave it as-is.
     e = _loc("135 Brush Hill Road, London, UK")
     assert e.location == "135 Brush Hill Road, London, UK"
 
@@ -173,7 +173,7 @@ def test_location_bare_street_untouched():
     assert e.location == "818 Ellicott Street"
 
 
-# ── Facility mapping wired into normalize() ──────────────────────────────────
+# -- Facility mapping wired into normalize() ----------------------------------
 def _facility_catalog(tmp_path):
     from app.services.normalization import facility_catalog
     path = tmp_path / "fac.json"
@@ -214,7 +214,7 @@ def test_facility_unmatched_leaves_id_null(tmp_path):
         cat.reload("")
 
 
-# ── Geography (country/state) mapping wired into normalize() ──────────────────
+# -- Geography (country/state) mapping wired into normalize() ------------------
 def _geography_catalog(tmp_path):
     from app.services.normalization import geography_catalog
     path = tmp_path / "geo.json"
@@ -262,7 +262,7 @@ def test_unmatched_state_leaves_id_null(tmp_path):
         cat.reload("")
 
 
-# ── Bed-count guard ──────────────────────────────────────────────────────────
+# -- Bed-count guard ----------------------------------------------------------
 from app.services.normalization.normalizer import _sanitize_bed_count  # noqa: E402
 
 
@@ -290,15 +290,15 @@ def test_bed_counts_guarded_in_normalize():
     assert exp.facility_beds is None          # non-numeric → dropped
     assert exp.beds_in_unit == "30"           # explicit count → kept as the number
 
-# ── Date normalization (MM/DD/YYYY; partial precision preserved) ──────────────
-# Never invent a missing day or month — a month/year value stays month/year.
+# -- Date normalization (MM/DD/YYYY; partial precision preserved) --------------
+# Never invent a missing day or month - a month/year value stays month/year.
 
 def test_date_iso_full_to_us():
     assert _normalize_date("2024-02-16") == "02/16/2024"
 
 
 def test_date_iso_month_keeps_precision():
-    # Month/year only → MM/YYYY (NOT padded to a fabricated day).
+    # Month/year only -> MM/YYYY (NOT padded to a fabricated day).
     assert _normalize_date("2023-05") == "05/2023"
 
 
@@ -334,7 +334,7 @@ def test_date_unparseable_is_none():
     assert _normalize_date("sometime last year") is None
 
 
-# ── Name credential stripping ─────────────────────────────────────────────────
+# -- Name credential stripping -------------------------------------------------
 
 def test_strip_name_comma_credentials():
     assert _strip_name_credentials("Jane Smith, RN BSN") == "Jane Smith"
@@ -349,11 +349,11 @@ def test_strip_name_keeps_plain_name():
 
 
 def test_strip_name_preserves_last_first():
-    # "Last, First" must survive — the tail is not credential-like.
+    # "Last, First" must survive - the tail is not credential-like.
     assert _strip_name_credentials("Smith, Jane") == "Smith, Jane"
 
 
-# ── Name credentials are PRESERVED, not just stripped ─────────────────────────
+# -- Name credentials are PRESERVED, not just stripped -------------------------
 
 def test_name_credentials_recovered_into_credentials_field():
     # Post-nominals stripped from the name must land in personal_info.credentials
@@ -385,14 +385,14 @@ def test_plain_name_yields_no_credentials():
     assert parsed.personal_info.credentials == []
 
 
-# ── Unknown / blank role backfill (travel-assignment sub-entries) ─────────────
+# -- Unknown / blank role backfill (travel-assignment sub-entries) -------------
 
 def test_unknown_role_backfilled_from_profession():
     parsed = ParsedResumeAI.model_validate(
         {"experience": [{"company": "VT Psychiatric Care", "role": "", "profession": "RN"}]}
     )
     normalize(parsed)
-    # "" → "Unknown" by the schema validator → backfilled + expanded from profession.
+    # "" -> "Unknown" by the schema validator -> backfilled + expanded from profession.
     assert parsed.experience[0].role == "Registered Nurse"
 
 
@@ -413,10 +413,10 @@ def test_known_role_not_overwritten():
     assert parsed.experience[0].role == "Registered Nurse - Intensive Care Unit"
 
 
-# ── Trauma facility inferred from a stated trauma level ───────────────────────
+# -- Trauma facility inferred from a stated trauma level -----------------------
 
 def test_trauma_facility_backfilled_from_level():
-    # Source marks "Level 1 Trauma" but the model left trauma_facility null —
+    # Source marks "Level 1 Trauma" but the model left trauma_facility null -
     # a stated level means it IS a trauma facility.
     parsed = ParsedResumeAI.model_validate(
         {"experience": [{"company": "Albany Medical Center", "role": "RN",
@@ -443,7 +443,7 @@ def test_trauma_facility_stays_null_without_level():
     assert parsed.experience[0].trauma_facility is None
 
 
-# ── Description bullets: intra-bullet PDF line-wrap is collapsed ───────────────
+# -- Description bullets: intra-bullet PDF line-wrap is collapsed ---------------
 
 def test_description_embedded_newline_collapsed():
     # A PDF line-wrap inside one bullet must become a single space, not a
@@ -456,7 +456,7 @@ def test_description_embedded_newline_collapsed():
     assert parsed.experience[0].description == ["Charted vitals ensuring accurate documentation"]
 
 
-# ── Credential casing + cross-bucket hygiene ──────────────────────────────────
+# -- Credential casing + cross-bucket hygiene ----------------------------------
 
 def test_lowercased_credentials_restored_to_canonical_case():
     parsed = ParsedResumeAI.model_validate(
@@ -476,7 +476,7 @@ def test_lowercased_license_type_uppercased():
 
 
 def test_practice_credential_cert_promoted_to_license():
-    # "LPN" filed under certifications is a professional licence — promote it.
+    # "LPN" filed under certifications is a professional licence - promote it.
     parsed = ParsedResumeAI.model_validate(
         {"certifications": [{"name": "LPN"}, {"name": "BLS"}]}
     )
@@ -527,7 +527,7 @@ def test_degree_tokens_dropped_from_skills():
     assert parsed.skills == ["Intensive Care Unit"]
 
 
-# ── Skill dedup (case-insensitive) ────────────────────────────────────────────
+# -- Skill dedup (case-insensitive) --------------------------------------------
 
 def test_skill_deduplication():
     """Same skill in different casing should be deduplicated."""
@@ -547,14 +547,14 @@ def test_healthcare_specialty_normalizes():
     skills = _normalize_skills(["ICU", "ER", "ACLS"])
     assert "Intensive Care Unit" in skills
     assert "Emergency Room" in skills
-    # ACLS isn't in the abbreviation map — passes through unchanged
+    # ACLS isn't in the abbreviation map - passes through unchanged
     assert "ACLS" in skills
 
 
-# ── Education repair: orphaned degrees reattach to their institution ──────────
+# -- Education repair: orphaned degrees reattach to their institution ----------
 
 def test_education_reattaches_orphaned_degrees_and_drops_header_stub():
-    """One school header + multiple degree lines → each degree keeps the school;
+    """One school header + multiple degree lines -> each degree keeps the school;
     the degree-less header stub is dropped (no 'Unknown Institution')."""
     parsed = ParsedResumeAI.model_validate({
         "education": [
@@ -580,7 +580,7 @@ def test_education_keeps_standalone_institution_without_siblings():
     assert parsed.education[0].institution == "State University"
 
 
-# ── Country inference: unambiguous US signal only ────────────────────────────
+# -- Country inference: unambiguous US signal only ----------------------------
 
 def test_country_inferred_from_us_state_abbrev():
     parsed = ParsedResumeAI.model_validate({
@@ -617,7 +617,7 @@ def test_country_not_inferred_without_us_signal():
     assert parsed.experience[0].country is None
 
 
-# ── Profession id mapping on experience ──────────────────────────────────────
+# -- Profession id mapping on experience --------------------------------------
 
 def test_profession_id_and_confidence_mapped(tmp_path):
     import json
@@ -636,7 +636,7 @@ def test_profession_id_and_confidence_mapped(tmp_path):
         exp = parsed.experience[0]
         assert exp.profession_id == "1"
         assert exp.profession_confidence == 1.0
-        # Facility mapping is reserved (awaiting the client dataset) → null / 0.0.
+        # Facility mapping is reserved (awaiting the client dataset) -> null / 0.0.
         assert exp.facility_id is None and exp.facility_confidence == 0.0
     finally:
         specialty_catalog.reload("")

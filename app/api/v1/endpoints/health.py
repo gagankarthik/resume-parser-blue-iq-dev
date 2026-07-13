@@ -54,7 +54,7 @@ async def _check_dynamodb(settings) -> str:
         if settings.dynamodb_endpoint_url:
             kwargs["endpoint_url"] = settings.dynamodb_endpoint_url
         db = boto3.client("dynamodb", **kwargs)
-        # DescribeTable (not ListTables) — covered by the least-privilege role
+        # DescribeTable (not ListTables) - covered by the least-privilege role
         # and validates the table the app actually depends on.
         db.describe_table(TableName=settings.dynamodb_table_api_keys)
 

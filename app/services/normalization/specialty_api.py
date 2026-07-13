@@ -5,18 +5,18 @@ The placement platform ("Gig") exposes its specialty taxonomy at
 ``GET /api/v1/external/specialities`` (auth: ``x-api-key``). The response nests
 specialties four levels deep::
 
-    data[]              → clinical category   ("Nursing", "Allied Health")
-      professions[]     → profession / credential ("RN", "CNA", "LPN/ LVN", ...)
-        specialityGroups[]      → group ("ICU", "Med Surg", ...)
-          specialities[]        → the specialty  {id, name, fullName}
-        ungroupedSpecialities[] → specialties with no group
+    data[]              -> clinical category   ("Nursing", "Allied Health")
+      professions[]     -> profession / credential ("RN", "CNA", "LPN/ LVN", ...)
+        specialityGroups[]      -> group ("ICU", "Med Surg", ...)
+          specialities[]        -> the specialty  {id, name, fullName}
+        ungroupedSpecialities[] -> specialties with no group
 
 This module flattens that tree into the FLAT record shape the specialty catalog
-loader consumes — ``{id, specialty, full_name, group, profession, keywords[]}`` —
+loader consumes - ``{id, specialty, full_name, group, profession, keywords[]}`` -
 **preserving the platform's exact specialty names** (we never re-word "Med Surg"
 into "Med-Surg" etc.). It is deliberately import-light: the flatten/transform is
 pure and unit-testable, and the network fetch (`fetch_payload`) is only used by
-``scripts/refresh_specialty_catalog.py`` to regenerate the bundled snapshot — never
+``scripts/refresh_specialty_catalog.py`` to regenerate the bundled snapshot - never
 on the request hot path.
 
 Why a snapshot instead of a live fetch per parse: the catalog is ~1k records that
@@ -38,15 +38,15 @@ from app.services.normalization import gig_api
 DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/specialities"
 
 
-# ── Curated keyword overlay ───────────────────────────────────────────────────
+# -- Curated keyword overlay ---------------------------------------------------
 # Extra search phrases that let the deterministic keyword tier differentiate
-# sub-types the platform records only as an acronym (the task's "burn → BICU, ICU
+# sub-types the platform records only as an acronym (the task's "burn -> BICU, ICU
 # variants, PICU"). Keyed by the EXACT platform specialty name; applied to that
 # specialty under EVERY profession. Kept intentionally SPECIFIC/multi-word so a
 # phrase maps to exactly one specialty (the catalog's keyword index is first-wins,
-# so a generic word like "medical" or "pediatric" would collide — avoid those).
+# so a generic word like "medical" or "pediatric" would collide - avoid those).
 CURATED_KEYWORDS: dict[str, tuple[str, ...]] = {
-    # ICU family — the differentiator is the modifier, not "ICU".
+    # ICU family - the differentiator is the modifier, not "ICU".
     "BICU":        ("burn icu", "burn intensive care", "burn unit"),
     "MICU":        ("medical icu",),
     "SICU":        ("surgical icu",),
@@ -70,7 +70,7 @@ CURATED_KEYWORDS: dict[str, tuple[str, ...]] = {
     "PreOp":       ("pre op", "pre operative", "preoperative"),
     "CVOR":        ("cardiovascular or", "cardiovascular operating room"),
     "CTOR":        ("cardio thoracic or", "cardiothoracic operating room"),
-    # Med-Surg / Tele shorthand résumés commonly write out.
+    # Med-Surg / Tele shorthand resumes commonly write out.
     "Med Surg":       ("medical surgical", "med/surg"),
     "Med Surg/ Tele": ("med surg tele", "medical surgical telemetry", "ms/tele"),
     "Telemetry":      ("tele",),
@@ -93,7 +93,7 @@ def fetch_payload(api_url: str, api_key: str, *, timeout: float = 30.0) -> dict:
     """GET the Gig specialties API and return the decoded JSON envelope.
 
     Raises ``gig_api.GigApiError`` on HTTP error / non-JSON / ``success: false`` so the
-    refresh script fails loudly — the request path never calls this (it reads the
+    refresh script fails loudly - the request path never calls this (it reads the
     bundled snapshot). 429s are retried with backoff, per the partner guide.
     """
     return gig_api.get_sync_envelope(api_url, api_key, timeout=timeout)

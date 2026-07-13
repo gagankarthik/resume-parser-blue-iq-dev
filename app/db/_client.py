@@ -1,7 +1,7 @@
 """Shared DynamoDB resource/table access for the repository modules.
 
 One cached boto3 resource per (region, endpoint); `_table()` resolves a Table by
-name. The per-entity repositories (api_keys, companies, jobs, …) build on these
+name. The per-entity repositories (api_keys, companies, jobs, ...) build on these
 instead of each re-creating the boto3 plumbing.
 """
 

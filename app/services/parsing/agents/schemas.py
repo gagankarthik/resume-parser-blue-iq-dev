@@ -23,7 +23,7 @@ from app.models.schemas import (
     _coerce_list,
 )
 
-# ── Stage 2: personal section ─────────────────────────────────────────────────
+# -- Stage 2: personal section -------------------------------------------------
 
 
 class PersonalResult(BaseModel):
@@ -32,7 +32,7 @@ class PersonalResult(BaseModel):
     The summary is always copied verbatim into `personal.summary` (we never
     fabricate or rewrite it). `summary_off_topic` is a separate signal so the
     orchestrator can warn a reviewer when the summary is boilerplate that clearly
-    belongs to a different field — without polluting the returned PersonalInfo.
+    belongs to a different field - without polluting the returned PersonalInfo.
     """
 
     personal:          PersonalInfo = Field(default_factory=PersonalInfo)
@@ -44,13 +44,13 @@ class PersonalResult(BaseModel):
                     "verbatim into personal.summary regardless of this flag.",
     )
 
-# ── Stage 1: structure map ────────────────────────────────────────────────────
+# -- Stage 1: structure map ----------------------------------------------------
 
 
 class RoleBoundary(BaseModel):
     """One work-history role located by the StructureAgent.
 
-    This is a *map*, not the full extraction — it pins down how many roles exist
+    This is a *map*, not the full extraction - it pins down how many roles exist
     and how many responsibility bullets each one has, so the WorkAgent extracts
     each role independently and the ValidatorAgent can detect dropped bullets.
     Travel/agency umbrella roles are decomposed here: each facility assignment is
@@ -91,7 +91,7 @@ class ResumeStructure(BaseModel):
         return _coerce_list(v)
 
 
-# ── Stage 2: section results ──────────────────────────────────────────────────
+# -- Stage 2: section results --------------------------------------------------
 
 
 class WorkResult(BaseModel):
@@ -115,10 +115,10 @@ class EducationResult(BaseModel):
 
 
 class CredentialsResult(BaseModel):
-    """Skills + certifications + state licenses + professional associations —
+    """Skills + certifications + state licenses + professional associations -
     kept in one agent because the LLM must decide, per item, whether it is a
     skill, a certification, a state licence, or a membership/committee, and
-    seeing them together prevents double-classification. (Résumés often mix all
+    seeing them together prevents double-classification. (Resumes often mix all
     of these under one heading like "Professional Associations/Certifications/
     Licenses/Collaboratives".)"""
 

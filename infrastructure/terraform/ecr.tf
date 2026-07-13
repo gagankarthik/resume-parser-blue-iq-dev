@@ -1,4 +1,4 @@
-# ECR repository — stores the Lambda container image
+# ECR repository - stores the Lambda container image
 resource "aws_ecr_repository" "app" {
   name                 = "${local.name_prefix}-lambda"
   image_tag_mutability = "MUTABLE"

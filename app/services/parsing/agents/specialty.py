@@ -1,10 +1,10 @@
-"""SpecialtyMatchAgent — tier-4 specialty resolution via one batched LLM call.
+"""SpecialtyMatchAgent - tier-4 specialty resolution via one batched LLM call.
 
 When the deterministic tiers (name / full_name / keywords) leave specialties
 unmatched, this agent is given the list of unmatched specialty strings plus a
 filtered shortlist of catalog candidates (id + name + full name) and asked to pick
-the best catalog id for each — or none. It returns one structured result for the
-whole résumé, so tier 4 costs a single LLM call regardless of how many specialties
+the best catalog id for each - or none. It returns one structured result for the
+whole resume, so tier 4 costs a single LLM call regardless of how many specialties
 missed.
 
 The model only ever returns catalog ids it was shown; the matcher validates each
@@ -97,7 +97,7 @@ class SpecialtyMatchAgent(BaseAgent):
         """Resolve `unmatched` phrases against the `candidates` shortlist.
 
         `candidates` are pre-formatted "<id> | <name> | <full name>" lines. Returns
-        the model's per-phrase choices (unvalidated ids — the caller checks them
+        the model's per-phrase choices (unvalidated ids - the caller checks them
         against the catalog before trusting).
         """
         if not unmatched or not candidates:

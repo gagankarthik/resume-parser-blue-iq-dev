@@ -45,7 +45,7 @@ class BatchSubmitResponse(BaseModel):
                     "matched back to the file it came from",
     )
     job_ids:        list[str]         = Field(..., description="Job IDs for accepted files, in submission order")
-    status:         str               = Field(..., description="Always 'processing' — results arrive via webhook or polling")
+    status:         str               = Field(..., description="Always 'processing' - results arrive via webhook or polling")
     poll_url:       str               = Field(..., description="URL to poll for overall batch status")
 
 

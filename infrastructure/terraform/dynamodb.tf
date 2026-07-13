@@ -1,5 +1,5 @@
-# ── DynamoDB Tables ───────────────────────────────────────────────────────────
-# All tables use PAY_PER_REQUEST (on-demand) — no capacity planning needed.
+# -- DynamoDB Tables -----------------------------------------------------------
+# All tables use PAY_PER_REQUEST (on-demand) - no capacity planning needed.
 # TTL is enabled where applicable for automatic cleanup.
 
 resource "aws_dynamodb_table" "api_keys" {
@@ -125,7 +125,7 @@ resource "aws_dynamodb_table" "audit_logs" {
   tags = local.common_tags
 }
 
-# Company / account records — powers onboarding and the product dashboard.
+# Company / account records - powers onboarding and the product dashboard.
 # company_id is the same identifier used on api_keys and audit_logs.
 resource "aws_dynamodb_table" "companies" {
   name         = "resume-parser-companies"
@@ -153,7 +153,7 @@ resource "aws_dynamodb_table" "companies" {
   tags = local.common_tags
 }
 
-# Parsing feedback — original parser JSON + user-corrected JSON, captured after
+# Parsing feedback - original parser JSON + user-corrected JSON, captured after
 # the review step for model improvement. Contains resume PII, so records are
 # TTL-expired (app sets `ttl`; see feedback_retention_days, default 90 days).
 resource "aws_dynamodb_table" "feedback" {

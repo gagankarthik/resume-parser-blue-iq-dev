@@ -1,5 +1,5 @@
 """
-Facility matcher tests — exact name → id at conf 1.0, conservative fuzzy for a
+Facility matcher tests - exact name -> id at conf 1.0, conservative fuzzy for a
 near-miss spelling, and a graceful miss (id null, never guessed) when unmatched or
 no catalog is loaded.
 """
@@ -74,12 +74,12 @@ def test_no_catalog_is_graceful_miss():
     assert m.facility_id is None
 
 
-# ── Containment tier ──────────────────────────────────────────────────────────
+# -- Containment tier ----------------------------------------------------------
 #
-# Résumés drop the legal prefix a catalog carries. The parse that surfaced this had
+# Resumes drop the legal prefix a catalog carries. The parse that surfaced this had
 # "Oishei Children's Hospital"; the real catalog calls it "John R Oishei Childrens
-# Hospital". Whole-string fuzzy scores that pair at 0.893 — under the 0.90 floor by
-# seven thousandths — and lowering the floor would start admitting look-alikes.
+# Hospital". Whole-string fuzzy scores that pair at 0.893 - under the 0.90 floor by
+# seven thousandths - and lowering the floor would start admitting look-alikes.
 #
 # These use their own stub catalog that reproduces the SHAPE of the real one (a
 # dropped legal prefix, an ambiguous surname, a generic-only name). Coupling them to
@@ -93,13 +93,13 @@ def test_no_catalog_is_graceful_miss():
 def _rich_catalog(tmp_path):
     path = tmp_path / "fac_rich.json"
     path.write_text(json.dumps({"facilities": [
-        # The bug: résumé says "Oishei Children's Hospital", catalog carries a prefix.
+        # The bug: resume says "Oishei Children's Hospital", catalog carries a prefix.
         {"id": "4308", "name": "John R Oishei Childrens Hospital"},
         # Ambiguity: "Riverside" alone fits BOTH of these.
         {"id": "5685", "name": "Riverside Regional Medical Center",
          "health_system": "Riverside Health System", "health_system_id": "476"},
         {"id": "9001", "name": "Riverside Community Hospital"},
-        # A health SYSTEM, not the cardiology office a résumé might name.
+        # A health SYSTEM, not the cardiology office a resume might name.
         {"id": "234",  "name": "Great Lakes Health System of Western New York"},
     ]}), encoding="utf-8")
     facility_catalog.reload(str(path))
@@ -118,7 +118,7 @@ def test_dropped_legal_prefix_resolves_via_containment(_rich_catalog):
 
 def test_containment_refuses_a_purely_generic_name(_rich_catalog):
     """'Regional' / 'Medical' / 'Center' describe half the catalog. A shorthand made
-    only of generic tokens must never resolve by containment — it identifies nothing."""
+    only of generic tokens must never resolve by containment - it identifies nothing."""
     for junk in ["Community Health Center", "Medical Center", "Hospital", "Children's Hospital"]:
         res = facility_matcher.match(junk)
         assert res.match_tier != "containment", f"{junk!r} must not containment-match"
@@ -141,6 +141,6 @@ def test_containment_never_preempts_an_exact_match(_rich_catalog):
 
 def test_facility_genuinely_absent_stays_null(_rich_catalog):
     """Great Lakes Cardiovascular is a cardiology office, not a catalog facility. The
-    only 'Great Lakes' record is a health SYSTEM — matching it would be wrong."""
+    only 'Great Lakes' record is a health SYSTEM - matching it would be wrong."""
     res = facility_matcher.match("Great Lakes Cardiovascular")
     assert res.facility_id is None and not res.matched

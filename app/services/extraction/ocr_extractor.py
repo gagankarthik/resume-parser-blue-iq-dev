@@ -1,8 +1,8 @@
 """
 Tiered OCR pipeline:
-  1. Preprocess (deskew → denoise → contrast → binarise)
-  2. Tesseract (free, local) — primary
-  3. Amazon Textract (paid, high accuracy) — fallback when confidence < threshold
+  1. Preprocess (deskew -> denoise -> contrast -> binarise)
+  2. Tesseract (free, local) - primary
+  3. Amazon Textract (paid, high accuracy) - fallback when confidence < threshold
 
 Handles: rotated scans, low-contrast images, poor-quality photocopies,
          handwritten annotations, watermarked backgrounds.
@@ -27,15 +27,15 @@ _CONFIDENCE_THRESHOLD = 60   # escalate to Textract when mean confidence < this
 _MIN_WIDTH_FOR_OCR    = 800  # upscale images narrower than this (px)
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# -- Public API ----------------------------------------------------------------
 
 def extract(content: bytes, filename: str, force_textract: bool = False) -> tuple[str, bool]:
     """
     Returns (extracted_text, textract_used).
 
     Default (tiered): tries Tesseract first; escalates to Textract on low
-    confidence. When ``force_textract`` is True — or the global
-    ``settings.force_textract`` flag is set — Tesseract is skipped and the scan
+    confidence. When ``force_textract`` is True - or the global
+    ``settings.force_textract`` flag is set - Tesseract is skipped and the scan
     goes straight to Textract for maximum accuracy.
     """
     force = force_textract or get_settings().force_textract
@@ -62,14 +62,14 @@ def extract(content: bytes, filename: str, force_textract: bool = False) -> tupl
     return text, True
 
 
-# ── Image loading ─────────────────────────────────────────────────────────────
+# -- Image loading -------------------------------------------------------------
 
 def _to_images(content: bytes, filename: str) -> list[Image.Image]:
     ext = filename.rsplit(".", 1)[-1].lower()
     max_pages = max(1, get_settings().ocr_max_pages)
     if ext == "pdf":
         # last_page bounds work INSIDE pdftoppm, so we never rasterize (and hold in
-        # memory) more than max_pages at 300 DPI — an unbounded scan would OOM.
+        # memory) more than max_pages at 300 DPI - an unbounded scan would OOM.
         images = convert_from_bytes(content, dpi=300, first_page=1, last_page=max_pages)
         if len(images) >= max_pages:
             log.info("ocr_page_cap_applied", max_pages=max_pages)
@@ -86,7 +86,7 @@ def _to_images(content: bytes, filename: str) -> list[Image.Image]:
     return frames
 
 
-# ── Preprocessing pipeline ────────────────────────────────────────────────────
+# -- Preprocessing pipeline ----------------------------------------------------
 
 def _preprocess(img: Image.Image) -> Image.Image:
     """
@@ -116,7 +116,7 @@ def _preprocess(img: Image.Image) -> Image.Image:
         new_size = (int(img.width * scale), int(img.height * scale))
         img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-    # 5. Denoise — median filter removes salt-and-pepper noise from fax scans
+    # 5. Denoise - median filter removes salt-and-pepper noise from fax scans
     img = img.filter(ImageFilter.MedianFilter(size=3))
 
     # 6. Contrast enhancement
@@ -125,7 +125,7 @@ def _preprocess(img: Image.Image) -> Image.Image:
     # 7. Sharpen for cleaner glyph edges
     img = img.filter(ImageFilter.SHARPEN)
 
-    # 8. Binarise — converts to pure black/white, removes grey gradients
+    # 8. Binarise - converts to pure black/white, removes grey gradients
     img = img.point(lambda x: 0 if x < 140 else 255, "L")
 
     return img
@@ -151,7 +151,7 @@ def _auto_rotate(img: Image.Image) -> Image.Image:
     return img
 
 
-# ── Tesseract ─────────────────────────────────────────────────────────────────
+# -- Tesseract -----------------------------------------------------------------
 
 def _run_tesseract(images: list[Image.Image]) -> tuple[str, float]:
     """Run Tesseract on preprocessed images; return (text, mean_confidence).
@@ -195,18 +195,18 @@ def _run_tesseract(images: list[Image.Image]) -> tuple[str, float]:
     return "\n\n".join(pages), overall
 
 
-# ── Textract ──────────────────────────────────────────────────────────────────
+# -- Textract ------------------------------------------------------------------
 
 def _run_textract(preprocessed_images: list[Image.Image]) -> str:
     """
     Call AWS Textract via synchronous detect_document_text.
     Uses preprocessed images (converted to PNG) for better accuracy.
-    Pages are sent concurrently — they are independent network calls, and a
+    Pages are sent concurrently - they are independent network calls, and a
     serial loop made multi-page scans pay full Textract latency per page.
     """
     settings = get_settings()
     client = boto3.client("textract", region_name=settings.aws_region)
-    # Never use LocalStack endpoint for Textract — always real AWS
+    # Never use LocalStack endpoint for Textract - always real AWS
 
     def _one_page(img: Image.Image) -> str:
         buf = io.BytesIO()

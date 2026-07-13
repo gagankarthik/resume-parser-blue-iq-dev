@@ -1,5 +1,5 @@
 """
-Geography catalog loader tests — snapshot parsing, country/state indexes (flat +
+Geography catalog loader tests - snapshot parsing, country/state indexes (flat +
 country-scoped), and the missing/garbled-file fallback (never break parsing).
 """
 

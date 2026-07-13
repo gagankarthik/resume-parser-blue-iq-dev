@@ -4,7 +4,7 @@ In-process, per-identifier request rate limiter.
 A fixed-window counter keyed by API key, evaluated inside the auth dependency so
 every authenticated request is throttled with no per-endpoint wiring.
 
-Scope & trade-offs: this is BEST-EFFORT per Lambda instance — each concurrent
+Scope & trade-offs: this is BEST-EFFORT per Lambda instance - each concurrent
 execution environment keeps its own counter, so the effective global limit scales
 with the number of warm instances. It is the cheap first line against a single
 client hammering one warm instance; for a strict global limit, front the API with
@@ -12,7 +12,7 @@ a distributed limiter (API Gateway usage plans, or a Redis/DynamoDB token bucket
 The design mirrors the existing in-memory API-key cache in api/dependencies.py.
 
 Runs on asyncio's single-threaded event loop, so the counter mutations need no
-lock. Nothing sensitive is stored — only opaque identifiers and counts.
+lock. Nothing sensitive is stored - only opaque identifiers and counts.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from app.core.logging import get_logger
 log = get_logger(__name__)
 
 _WINDOW_SECONDS = 60
-# identifier → (window_index, count_in_window). Two separate maps so the public
+# identifier -> (window_index, count_in_window). Two separate maps so the public
 # auth throttle and the per-API-key throttle can't evict each other's counters.
 _WINDOWS: dict[str, tuple[int, int]] = {}
 _AUTH_WINDOWS: dict[str, tuple[int, int]] = {}
@@ -110,6 +110,6 @@ def _prune(windows: dict[str, tuple[int, int]], current_window: int) -> None:
 
 
 def reset() -> None:
-    """Clear all counters — for tests."""
+    """Clear all counters - for tests."""
     _WINDOWS.clear()
     _AUTH_WINDOWS.clear()

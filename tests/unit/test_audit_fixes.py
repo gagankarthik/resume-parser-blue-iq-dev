@@ -11,12 +11,12 @@ from app.services.normalization.skills_validator import _is_clinical_skill
 from app.services.parsing import rule_parser
 from app.services.parsing.agents import base
 
-# ── C1: per-event-loop client/semaphore (warm Lambda worker reuse) ─────────────
+# -- C1: per-event-loop client/semaphore (warm Lambda worker reuse) -------------
 
 def test_client_and_semaphore_rebind_across_event_loops(monkeypatch):
     """The worker Lambda creates a fresh event loop per invocation. The cached
     client/semaphore must rebind to the new loop instead of staying bound to the
-    previous (now-closed) one — which would raise on warm-container reuse."""
+    previous (now-closed) one - which would raise on warm-container reuse."""
     class _DummyClient:
         def __init__(self, **_kw):
             pass
@@ -53,7 +53,7 @@ def test_client_and_semaphore_rebind_across_event_loops(monkeypatch):
     assert sem1 is not sem2
 
 
-# ── C2: fail closed on the default auth secret in production ───────────────────
+# -- C2: fail closed on the default auth secret in production -------------------
 
 def test_production_rejects_default_auth_secret():
     s = Settings(environment="production", auth_secret=INSECURE_AUTH_SECRET_DEFAULT)
@@ -71,7 +71,7 @@ def test_development_allows_default_secret():
     Settings(environment="development").assert_production_ready()  # must not raise
 
 
-# ── C3: ExtractionNote sanitizes instead of crashing the whole parse ───────────
+# -- C3: ExtractionNote sanitizes instead of crashing the whole parse -----------
 
 def test_extraction_note_confidence_clamped():
     assert ExtractionNote(field="f", reason="r", confidence=5).confidence == 1.0
@@ -96,7 +96,7 @@ def test_parsed_resume_survives_malformed_extraction_note():
     assert r.extraction_notes[0].value == "30"
 
 
-# ── M17: URL sanitizer drops junk instead of fabricating a link ────────────────
+# -- M17: URL sanitizer drops junk instead of fabricating a link ----------------
 
 @pytest.mark.parametrize("junk", ["N/A", "not provided", "available upon request", "none"])
 def test_sanitize_url_rejects_junk(junk):
@@ -108,7 +108,7 @@ def test_sanitize_url_promotes_bare_host():
     assert _sanitize_url("https://example.com/x") == "https://example.com/x"
 
 
-# ── M18: a lone object is wrapped for object-lists, dropped for string-lists ───
+# -- M18: a lone object is wrapped for object-lists, dropped for string-lists ---
 
 def test_lone_object_wrapped_for_object_list():
     r = ParsedResumeAI(experience={"company": "Acme", "role": "RN"})
@@ -121,7 +121,7 @@ def test_lone_object_dropped_from_string_list():
     assert r.skills == []
 
 
-# ── M10: bare Roman-numeral "IV" no longer a false-positive clinical skill ─────
+# -- M10: bare Roman-numeral "IV" no longer a false-positive clinical skill -----
 
 def test_roman_numeral_iv_not_clinical():
     assert _is_clinical_skill("Trauma Level IV") is False
@@ -133,7 +133,7 @@ def test_real_iv_skills_still_clinical():
     assert _is_clinical_skill("IV/PICC") is True
 
 
-# ── Low: a bare year range must not be mistaken for a phone number ─────────────
+# -- Low: a bare year range must not be mistaken for a phone number -------------
 
 def test_year_range_not_extracted_as_phone():
     assert rule_parser.extract("Registered Nurse 2015 - 2019 at Acme").phones == []
@@ -144,7 +144,7 @@ def test_real_phone_still_extracted():
     assert any("313" in p for p in phones)
 
 
-# ── Completeness fields: headline, secondary phone, education location ──────────
+# -- Completeness fields: headline, secondary phone, education location ----------
 
 def test_personal_info_headline_and_secondary_phone():
     from app.models.schemas.resume import PersonalInfo
@@ -167,7 +167,7 @@ def test_education_item_location():
     assert e.location == "Schenectady, NY 12304"
 
 
-# ── Broadened clinical-skill recognition (previously unrecognized) ─────────────
+# -- Broadened clinical-skill recognition (previously unrecognized) -------------
 
 @pytest.mark.parametrize("skill", [
     "AED Trained", "Acute Care Assessment", "NG Tube Insertion",
@@ -184,13 +184,13 @@ def test_more_clinical_skills_recognized(skill):
     "Fluoroscopy", "Sonography", "Nuclear Medicine", "Bone Density", "PACS",
 ])
 def test_allied_health_imaging_skills_recognized(skill):
-    # A rad-tech résumé's real skills must not land 0% recognized just because the
+    # A rad-tech resume's real skills must not land 0% recognized just because the
     # taxonomy is nurse-centric.
     assert _is_clinical_skill(skill) is True
 
 
 @pytest.mark.parametrize("nonclinical", [
-    # "ct" is an imaging term now — make sure the whole-word boundary keeps it from
+    # "ct" is an imaging term now - make sure the whole-word boundary keeps it from
     # matching inside ordinary words.
     "Time Management", "Microsoft Excel", "Trauma Level IV",
     "Contract negotiation", "Reactive", "Practical skills", "Act with integrity",

@@ -27,7 +27,7 @@ class ConfidenceScores(BaseModel):
     )
 
 
-# ── Skills validation ─────────────────────────────────────────────────────────
+# -- Skills validation ---------------------------------------------------------
 
 class SkillsValidation(BaseModel):
     """
@@ -42,7 +42,7 @@ class SkillsValidation(BaseModel):
     total:              int            = Field(..., ge=0, description="Total distinct skills validated")
     recognized_count:   int            = Field(..., ge=0, description="Skills matched to the healthcare taxonomy")
     unrecognized_count: int            = Field(..., ge=0, description="Free-form skills with no taxonomy match")
-    recognized_ratio:   float          = Field(..., ge=0.0, le=1.0, description="recognized_count / total (0.0–1.0)")
+    recognized_ratio:   float          = Field(..., ge=0.0, le=1.0, description="recognized_count / total (0.0-1.0)")
     recognized:         list[str]      = Field(default_factory=list, description="Canonical names of recognized skills")
     unrecognized:       list[str]      = Field(default_factory=list, description="Skills not found in the taxonomy")
     groups:             dict[str, str] = Field(default_factory=dict, description="Recognized specialty → group label (e.g. 'Intensive Care Unit' → 'ICU')")

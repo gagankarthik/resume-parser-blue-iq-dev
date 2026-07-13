@@ -1,27 +1,27 @@
 """
 Gateway-budget integration tests for POST /api/v1/resume/parse.
 
-Regression cover for the 504 the console hit when parsing a résumé.
+Regression cover for the 504 the console hit when parsing a resume.
 
 The console reaches this API through a Next.js route handler on AWS Amplify
-Hosting, whose SSR compute has a HARD 30s request timeout — not configurable, no
+Hosting, whose SSR compute has a HARD 30s request timeout - not configurable, no
 quota to raise, and Next's `maxDuration` is not honored there
 (aws-amplify/amplify-hosting#3223, #3508). A complete synchronous parse does not
-fit that: a *typical* two-role résumé's single-shot AI pass measures ~20s, before
+fit that: a *typical* two-role resume's single-shot AI pass measures ~20s, before
 extraction, normalization and transfer. So the console blocked, Amplify severed
-the connection, and the browser got a bodyless 504 — no data, no job id, nothing
+the connection, and the browser got a bodyless 504 - no data, no job id, nothing
 to poll.
 
 The two-sided contract these tests pin:
 
-  • A caller behind a tight gateway (the console) sends `async_only`, gets a job
+  * A caller behind a tight gateway (the console) sends `async_only`, gets a job
     id back immediately, and polls. No AI on the request path, nothing to 504.
-  • A DIRECT caller (the paying integration, behind CloudFront's 60s) keeps the
+  * A DIRECT caller (the paying integration, behind CloudFront's 60s) keeps the
     synchronous fast path: JSON inline when the parse fits the budget, and a
     promote-to-async poll URL when it doesn't. It never just blocks.
 
 Unlike the unit tests, these drive the real HTTP endpoint through the REAL
-pipeline (only the AI call, storage, and dispatch are stubbed) — so the budget
+pipeline (only the AI call, storage, and dispatch are stubbed) - so the budget
 logic itself is what's under test, not a mock of it.
 """
 
@@ -40,7 +40,7 @@ client = TestClient(app)
 
 VALID_KEY = "rp_live_" + "a" * 40
 
-# Amplify Hosting's hard SSR request timeout. Exceed it → bare 504, no body.
+# Amplify Hosting's hard SSR request timeout. Exceed it -> bare 504, no body.
 AMPLIFY_HARD_CEILING_S = 30
 
 _RESUME_TEXT = (
@@ -60,7 +60,7 @@ def _authenticate(monkeypatch, company_id: str = "acme-1") -> None:
 def _stub_io(monkeypatch) -> dict:
     """Stub everything around the pipeline: auth, file validation, storage, dispatch.
 
-    The pipeline itself runs for real — that's the point.
+    The pipeline itself runs for real - that's the point.
     """
     _authenticate(monkeypatch)
     monkeypatch.setattr(resume, "validate_file", lambda fn, content: "docx")
@@ -99,8 +99,8 @@ def _post_resume() -> tuple[dict, int, float]:
 
 
 def test_slow_resume_is_promoted_to_async_instead_of_hanging(monkeypatch):
-    """THE 504 REGRESSION. A résumé the AI cannot parse inside the sync budget must
-    come back promptly as `processing` + a poll URL — not hold the connection until
+    """THE 504 REGRESSION. A resume the AI cannot parse inside the sync budget must
+    come back promptly as `processing` + a poll URL - not hold the connection until
     the gateway severs it."""
     dispatched = _stub_io(monkeypatch)
 
@@ -111,7 +111,7 @@ def test_slow_resume_is_promoted_to_async_instead_of_hanging(monkeypatch):
     monkeypatch.setattr(pipeline, "_SYNC_EXTRACT_RESERVE", 1)
 
     async def _slow_ai(_sections, _anchors):
-        # Never finishes inside the budget — the dense-résumé case.
+        # Never finishes inside the budget - the dense-resume case.
         import asyncio
         await asyncio.sleep(60)
         raise AssertionError("should have been cut off by the sync budget")
@@ -131,7 +131,7 @@ def test_slow_resume_is_promoted_to_async_instead_of_hanging(monkeypatch):
 
 
 def test_fast_resume_still_returns_parsed_json_inline(monkeypatch):
-    """The fast path must be untouched: a résumé that parses inside the budget still
+    """The fast path must be untouched: a resume that parses inside the budget still
     returns its JSON on the same request, with no promotion and no polling."""
     dispatched = _stub_io(monkeypatch)
 
@@ -153,7 +153,7 @@ def test_fast_resume_still_returns_parsed_json_inline(monkeypatch):
 
 def test_undecodable_pdf_promotes_without_running_ocr_inline(monkeypatch):
     """The second, independent 504 path: a digital PDF with a broken text layer used
-    to trigger a 90s OCR pass INSIDE the sync request — three times the whole gateway
+    to trigger a 90s OCR pass INSIDE the sync request - three times the whole gateway
     ceiling. It must now promote to the worker instead."""
     dispatched = _stub_io(monkeypatch)
     monkeypatch.setattr(resume, "validate_file", lambda fn, content: "pdf")
@@ -162,7 +162,7 @@ def test_undecodable_pdf_promotes_without_running_ocr_inline(monkeypatch):
         pipeline.classifier, "classify",
         lambda filename, content: (pipeline.ExtractionStrategy.PDF, False),
     )
-    # A text layer of undecodable CID glyphs — passes the length gate, unusable.
+    # A text layer of undecodable CID glyphs - passes the length gate, unusable.
     monkeypatch.setattr(
         pipeline.pdf_extractor, "extract",
         lambda content: "(cid:12)(cid:9)(cid:44)(cid:31)" * 60,
@@ -184,11 +184,11 @@ def test_undecodable_pdf_promotes_without_running_ocr_inline(monkeypatch):
 
 def test_async_only_returns_a_poll_url_without_ever_calling_the_ai(monkeypatch):
     """THE CONSOLE'S FIX. A caller behind a gateway too tight for a complete parse
-    (Amplify: hard 30s) sends `async_only` and must get a job id back immediately —
+    (Amplify: hard 30s) sends `async_only` and must get a job id back immediately -
     no AI call on the request path at all, so there is nothing to time out and
     nothing to 504.
 
-    This is what makes the console correct: a *typical* résumé's single-shot AI pass
+    This is what makes the console correct: a *typical* resume's single-shot AI pass
     measures ~20s, so no sync budget can fit a complete parse inside 30s. The console
     must not block on one, and a probe it can never win would just burn tokens and
     re-parse from scratch on the worker."""
@@ -219,7 +219,7 @@ def test_async_only_returns_a_poll_url_without_ever_calling_the_ai(monkeypatch):
 
 def test_sync_budget_still_fits_a_direct_caller(monkeypatch):
     """The paying integration calls the API directly (CloudFront, 60s), where a
-    synchronous parse genuinely works — that fast path must survive the console's fix.
+    synchronous parse genuinely works - that fast path must survive the console's fix.
     Guard the budget against drifting over CloudFront's origin read timeout."""
     CLOUDFRONT_ORIGIN_CEILING_S = 60
     assert pipeline._SYNC_WALL_BUDGET <= CLOUDFRONT_ORIGIN_CEILING_S - 8

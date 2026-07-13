@@ -2,14 +2,14 @@
 Async resume processing handler.
 
 Used by:
-  • FastAPI BackgroundTasks (development / single-file async path)
-  • Worker Lambda handler (production — invoked per-file)
+  * FastAPI BackgroundTasks (development / single-file async path)
+  * Worker Lambda handler (production - invoked per-file)
 
 Resilience:
-  • DynamoDB writes: 3 retries with 1s backoff on ClientError
-  • Webhook delivery: 15s timeout per attempt
-  • S3 delete: 1 retry before giving up (file leaks are non-critical)
-  • batch_id propagation: atomic counter update triggers batch.completed webhook
+  * DynamoDB writes: 3 retries with 1s backoff on ClientError
+  * Webhook delivery: 15s timeout per attempt
+  * S3 delete: 1 retry before giving up (file leaks are non-critical)
+  * batch_id propagation: atomic counter update triggers batch.completed webhook
 """
 
 import asyncio
@@ -43,7 +43,7 @@ async def process_resume_async(
 ) -> None:
     """
     Full pipeline for one resume file.
-    Never raises — all errors are caught, logged, and reflected in DynamoDB.
+    Never raises - all errors are caught, logged, and reflected in DynamoDB.
     """
     log.info("job_start", job_id=job_id, batch_id=batch_id)
     _db_call(db.update_job_processing, job_id)
@@ -123,7 +123,7 @@ async def process_resume_async(
 
         if batch_id:
             try:
-                # Claim the increment idempotently — an async-Lambda Event retry
+                # Claim the increment idempotently - an async-Lambda Event retry
                 # (after a hard timeout/OOM) re-runs this whole block, and without
                 # the guard it would double-count the batch's completed/failed.
                 if not db.mark_batch_counted(job_id):
@@ -153,7 +153,7 @@ async def process_resume_async(
         log.info("job_done", job_id=job_id, status=status, batch_id=batch_id)
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────────
+# -- Internal helpers ----------------------------------------------------------
 
 def _db_call(fn, *args, **kwargs) -> None:
     """Call a DynamoDB function with up to _DB_RETRIES retries on ClientError."""
@@ -170,7 +170,7 @@ def _db_call(fn, *args, **kwargs) -> None:
 
 
 async def _safe_deliver(company_id: str, event: str, payload: dict) -> None:
-    """Deliver webhook with timeout; swallow errors — delivery is best-effort."""
+    """Deliver webhook with timeout; swallow errors - delivery is best-effort."""
     try:
         await asyncio.wait_for(
             deliver_event(company_id, event, payload),

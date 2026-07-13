@@ -1,4 +1,4 @@
-# Temp bucket — raw resume files stored only during processing.
+# Temp bucket - raw resume files stored only during processing.
 # S3 Lifecycle rules delete any objects older than 1 day as a safety net
 # (the app deletes files immediately after processing, but this catches leaks).
 
@@ -22,7 +22,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "temp" {
   }
 }
 
-# Block all public access — resumes must never be publicly accessible
+# Block all public access - resumes must never be publicly accessible
 resource "aws_s3_bucket_public_access_block" "temp" {
   bucket                  = aws_s3_bucket.temp.id
   block_public_acls       = true

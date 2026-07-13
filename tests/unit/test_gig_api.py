@@ -1,10 +1,10 @@
 """
-GigHealth Partner API contract — envelope, documented error codes, and 429 backoff.
+GigHealth Partner API contract - envelope, documented error codes, and 429 backoff.
 
 Pins the behaviour the partner guide specifies:
-  • x-api-key auth; 401 = bad/revoked key, 403 = permission not granted for the endpoint
-  • 429 = per-second burst OR monthly quota; "back off and retry; do not loop tightly"
-  • every response uses {success, message, data, errors} — including error bodies
+  * x-api-key auth; 401 = bad/revoked key, 403 = permission not granted for the endpoint
+  * 429 = per-second burst OR monthly quota; "back off and retry; do not loop tightly"
+  * every response uses {success, message, data, errors} - including error bodies
 
 The point of classifying these rather than swallowing them: a missing key, a missing
 permission and an exhausted quota need three completely different fixes, and used to
@@ -25,7 +25,7 @@ def _client(handler) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
-# ── Envelope ─────────────────────────────────────────────────────────────────
+# -- Envelope -----------------------------------------------------------------
 
 def test_unwrap_returns_data_rows():
     assert gig_api.unwrap(_envelope([{"id": 1}, {"id": 2}])) == [{"id": 1}, {"id": 2}]
@@ -33,7 +33,7 @@ def test_unwrap_returns_data_rows():
 
 def test_unwrap_rejects_success_false_even_on_a_200():
     """The guide says error bodies use the SAME envelope. A 200 carrying success:false
-    must not be read as 'no data' — that is how a real failure becomes a silent null."""
+    must not be read as 'no data' - that is how a real failure becomes a silent null."""
     with pytest.raises(gig_api.GigApiError) as exc:
         gig_api.unwrap(_envelope([], success=False, message="not authorized"))
     assert "not authorized" in exc.value.message
@@ -44,7 +44,7 @@ def test_unwrap_rejects_a_missing_data_array():
         gig_api.unwrap({"success": True, "message": "ok"})
 
 
-# ── Documented status codes ──────────────────────────────────────────────────
+# -- Documented status codes --------------------------------------------------
 
 @pytest.mark.parametrize(
     ("status", "kind"),
@@ -70,7 +70,7 @@ async def test_auth_failures_are_raised_with_the_api_message(status, kind):
     assert "not authorized" in exc.value.message
 
 
-# ── 429 backoff ──────────────────────────────────────────────────────────────
+# -- 429 backoff --------------------------------------------------------------
 
 async def test_429_is_retried_then_succeeds(monkeypatch):
     """'On a 429, back off and retry; do not loop tightly.'"""
@@ -98,7 +98,7 @@ async def test_429_is_retried_then_succeeds(monkeypatch):
 
 
 async def test_429_that_never_clears_gives_up_as_rate_limited(monkeypatch):
-    """A monthly-quota 429 will keep 429ing — there is nothing to wait for until the
+    """A monthly-quota 429 will keep 429ing - there is nothing to wait for until the
     1st. It must give up (bounded retries) and report itself as rate_limited, not spin."""
     async def _no_sleep(sec):
         return None
@@ -141,7 +141,7 @@ async def test_retry_after_header_is_honoured(monkeypatch):
     assert slept == [2.0]
 
 
-# ── Auth header ──────────────────────────────────────────────────────────────
+# -- Auth header --------------------------------------------------------------
 
 async def test_sends_the_x_api_key_header():
     seen = {}

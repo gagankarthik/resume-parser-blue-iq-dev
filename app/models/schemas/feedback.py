@@ -80,7 +80,7 @@ class FeedbackResponse(BaseModel):
 
     feedback_id:    str       = Field(..., description="Unique identifier for this feedback record (ULID)")
     job_id:         str       = Field(..., description="The parse job this feedback relates to")
-    status:         str       = Field(..., description="Always 'accepted' — feedback is processed asynchronously")
+    status:         str       = Field(..., description="Always 'accepted' - feedback is processed asynchronously")
     changed:        bool      = Field(..., description="Whether any field differed between original and updated")
     changed_fields: list[str] = Field(..., description="Dotted paths of the leaf fields that changed")
     created_at:     str       = Field(..., description="ISO 8601 timestamp the feedback was recorded")

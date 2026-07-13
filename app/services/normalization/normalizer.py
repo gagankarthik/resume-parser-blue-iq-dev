@@ -2,12 +2,12 @@
 Post-processing normalization applied after AI parsing.
 
 Covers:
-  • Healthcare specialty normalization (BICU → Burn Intensive Care Unit, etc.)
-  • Healthcare profession/credential expansion (RN → Registered Nurse, etc.)
-  • Degree expansion (MSc → Master of Science)
-  • Date format normalization (various formats → YYYY-MM-DD)
-  • Stripping credential/licence suffixes from the candidate's name
-  • Duplicate skill/specialty removal (case-insensitive)
+  * Healthcare specialty normalization (BICU -> Burn Intensive Care Unit, etc.)
+  * Healthcare profession/credential expansion (RN -> Registered Nurse, etc.)
+  * Degree expansion (MSc -> Master of Science)
+  * Date format normalization (various formats -> YYYY-MM-DD)
+  * Stripping credential/licence suffixes from the candidate's name
+  * Duplicate skill/specialty removal (case-insensitive)
 """
 
 import re
@@ -35,7 +35,7 @@ from app.services.normalization.healthcare_taxonomy import (
 )
 from app.services.normalization.specialty_catalog import get_catalog
 
-# ── Degree aliases ────────────────────────────────────────────────────────────
+# -- Degree aliases ------------------------------------------------------------
 _DEGREE_MAP: dict[str, str] = {
     "bsc": "Bachelor of Science", "b.sc": "Bachelor of Science",
     "b.sc.": "Bachelor of Science", "bs": "Bachelor of Science",
@@ -54,7 +54,7 @@ _DEGREE_MAP: dict[str, str] = {
     "bsn": "Bachelor of Science in Nursing",
     "msn": "Master of Science in Nursing",
     "dnp": "Doctor of Nursing Practice",
-    # Spelled-out forms — fix grammar ("Associates"→"Associate") to a canonical name.
+    # Spelled-out forms - fix grammar ("Associates"->"Associate") to a canonical name.
     "associates in nursing": "Associate Degree in Nursing",
     "associate in nursing": "Associate Degree in Nursing",
     "associates degree in nursing": "Associate Degree in Nursing",
@@ -67,7 +67,7 @@ _DEGREE_MAP: dict[str, str] = {
 }
 
 # Credential / licence / degree tokens that may trail a candidate's name and must
-# be stripped (e.g. "Jane Smith, RN BSN" → "Jane Smith"). Lower-cased, dots removed.
+# be stripped (e.g. "Jane Smith, RN BSN" -> "Jane Smith"). Lower-cased, dots removed.
 _NAME_CREDENTIALS: set[str] = {
     # Nursing
     "rn", "lpn", "lvn", "cna", "crna", "np", "aprn", "fnp", "pmhnp", "agnp",
@@ -86,7 +86,7 @@ _NAME_CREDENTIALS: set[str] = {
     "acls", "bls", "pals", "nrp", "tncc",
 }
 
-# US state / territory postal codes → the country they imply. A résumé that gives
+# US state / territory postal codes -> the country they imply. A resume that gives
 # a US state abbreviation (optionally with a ZIP) has stated a US address even when
 # it never writes "USA"; we backfill the country deterministically here rather than
 # letting the model guess it (the schema tells the model NOT to infer it).
@@ -98,7 +98,7 @@ _US_STATE_ABBREVS: frozenset[str] = frozenset({
     "DC", "PR", "VI", "GU", "AS", "MP",
 })
 _US_COUNTRY = "United States"
-# "…, NY 14203" / "…, VA 23601" — a two-letter state followed by a 5-digit ZIP.
+# "..., NY 14203" / "..., VA 23601" - a two-letter state followed by a 5-digit ZIP.
 _US_STATE_ZIP_RE = re.compile(r",\s*([A-Z]{2})\s+\d{5}(?:-\d{4})?\b")
 
 
@@ -127,7 +127,7 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
     return parsed
 
 
-# ── Nursing enrichments ───────────────────────────────────────────────────────
+# -- Nursing enrichments -------------------------------------------------------
 _ROTATION_RE = re.compile(
     r"\b(clinical rotation|clinical placement|practicum|preceptorship|"
     r"student nurse|nursing student|student practicum)\b",
@@ -191,7 +191,7 @@ def _detect_employment_type(exp: ExperienceItem) -> str | None:
 
 def _education_tier(degree: str | None) -> str | None:
     """Classify a nursing degree into ADN / Diploma_in_Nursing / BSN. Non-nursing
-    or higher degrees (MSN, DNP) return None — the spec defines only three tiers."""
+    or higher degrees (MSN, DNP) return None - the spec defines only three tiers."""
     if not degree:
         return None
     d = degree.lower()
@@ -206,7 +206,7 @@ def _education_tier(degree: str | None) -> str | None:
 
 
 def _year_month(date_str: str | None) -> tuple[int, int] | None:
-    """Parse a résumé date to (year, month) for gap math. Year-only assumes Jan."""
+    """Parse a resume date to (year, month) for gap math. Year-only assumes Jan."""
     if not date_str:
         return None
     s = date_str.strip()
@@ -226,7 +226,7 @@ _CERT_EXPIRY_TRACKED = ("BLS", "ACLS", "PALS", "NRP")
 
 def cert_expiry_warnings(parsed: ParsedResumeAI) -> list[str]:
     """Warn when a tracked life-support certification (BLS/ACLS/PALS/NRP) has no
-    expiration date — a common compliance gap."""
+    expiration date - a common compliance gap."""
     missing = [
         c.name for c in parsed.certifications
         if c.name and any(t in c.name.upper() for t in _CERT_EXPIRY_TRACKED) and not c.expiry_date
@@ -237,10 +237,10 @@ def cert_expiry_warnings(parsed: ParsedResumeAI) -> list[str]:
 
 
 def scan_compliance(text: str, parsed: ParsedResumeAI) -> ComplianceInfo:
-    """Scan the résumé text for compliance disclosures and roll up a risk flag.
+    """Scan the resume text for compliance disclosures and roll up a risk flag.
 
     Booleans are True only when explicitly mentioned; None means not found (never
-    assumed cleared). compliance_risk is True when the résumé lacks an active
+    assumed cleared). compliance_risk is True when the resume lacks an active
     BLS/ACLS certification OR a cleared TB test.
     """
     t = (text or "").lower()
@@ -289,7 +289,7 @@ def _normalize_extraction_notes(parsed: ParsedResumeAI) -> None:
     A note is only ever emitted when the parser made a deliberate, evidence-backed
     decision (attach a fact to a role, or leave a field null because it can't be
     attributed). A literal 0.0 is therefore the model defaulting the field, not a
-    genuine zero-confidence signal — replace it: a confident decision to leave a
+    genuine zero-confidence signal - replace it: a confident decision to leave a
     field null is high (0.9); an assigned-value judgment call is moderate (0.7).
     Any model-provided non-zero confidence is respected as-is.
     """
@@ -379,7 +379,7 @@ def _strip_name_credentials(name: str) -> str:
     return " ".join(tokens).strip(" ,") or name.strip()
 
 
-# ── Credential casing + cross-bucket hygiene ──────────────────────────────────
+# -- Credential casing + cross-bucket hygiene ----------------------------------
 
 # Credential tokens whose canonical form is not simply upper-case.
 _CRED_CASING_SPECIAL = {"phd": "PhD", "edd": "EdD"}
@@ -387,12 +387,12 @@ _CRED_CASING_SPECIAL = {"phd": "PhD", "edd": "EdD"}
 # Practice credentials that are professional LICENSES, never certifications.
 _PRACTICE_LICENSE_TYPES = {"rn", "lpn", "lvn"}
 
-# Academic degrees that sometimes leak into skills[] — they belong in education /
+# Academic degrees that sometimes leak into skills[] - they belong in education /
 # post-nominal credentials, not in the skills list.
 _DEGREE_SKILL_TOKENS = {"bsn", "msn", "adn", "asn", "dnp", "phd", "mph", "mba"}
 
 # Well-known certifications (and listed non-clinical credentials) that belong in
-# certifications[], not skills[]. Includes a common résumé misspelling.
+# certifications[], not skills[]. Includes a common resume misspelling.
 _CERT_SKILL_TOKENS = {
     "bls", "acls", "pals", "cpr", "nrp", "tncc", "enpc", "nihss", "stable",
     "ccrn", "cen", "cnor", "ocn", "cpn", "cnrn", "wcc", "tcrn", "first aid",
@@ -407,7 +407,7 @@ _CERT_SUFFIX_RE = re.compile(
 
 
 def _fix_credential_case(token: str) -> str:
-    """Restore canonical casing on a credential the model lower-cased ('rn' → 'RN')."""
+    """Restore canonical casing on a credential the model lower-cased ('rn' -> 'RN')."""
     t = token.strip()
     key = t.strip(".").lower()
     if key in _CRED_CASING_SPECIAL:
@@ -420,7 +420,7 @@ def _fix_credential_case(token: str) -> str:
 def _cred_key(value: str) -> str:
     """Matching key for cross-bucket comparison: case/punctuation-insensitive,
     with trailing 'Certification'/'Certified'/'Card' noise stripped
-    ('CPR Certification' → 'cpr', \"Driver's License\" → 'drivers license')."""
+    ('CPR Certification' -> 'cpr', \"Driver's License\" -> 'drivers license')."""
     v = _CERT_SUFFIX_RE.sub("", value.strip().lower())
     v = re.sub(r"[^a-z0-9 ]", "", v)
     return re.sub(r"\s+", " ", v).strip()
@@ -432,12 +432,12 @@ def _clean_credential_buckets(parsed: ParsedResumeAI) -> None:
     The LLM is told how to bucket skills vs certifications vs licenses, but it
     still leaks ('CPR Certification' in skills, 'LPN' filed as a certification).
     This pass enforces the rules instead of hoping:
-      • An RN/LPN/LVN entry in certifications[] is a professional licence —
+      * An RN/LPN/LVN entry in certifications[] is a professional licence -
         promote it into licenses[] (unless that licence type already exists).
-      • Drop certifications that duplicate an existing licence.
-      • skills[] loses anything that matches an extracted certification/licence
+      * Drop certifications that duplicate an existing licence.
+      * skills[] loses anything that matches an extracted certification/licence
         or an academic degree token; a well-known cert found ONLY in skills[]
-        (CPR, BLS, Driver's License…) is MOVED to certifications[], not lost.
+        (CPR, BLS, Driver's License...) is MOVED to certifications[], not lost.
     """
     license_types = {lt for lic in parsed.licenses if (lt := (lic.license_type or "").lower())}
     license_keys = {_cred_key(lic.name) for lic in parsed.licenses} | license_types
@@ -503,7 +503,7 @@ def _normalize_skills(skills: list[str]) -> list[str]:
 
 def normalize_specialties_list(specialties: list[str]) -> list[str]:
     """
-    Standalone helper — normalize a list of specialty strings independently.
+    Standalone helper - normalize a list of specialty strings independently.
     Useful when specialties are stored separately from skills.
     """
     return _normalize_skills(specialties)
@@ -516,12 +516,12 @@ def _norm_institution_key(institution: str | None) -> str:
 def _repair_education(items: list[EducationItem]) -> list[EducationItem]:
     """Reattach orphaned degrees to their institution and drop split-header stubs.
 
-    Résumés list one school header followed by several degree/date lines
+    Resumes list one school header followed by several degree/date lines
     ("ECPI University" / "Associates in Nursing: 2018" / "BSN: 2019"). The extractor
     can split that into a degree-less institution entry plus sibling entries whose
     institution came back blank ("Unknown Institution"). This:
       1. carries the most recent real institution forward onto those placeholder
-         entries — a degree written under a school belongs to that school; and
+         entries - a degree written under a school belongs to that school; and
       2. removes the now-redundant degree-less header stub when a sibling entry
          carries a degree for the same institution,
     so the ECPI header + two blank degree lines collapse into two clean, correctly
@@ -556,9 +556,9 @@ def _normalize_education(edu: EducationItem) -> None:
 def _infer_country(exp: ExperienceItem) -> None:
     """Backfill a US country when the role states a US state (+ZIP) but no country.
 
-    Fires only on an unambiguous US signal — a state field that is a US postal
-    abbreviation, or a "State ZIP" tail in the location line — so an international
-    address is never mislabeled. Never overrides a country the résumé stated.
+    Fires only on an unambiguous US signal - a state field that is a US postal
+    abbreviation, or a "State ZIP" tail in the location line - so an international
+    address is never mislabeled. Never overrides a country the resume stated.
     """
     if exp.country:
         return
@@ -611,14 +611,14 @@ def _resolve_geography(exp: ExperienceItem) -> None:
 
 
 # A part that reads like a street line (starts with a number, or names a street
-# type / unit) rather than a city — used to decide where the street ends.
+# type / unit) rather than a city - used to decide where the street ends.
 _STREET_HINT_RE = re.compile(
     r"^\d|\b(?:st|street|ave|avenue|road|rd|blvd|boulevard|dr|drive|lane|ln|way|"
     r"court|ct|circle|cir|place|pl|square|sq|terrace|trail|hwy|highway|parkway|"
     r"pkwy|suite|ste|apt|apartment|unit|floor|fl|building|bldg|#)\b",
     re.IGNORECASE,
 )
-# "NY 14203" / "NY 14203-1234" — a US state abbreviation followed by a ZIP.
+# "NY 14203" / "NY 14203-1234" - a US state abbreviation followed by a ZIP.
 _STATE_ZIP_TAIL_RE = re.compile(r"^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$")
 _ZIP_ONLY_RE = re.compile(r"^\d{5}(?:-\d{4})?$")
 
@@ -634,8 +634,8 @@ def _refine_location_to_street(exp: ExperienceItem) -> None:
     fields, so a `location` of "818 Ellicott Street, Buffalo, NY 14203" duplicates
     them. Split the full line: backfill any missing city/state/zip from the tail
     (never overriding an extracted value) and set `location` to the street only
-    ("818 Ellicott Street"). Conservative — only acts on an unambiguous US-style
-    "…, City, ST ZIP" tail; an international or unsplittable line is left as-is so
+    ("818 Ellicott Street"). Conservative - only acts on an unambiguous US-style
+    "..., City, ST ZIP" tail; an international or unsplittable line is left as-is so
     no data is lost.
     """
     loc = (exp.location or "").strip()
@@ -660,7 +660,7 @@ def _refine_location_to_street(exp: ExperienceItem) -> None:
             state = parts[-1].upper()
             parts = parts[:-1]
 
-    # Only carve out a city when we found a real state/zip tail — otherwise we
+    # Only carve out a city when we found a real state/zip tail - otherwise we
     # cannot reliably tell a trailing street fragment ("Building B") from a city.
     if not (state or zip_code):
         return
@@ -724,13 +724,13 @@ def _normalize_experience(exp: ExperienceItem) -> None:
             exp.facility_confidence = facility.confidence
 
     # Bed counts must never carry uncertain/corrupted data: keep only an explicit
-    # stated number (e.g. "30", "30-bed", "approx 250 beds" → the digits), null
+    # stated number (e.g. "30", "30-bed", "approx 250 beds" -> the digits), null
     # anything without a clear count. Prevents a non-numeric/garbled value from ever
     # populating a bed-count metric.
     exp.facility_beds = _sanitize_bed_count(exp.facility_beds)
     exp.beds_in_unit = _sanitize_bed_count(exp.beds_in_unit)
 
-    # A stated trauma LEVEL means the site IS a trauma facility — backfill the
+    # A stated trauma LEVEL means the site IS a trauma facility - backfill the
     # flag the model commonly leaves null when it only captured the level
     # (e.g. "Level 1 Trauma" with trauma_facility=None). Never override an
     # explicit "No"/"N/A" already extracted.
@@ -747,13 +747,13 @@ def _normalize_experience(exp: ExperienceItem) -> None:
 
     # Resolve the country/state strings to platform ids + confidence offline (from
     # the geographies catalog). State is scoped to the resolved country so a shared
-    # statecode picks the right one. City id is NOT resolved here — cities are a
+    # statecode picks the right one. City id is NOT resolved here - cities are a
     # live fuzzy search handled by the opt-in city_resolver enrichment. Never
     # override an id the model was fed on a DynamoDB reload.
     _resolve_geography(exp)
 
     # Map each per-role specialty to a catalog id + confidence via the tiered
-    # matcher (deterministic tiers 1–3; the AI tier runs later in the pipeline).
+    # matcher (deterministic tiers 1-3; the AI tier runs later in the pipeline).
     # Dedup-by-canonical-name, order preserved.
     if exp.specialties:
         raw_specialties = [(sm.raw or sm.name) for sm in exp.specialties]
@@ -770,12 +770,12 @@ def _normalize_experience(exp: ExperienceItem) -> None:
 def _expand_role_credentials(role: str) -> str:
     """
     Expand credential abbreviations found at the start of role titles.
-    e.g. "RN - ICU"  → "Registered Nurse - Intensive Care Unit"
-         "CRT NICU"  → "Certified Respiratory Therapist – Neonatal Intensive Care Unit"
-         "RN MICU"   → "Registered Nurse – Medical Intensive Care Unit"
+    e.g. "RN - ICU"  -> "Registered Nurse - Intensive Care Unit"
+         "CRT NICU"  -> "Certified Respiratory Therapist - Neonatal Intensive Care Unit"
+         "RN MICU"   -> "Registered Nurse - Medical Intensive Care Unit"
     Leaves roles that don't start with a known abbreviation untouched.
     """
-    # First try delimiter-based split: " - ", " – ", "/", ","
+    # First try delimiter-based split: " - ", " - ", "/", ","
     parts = re.split(r"\s*[-–/,]\s*", role, maxsplit=1)
     credential = parts[0].strip()
     suffix = parts[1].strip() if len(parts) > 1 else ""
@@ -797,9 +797,9 @@ def _expand_role_credentials(role: str) -> str:
 
 
 def _normalize_date(raw: str) -> str | None:
-    """Normalize a date to MM/DD/YYYY, MM/YYYY, or YYYY — preserving the stated
+    """Normalize a date to MM/DD/YYYY, MM/YYYY, or YYYY - preserving the stated
     precision and never inventing a missing day or month. Delegates to the shared
     parser in schemas so the schema-time and post-processing behaviour are identical
-    (e.g. '2/16/2024' → '02/16/2024', 'August 2018' → '08/2018', '2019' → '2019').
+    (e.g. '2/16/2024' -> '02/16/2024', 'August 2018' -> '08/2018', '2019' -> '2019').
     """
     return _sanitize_date(raw)

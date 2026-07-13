@@ -16,7 +16,7 @@ variable "environment" {
 }
 
 variable "openai_api_key" {
-  description = "OpenAI API key — passed to the Lambda as an env var. Provide via TF_VAR_openai_api_key (never commit it). Marked sensitive so it is redacted from CLI output, but note it is still present in Terraform state — keep the state backend (S3) encrypted and access-restricted."
+  description = "OpenAI API key - passed to the Lambda as an env var. Provide via TF_VAR_openai_api_key (never commit it). Marked sensitive so it is redacted from CLI output, but note it is still present in Terraform state - keep the state backend (S3) encrypted and access-restricted."
   type        = string
   sensitive   = true
 }
@@ -28,7 +28,7 @@ variable "openai_model" {
 }
 
 variable "gig_specialties_api_key" {
-  description = "GigHealth Partner API key (x-api-key) — passed to the Lambda as GIG_SPECIALTIES_API_KEY. Enables the live cities lookup at parse time; the facility/geography/specialty snapshots resolve offline and do NOT need it. Provide via TF_VAR_gig_specialties_api_key or the local terraform.tfvars (never commit it). Marked sensitive so it is redacted from CLI output; note it is still present in Terraform state — keep the state backend encrypted and access-restricted. Empty leaves city mapping a safe no-op."
+  description = "GigHealth Partner API key (x-api-key) - passed to the Lambda as GIG_SPECIALTIES_API_KEY. Enables the live cities lookup at parse time; the facility/geography/specialty snapshots resolve offline and do NOT need it. Provide via TF_VAR_gig_specialties_api_key or the local terraform.tfvars (never commit it). Marked sensitive so it is redacted from CLI output; note it is still present in Terraform state - keep the state backend encrypted and access-restricted. Empty leaves city mapping a safe no-op."
   type        = string
   sensitive   = true
   default     = ""
@@ -42,7 +42,7 @@ variable "admin_api_token" {
 }
 
 variable "auth_secret" {
-  description = "HMAC secret for signing self-serve account session tokens. Required — generate with: openssl rand -hex 32"
+  description = "HMAC secret for signing self-serve account session tokens. Required - generate with: openssl rand -hex 32"
   type        = string
   sensitive   = true
 
@@ -61,13 +61,13 @@ variable "ecr_image_uri" {
 # Single function handles both the HTTP API and the async OCR path, so it is
 # sized for the heavier OCR workload (Tesseract + Textract + OpenAI).
 variable "api_lambda_memory_mb" {
-  description = "Memory for the resume-parser Lambda (MB) — sized for OCR"
+  description = "Memory for the resume-parser Lambda (MB) - sized for OCR"
   type        = number
   default     = 2048
 }
 
 variable "api_lambda_timeout_seconds" {
-  description = "Lambda timeout (s) — covers async OCR self-invocations; HTTP requests finish well under this"
+  description = "Lambda timeout (s) - covers async OCR self-invocations; HTTP requests finish well under this"
   type        = number
   default     = 300
 }
@@ -82,7 +82,7 @@ variable "max_batch_size" {
 # URL. Set to e.g. "api.parsinglab.blue-iq.ai" to front the Function URL with a
 # CloudFront distribution + ACM cert on that hostname (see cloudfront_api.tf).
 # DNS for the domain is external (GoDaddy), so after `terraform apply` you add the
-# ACM validation CNAME and the final CNAME (→ cloudfront_domain_name output) there.
+# ACM validation CNAME and the final CNAME (-> cloudfront_domain_name output) there.
 variable "api_custom_domain" {
   description = "Custom hostname for the API (e.g. api.parsinglab.blue-iq.ai). Empty = disabled."
   type        = string

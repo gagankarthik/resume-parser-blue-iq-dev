@@ -4,7 +4,7 @@ Per-field confidence scoring.
 Scores reflect how complete and verifiable each section is.
 Used by enterprise clients to flag records that need human review.
 
-Score range: 0.0 – 1.0
+Score range: 0.0 - 1.0
 """
 
 import re
@@ -18,7 +18,7 @@ _NON_DIGIT_RE = re.compile(r"\D")
 def _has_phone_digits(value: str) -> bool:
     """True when the value holds a plausible phone digit count (7+).
 
-    Counts TOTAL digits, not consecutive — formatted numbers like
+    Counts TOTAL digits, not consecutive - formatted numbers like
     '(555) 234-5678' never have a 7-digit run but are valid.
     """
     return len(_NON_DIGIT_RE.sub("", value)) >= 7
@@ -109,7 +109,7 @@ def _score_skills(parsed: ParsedResumeAI) -> float:
 def _score_catalog_mapping(parsed: ParsedResumeAI) -> float:
     """Mean match confidence of the role entities resolved to platform catalog ids.
 
-    Reflects how confidently a résumé's structured entities mapped to Gig ids —
+    Reflects how confidently a resume's structured entities mapped to Gig ids -
     the "accuracy" dimension of the parse. For each role, every entity whose SOURCE
     field is present contributes its match confidence (0.0 when it went unmatched):
     profession, facility (a real company, not the "Unknown" placeholder), country,
@@ -141,8 +141,8 @@ def _overall(
     personal: float, experience: float, education: float, skills: float, mapping: float
 ) -> float:
     # Takes the already-computed sub-scores (score() has them) instead of
-    # recomputing them — same result, less work. catalog_mapping earns real weight
-    # so a résumé whose entities resolve cleanly to platform ids scores higher than
+    # recomputing them - same result, less work. catalog_mapping earns real weight
+    # so a resume whose entities resolve cleanly to platform ids scores higher than
     # one that parsed but barely mapped.
     total = (
         personal * 0.30 + experience * 0.30 + education * 0.15

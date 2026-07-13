@@ -1,5 +1,5 @@
 output "api_url" {
-  description = "Public API endpoint — share with the client"
+  description = "Public API endpoint - share with the client"
   value       = aws_lambda_function_url.api.function_url
 }
 
@@ -14,19 +14,19 @@ output "api_lambda_arn" {
 }
 
 output "github_actions_role_arn" {
-  description = "IAM role ARN — paste into GitHub repo secret AWS_ROLE_ARN"
+  description = "IAM role ARN - paste into GitHub repo secret AWS_ROLE_ARN"
   value       = aws_iam_role.github_actions.arn
 }
 
 output "s3_bucket_name" {
-  description = "Temp S3 bucket name — paste into .env S3_BUCKET_NAME"
+  description = "Temp S3 bucket name - paste into .env S3_BUCKET_NAME"
   value       = aws_s3_bucket.temp.bucket
 }
 
-# ── Custom API domain (only meaningful when var.api_custom_domain is set) ──────
+# -- Custom API domain (only meaningful when var.api_custom_domain is set) ------
 
 output "api_cert_validation_records" {
-  description = "DNS records to add at your DNS provider (GoDaddy) to validate the ACM cert. Add each as a CNAME (name → value)."
+  description = "DNS records to add at your DNS provider (GoDaddy) to validate the ACM cert. Add each as a CNAME (name -> value)."
   value = local.api_domain_enabled ? [
     for o in aws_acm_certificate.api[0].domain_validation_options : {
       name  = o.resource_record_name
@@ -37,7 +37,7 @@ output "api_cert_validation_records" {
 }
 
 output "cloudfront_domain_name" {
-  description = "CloudFront hostname — point the custom API domain here (CNAME api.parsinglab.blue-iq.ai → this value)."
+  description = "CloudFront hostname - point the custom API domain here (CNAME api.parsinglab.blue-iq.ai -> this value)."
   value       = local.api_domain_enabled ? aws_cloudfront_distribution.api[0].domain_name : null
 }
 

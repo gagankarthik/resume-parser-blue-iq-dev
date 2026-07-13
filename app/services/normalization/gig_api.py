@@ -1,15 +1,15 @@
-"""Shared GigHealth Partner API concerns — envelope, errors, and 429 backoff.
+"""Shared GigHealth Partner API concerns - envelope, errors, and 429 backoff.
 
 The four partner endpoints (specialities, geographies, cities, facilities) all speak
 the same contract, so it lives here once instead of four times:
 
-  • Auth is the ``x-api-key`` header. A missing/invalid/revoked key is **401**; a valid
+  * Auth is the ``x-api-key`` header. A missing/invalid/revoked key is **401**; a valid
     key without the endpoint's permission granted is **403**.
-  • Every response — success or failure — uses one envelope::
+  * Every response - success or failure - uses one envelope::
 
         {"success": bool, "message": str, "data": [...], "errors": [...]}
 
-  • Two independent limits both surface as **429**: a per-second burst limit and a
+  * Two independent limits both surface as **429**: a per-second burst limit and a
     monthly quota (UTC calendar month). The partner guide is explicit: "On a 429, back
     off and retry; do not loop tightly."
 
@@ -35,7 +35,7 @@ log = get_logger(__name__)
 
 # The partner guide documents a per-second burst limit and a monthly quota, both 429.
 # Retry the burst limit a couple of times; a quota exhaustion will simply keep 429ing
-# and fall through, which is correct — there is nothing to wait for until the 1st.
+# and fall through, which is correct - there is nothing to wait for until the 1st.
 _MAX_RETRIES = 2
 _BACKOFF_BASE = 0.5
 
@@ -44,7 +44,7 @@ _BACKOFF_BASE = 0.5
 class GigApiError(Exception):
     """A partner API call that did not return usable data.
 
-    ``kind`` is the actionable classification — this is what tells an operator whether
+    ``kind`` is the actionable classification - this is what tells an operator whether
     the fix is a new key, a new permission, a higher quota, or nothing at all.
     """
 
@@ -153,7 +153,7 @@ def get_sync_envelope(
     """Blocking GET for the offline catalog refresh scripts, retrying 429s with backoff.
 
     Returns the full envelope dict (the refresh clients each have their own
-    ``flatten_payload`` that consumes it). Raises ``GigApiError`` on failure — the
+    ``flatten_payload`` that consumes it). Raises ``GigApiError`` on failure - the
     refresh scripts WANT to fail loudly, because a stale snapshot silently kept is
     worse than a script that exits non-zero.
     """

@@ -2,11 +2,11 @@
 
 Pure reference tables derived from the source spreadsheet (Professions,
 Specialities). The matching/lookup LOGIC that consumes these lives in
-healthcare_taxonomy.py — kept separate so the data can grow without touching the
+healthcare_taxonomy.py - kept separate so the data can grow without touching the
 algorithms, and vice-versa.
 """
 
-# ── Profession credential expansions ─────────────────────────────────────────
+# -- Profession credential expansions -----------------------------------------
 # Used to normalize credential strings found on resumes
 PROFESSION_ABBREVIATIONS: dict[str, str] = {
     "rn": "Registered Nurse",
@@ -42,11 +42,11 @@ PROFESSION_ABBREVIATIONS: dict[str, str] = {
     "mds": "Minimum Data Set Coordinator",
 }
 
-# ── Specialty abbreviations → canonical full name ─────────────────────────────
+# -- Specialty abbreviations -> canonical full name -----------------------------
 # Only entries where the Excel SpecialtyFull column was non-empty,
 # plus common shorthand variants seen on real resumes.
 SPECIALTY_ABBREVIATIONS: dict[str, str] = {
-    # ── Nursing ───────────────────────────────────────────────────────────────
+    # -- Nursing ---------------------------------------------------------------
     "bicu": "Burn Intensive Care Unit",
     "burn icu": "Burn Intensive Care Unit",
     "bmt": "Bone Marrow Transplant",
@@ -127,7 +127,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "tele": "Telemetry",
     "tele float": "Telemetry Float",
     "trauma icu": "Trauma Intensive Care Unit",
-    # ── Allied Health — Radiology & Cardiology ────────────────────────────────
+    # -- Allied Health - Radiology & Cardiology --------------------------------
     "ct tech": "CT Technologist (Computed Tomography)",
     "computed tomography tech": "CT Technologist (Computed Tomography)",
     "computed tomography": "CT Technologist (Computed Tomography)",
@@ -151,7 +151,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "eeg tech manager": "EEG Technician Manager",
     "electroencephalography technician manager": "EEG Technician Manager",
     "cvor tech": "Cardiovascular Operating Room Tech",
-    # ── Allied Health — Respiratory & Neuro ───────────────────────────────────
+    # -- Allied Health - Respiratory & Neuro -----------------------------------
     "crt": "Certified Respiratory Therapist",
     "rrt": "Registered Respiratory Therapist",
     "rrt float": "Registered Respiratory Therapist",
@@ -159,7 +159,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "rrt picu": "Registered Respiratory Therapist – PICU",
     "rrt nicu": "Registered Respiratory Therapist – NICU",
     "crt nicu": "Certified Respiratory Therapist – NICU",
-    # ── Allied Health — Therapy & Rehab ───────────────────────────────────────
+    # -- Allied Health - Therapy & Rehab ---------------------------------------
     "ot": "Occupational Therapist",
     "cota": "Certified Occupational Therapy Assistant",
     "pt": "Physical Therapist",
@@ -167,7 +167,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "pta": "Physical Therapist Assistant",
     "slp": "Speech-Language Pathologist",
     "slpa": "Speech-Language Pathologist Assistant",
-    # ── Allied Health — Surgical Services ────────────────────────────────────
+    # -- Allied Health - Surgical Services ------------------------------------
     "or tech": "Operating Room Technologist / Surgical Tech",
     "surgical tech": "Operating Room Technologist / Surgical Tech",
     "or tech / surgical tech": "Operating Room Technologist / Surgical Tech",
@@ -185,7 +185,7 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "gi/endo tech": "Gastrointestinal / Endoscopy Technician",
     "ob tech": "Obstetric Technician",
     "cst": "Certified Surgical Technologist",
-    # ── Allied Health — Social Services ──────────────────────────────────────
+    # -- Allied Health - Social Services --------------------------------------
     "csw": "Certified Social Worker",
     "csw (certified social worker)": "Certified Social Worker",
     "lcsw": "Licensed Clinical Social Worker",
@@ -196,12 +196,12 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "lmsw (licensed master social worker)": "Licensed Master Social Worker",
     "msw": "Masters of Social Work",
     "msw (masters of social work)": "Masters of Social Work",
-    # ── Allied Health — Laboratory ────────────────────────────────────────────
+    # -- Allied Health - Laboratory --------------------------------------------
     "cls": "Clinical Lab Scientist",
     "mlt": "Medical Lab Technician",
     "mt": "Medical Technologist",
     "mls": "Medical Lab Scientist",
-    # ── Allied Health — Medical Assistant ────────────────────────────────────
+    # -- Allied Health - Medical Assistant ------------------------------------
     "ma - allergy and immunology": "Medical Assistant – Allergy and Immunology",
     "ma - dermatology": "Medical Assistant – Dermatology",
     "ma - family practice": "Medical Assistant – Family Practice",
@@ -214,8 +214,8 @@ SPECIALTY_ABBREVIATIONS: dict[str, str] = {
     "ma - medical assistant": "Medical Assistant",
 }
 
-# ── Specialty → Group mapping ─────────────────────────────────────────────────
-# Maps canonical specialty name → group label (broad category)
+# -- Specialty -> Group mapping -------------------------------------------------
+# Maps canonical specialty name -> group label (broad category)
 SPECIALTY_GROUPS: dict[str, str] = {
     # Nursing groups
     "Acute Care Float": "Med Surg",
@@ -365,7 +365,7 @@ SPECIALTY_GROUPS: dict[str, str] = {
     "Sterile Processing Technician": "Sterile Processing",
     "Cardiovascular Operating Room Tech": "OR Tech",
     "Obstetric Technician": "OR Tech",
-    # ── Completed from the 2.11.26 spreadsheet (Speciality → Group) ───────────
+    # -- Completed from the 2.11.26 spreadsheet (Speciality -> Group) -----------
     "Cardiac Catheterization Lab Technologist": "Imaging Tech",
     "Cardiac Stress Testing": "Echo Lab",
     "Cardiovascular Operating Room Surgical First Assistant": "OR Tech",
@@ -522,7 +522,7 @@ SPECIALTY_GROUPS: dict[str, str] = {
     "Ultrasound Tech – Vascular": "Imaging Tech",
 }
 
-# ── Canonical specialty lists ─────────────────────────────────────────────────
+# -- Canonical specialty lists -------------------------------------------------
 
 NURSING_SPECIALTIES: list[str] = [
     "Acute Care Float", "Administrative", "Ambulatory Care", "Anesthetist",

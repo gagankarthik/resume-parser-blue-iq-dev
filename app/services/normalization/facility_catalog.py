@@ -1,22 +1,22 @@
 """
-Facility reference catalog — the source of truth for platform facility IDs.
+Facility reference catalog - the source of truth for platform facility IDs.
 
 The platform delivers a directory of facilities, each with an id, the canonical
 facility name, and (optionally) its parent health system. This module loads that
 directory from ``settings.facility_catalog_path`` (JSON list, or the
 ``{"facilities": [...]}`` envelope the refresh script writes, or a CSV with the
 same columns) and exposes a punctuation/case-insensitive name index keyed off
-``healthcare_taxonomy._match_key``, so the facility matcher can resolve a résumé
+``healthcare_taxonomy._match_key``, so the facility matcher can resolve a resume
 employer/facility string to a catalog id.
 
 Design mirrors ``specialty_catalog`` (loaded once, cached at module level,
-``reload()`` for tests) but is simpler — facilities are not profession-scoped, so a
+``reload()`` for tests) but is simpler - facilities are not profession-scoped, so a
 single flat name index plus the record list (for the fuzzy tier) is all the matcher
 needs:
 
-  • The catalog is OPTIONAL. When the path is unset or the file is missing/empty,
+  * The catalog is OPTIONAL. When the path is unset or the file is missing/empty,
     ``get_catalog()`` returns an empty catalog (logged once) and the matcher leaves
-    ``facility_id`` null — parsing is never broken by a missing/garbled file.
+    ``facility_id`` null - parsing is never broken by a missing/garbled file.
 
 Expected record shape (per facility), extra keys ignored::
 

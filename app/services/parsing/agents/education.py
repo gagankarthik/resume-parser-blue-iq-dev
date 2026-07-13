@@ -1,4 +1,4 @@
-"""EducationAgent — degrees, institutions, fields, years."""
+"""EducationAgent - degrees, institutions, fields, years."""
 
 from __future__ import annotations
 

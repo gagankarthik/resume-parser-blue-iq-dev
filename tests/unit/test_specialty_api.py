@@ -1,5 +1,5 @@
 """
-GigHealth specialties API transform tests — flattening the nested envelope into
+GigHealth specialties API transform tests - flattening the nested envelope into
 flat catalog rows with profession + curated keywords, preserving exact names.
 """
 

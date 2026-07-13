@@ -1,6 +1,6 @@
 """
-Cities API parse tests — turning the fuzzy-search envelope into ordered CityMatch
-records with a coerced 0–1 score, preserving best-first order.
+Cities API parse tests - turning the fuzzy-search envelope into ordered CityMatch
+records with a coerced 0-1 score, preserving best-first order.
 """
 
 from app.services.normalization import city_api

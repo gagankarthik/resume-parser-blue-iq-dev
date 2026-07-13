@@ -2,10 +2,10 @@
 Centralized error code registry, HTTP error factory, and user-facing hints.
 
 Every API error surfaces:
-  • error_code   — machine-readable, for frontend branching
-  • detail       — developer-readable description
-  • hint         — user-facing actionable message (display this to the end user)
-  • docs_url     — link to relevant docs section (optional)
+  * error_code   - machine-readable, for frontend branching
+  * detail       - developer-readable description
+  * hint         - user-facing actionable message (display this to the end user)
+  * docs_url     - link to relevant docs section (optional)
 
 Response envelope (serialised by app/main.py):
     {
@@ -25,21 +25,21 @@ from fastapi import HTTPException
 
 
 class ErrorCode(StrEnum):
-    # ── Authentication ────────────────────────────────────────────────────────
+    # -- Authentication --------------------------------------------------------
     MISSING_API_KEY        = "MISSING_API_KEY"
     INVALID_API_KEY_FORMAT = "INVALID_API_KEY_FORMAT"
     INVALID_API_KEY        = "INVALID_API_KEY"
     REVOKED_API_KEY        = "REVOKED_API_KEY"
     ACCOUNT_DEACTIVATED    = "ACCOUNT_DEACTIVATED"
 
-    # ── File Validation ───────────────────────────────────────────────────────
+    # -- File Validation -------------------------------------------------------
     FILE_TOO_LARGE         = "FILE_TOO_LARGE"
     UNSUPPORTED_FILE_TYPE  = "UNSUPPORTED_FILE_TYPE"
     CORRUPTED_FILE         = "CORRUPTED_FILE"
     EMPTY_BATCH            = "EMPTY_BATCH"
     BATCH_TOO_LARGE        = "BATCH_TOO_LARGE"
 
-    # ── Processing ────────────────────────────────────────────────────────────
+    # -- Processing ------------------------------------------------------------
     EXTRACTION_FAILED      = "EXTRACTION_FAILED"
     OCR_FAILED             = "OCR_FAILED"
     PARSE_FAILED           = "PARSE_FAILED"
@@ -47,30 +47,30 @@ class ErrorCode(StrEnum):
     PARSE_TIMEOUT          = "PARSE_TIMEOUT"
     WORKER_DISPATCH_FAILED = "WORKER_DISPATCH_FAILED"
 
-    # ── Resources ─────────────────────────────────────────────────────────────
+    # -- Resources -------------------------------------------------------------
     JOB_NOT_FOUND          = "JOB_NOT_FOUND"
     BATCH_NOT_FOUND        = "BATCH_NOT_FOUND"
     WEBHOOK_NOT_FOUND      = "WEBHOOK_NOT_FOUND"
     UPLOAD_NOT_FOUND       = "UPLOAD_NOT_FOUND"
     UPLOAD_ALREADY_PARSED  = "UPLOAD_ALREADY_PARSED"
 
-    # ── Retry ─────────────────────────────────────────────────────────────────
+    # -- Retry -----------------------------------------------------------------
     RETRY_LIMIT_REACHED    = "RETRY_LIMIT_REACHED"
 
-    # ── Input Validation ──────────────────────────────────────────────────────
+    # -- Input Validation ------------------------------------------------------
     VALIDATION_ERROR       = "VALIDATION_ERROR"
     INVALID_REQUEST        = "INVALID_REQUEST"
     REQUEST_TOO_LARGE      = "REQUEST_TOO_LARGE"
 
-    # ── Rate limiting ─────────────────────────────────────────────────────────
+    # -- Rate limiting ---------------------------------------------------------
     RATE_LIMITED           = "RATE_LIMITED"
 
-    # ── Internal ──────────────────────────────────────────────────────────────
+    # -- Internal --------------------------------------------------------------
     INTERNAL_ERROR         = "INTERNAL_ERROR"
     SERVICE_UNAVAILABLE    = "SERVICE_UNAVAILABLE"
 
 
-# ── User-facing hints — shown directly to end users by the frontend ───────────
+# -- User-facing hints - shown directly to end users by the frontend -----------
 # Keep these plain-language, jargon-free, and actionable.
 
 _HINTS: dict[str, str] = {
@@ -130,16 +130,16 @@ _HINTS: dict[str, str] = {
         "Large or complex documents may need to be split into smaller files."
     ),
     ErrorCode.PARSE_TIMEOUT: (
-        "AI parsing took too long. Try again — if the problem persists, "
+        "AI parsing took too long. Try again - if the problem persists, "
         "the resume may be unusually long. Consider trimming to the most recent experience."
     ),
     ErrorCode.JOB_NOT_FOUND: (
         "This job ID was not found. Async job results are available for 1 hour after processing. "
-        "The job may have expired — re-upload the resume to create a new job."
+        "The job may have expired - re-upload the resume to create a new job."
     ),
     ErrorCode.BATCH_NOT_FOUND: (
         "This batch ID was not found. Batch results are available for 24 hours. "
-        "The batch may have expired — re-submit the files."
+        "The batch may have expired - re-submit the files."
     ),
     ErrorCode.WEBHOOK_NOT_FOUND: (
         "This webhook was not found or does not belong to your account."

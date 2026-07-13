@@ -48,7 +48,7 @@ def test_catalog_mapping_averages_entity_confidences():
     assert score(parsed).catalog_mapping == 1.0
 
     exp2 = ExperienceItem(company="Unknown Clinic", role="RN", profession="RN", state="ZZ")
-    # nothing resolved → confidences stay 0.0
+    # nothing resolved -> confidences stay 0.0
     parsed2 = ParsedResumeAI(experience=[exp2])
     assert score(parsed2).catalog_mapping == 0.0
 

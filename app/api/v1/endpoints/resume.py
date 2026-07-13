@@ -2,8 +2,8 @@
 Resume parsing endpoints.
 
 POST /api/v1/resume/parse
-  Single file parse. Digital PDF/DOCX → synchronous (returns result immediately).
-  Scanned PDF/image → asynchronous (returns job_id; use webhook or polling).
+  Single file parse. Digital PDF/DOCX -> synchronous (returns result immediately).
+  Scanned PDF/image -> asynchronous (returns job_id; use webhook or polling).
 
 GET /api/v1/resume/job/{job_id}
   Poll async job status.
@@ -71,7 +71,7 @@ async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
     return content, filename
 
 
-# ── Single-file parse ─────────────────────────────────────────────────────────
+# -- Single-file parse ---------------------------------------------------------
 
 @router.post(
     "/resume/parse",
@@ -81,7 +81,7 @@ async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
         "Upload a single resume (PDF, DOCX, RTF, PNG, JPG, TIFF). "
         "Digital PDFs, DOCX, and RTF files are processed **synchronously** and the parsed JSON "
         "is returned immediately. "
-        "Scanned PDFs and images require OCR and are processed **asynchronously** — "
+        "Scanned PDFs and images require OCR and are processed **asynchronously** - "
         "a `job_id` is returned and results are delivered via webhook and the polling endpoint."
     ),
     tags=["Resume"],
@@ -101,7 +101,7 @@ async def parse_resume(
                     "immediately and run the full parse on the async worker. Use this "
                     "when your own gateway cannot hold a request open long enough for "
                     "a complete parse (a proxy or serverless host with a short request "
-                    "timeout) — blocking there would cost you a 504 with no data. "
+                    "timeout) - blocking there would cost you a 504 with no data. "
                     "Costs one poll round-trip; never returns a partial.",
     ),
     record: dict = Depends(get_api_key_record),
@@ -120,8 +120,8 @@ async def parse_resume(
 
     # Fast synchronous PROBE for digital files. If it parses cleanly inside the
     # gateway budget, return the complete JSON inline. If it can't finish (a dense
-    # résumé that would otherwise degrade to a partial), PROMOTE it to the async
-    # worker — which runs the full multi-agent parse with no gateway ceiling — and
+    # resume that would otherwise degrade to a partial), PROMOTE it to the async
+    # worker - which runs the full multi-agent parse with no gateway ceiling - and
     # hand back a poll URL, so the caller always ends up with a COMPLETE record and
     # never a partial.
     sync_result = None
@@ -171,7 +171,7 @@ async def parse_resume(
                          poll_url=f"/api/v1/resume/job/{job_id}")
 
 
-# ── Large-file upload (presigned, two-step) ───────────────────────────────────
+# -- Large-file upload (presigned, two-step) -----------------------------------
 
 @router.post(
     "/resume/upload-url",
@@ -181,8 +181,8 @@ async def parse_resume(
         "Get a presigned S3 URL to upload a resume **directly to storage**, "
         "bypassing the ~6 MB request limit of the standard `/resume/parse` endpoint. "
         "Use this for files up to the full `max_file_size_mb`.\n\n"
-        "**Flow:** call this → POST the file to the returned `upload_url` (multipart "
-        "form data: every key in `fields`, then a `file` field) → call "
+        "**Flow:** call this -> POST the file to the returned `upload_url` (multipart "
+        "form data: every key in `fields`, then a `file` field) -> call "
         "`POST /resume/parse-uploaded` with the returned `job_id`. "
         "The upload URL expires after `expires_in_seconds`."
     ),
@@ -258,7 +258,7 @@ async def parse_uploaded(
     except Exception:
         raise api_error(
             422, ErrorCode.UPLOAD_NOT_FOUND,
-            "No uploaded file found for this job — complete the upload first",
+            "No uploaded file found for this job - complete the upload first",
         )
 
     # Validate the downloaded bytes (size + magic bytes) before processing.
@@ -274,9 +274,9 @@ async def parse_uploaded(
         s3_client.delete_file(s3_key)
         raise api_error(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
 
-    # Atomically claim the job (pending_upload → processing) before the billed
+    # Atomically claim the job (pending_upload -> processing) before the billed
     # parse. Two concurrent parse-uploaded calls for the same job_id both pass the
-    # status read above; only the claim winner proceeds — the loser gets 409 and
+    # status read above; only the claim winner proceeds - the loser gets 409 and
     # we do NOT delete the S3 file (the winner still needs it).
     if not db.claim_upload_job(payload.job_id):
         raise api_error(
@@ -313,7 +313,7 @@ async def parse_uploaded(
         log.info("sync_partial_promoted_to_async", job_id=payload.job_id)
 
     # Async: the file is already in S3; the worker downloads and deletes it. This
-    # covers scanned files AND a promoted sync partial — do NOT delete the S3 file
+    # covers scanned files AND a promoted sync partial - do NOT delete the S3 file
     # here (the worker needs it) and leave the job "processing" for the worker to
     # finish.
     try:
@@ -341,7 +341,7 @@ async def parse_uploaded(
                          poll_url=f"/api/v1/resume/job/{payload.job_id}")
 
 
-# ── Job status polling ────────────────────────────────────────────────────────
+# -- Job status polling --------------------------------------------------------
 
 @router.get(
     "/resume/job/{job_id}",
@@ -388,7 +388,7 @@ async def get_job_status(
     )
 
 
-# ── Retry ─────────────────────────────────────────────────────────────────────
+# -- Retry ---------------------------------------------------------------------
 
 @router.post(
     "/resume/{job_id}/retry",
@@ -396,7 +396,7 @@ async def get_job_status(
     summary="Retry parsing a resume",
     description=(
         "Re-parse a resume when the original result was unsatisfactory. "
-        "Re-upload the same file — the parser will re-run the full extraction "
+        "Re-upload the same file - the parser will re-run the full extraction "
         "and AI pipeline. A new `job_id` is created and linked to the original. "
         "Maximum retries per job: `MAX_RETRY_COUNT` (default 3). "
         "Each retry runs the full pipeline and consumes AI tokens like a fresh parse."
@@ -449,7 +449,7 @@ async def retry_parse(
     # Create retry job linked to original
     db.create_job(new_job_id, company_id, retried_from=job_id, retry_count=retry_count)
 
-    # Same fast PROBE → PROMOTE contract as /resume/parse: a retry is a synchronous
+    # Same fast PROBE -> PROMOTE contract as /resume/parse: a retry is a synchronous
     # HTTP request under the same gateway ceiling, so it cannot hold the connection
     # for a full-budget parse either. If the probe can't finish, hand the file to the
     # async worker and return a poll URL rather than blocking until the gateway 504s.
@@ -505,7 +505,7 @@ async def retry_parse(
     )
 
 
-# ── Feedback (model improvement) ──────────────────────────────────────────────
+# -- Feedback (model improvement) ----------------------------------------------
 
 @router.post(
     "/resume/{job_id}/feedback",
@@ -516,7 +516,7 @@ async def retry_parse(
         "Submit the original parser JSON together with the user-corrected JSON "
         "after a review. The corrections are stored (scoped to your account) and "
         "used to improve parsing accuracy over time.\n\n"
-        "Send this **after** the review step — typically only when the user "
+        "Send this **after** the review step - typically only when the user "
         "actually changed something (`changed: true`), though feedback with no "
         "changes is also accepted as a positive signal. Processed asynchronously; "
         "the response (HTTP 202) confirms the feedback was recorded."
@@ -532,7 +532,7 @@ async def submit_feedback(
 
     # Defense-in-depth: if the original job is still on record (jobs TTL ~1h),
     # make sure it belongs to this account. Feedback often arrives after the job
-    # has expired, so a missing job is fine — we still accept it.
+    # has expired, so a missing job is fine - we still accept it.
     original_job = db.get_job(job_id)
     if original_job and original_job.get("company_id") != company_id:
         raise api_error(404, ErrorCode.JOB_NOT_FOUND, "Job not found")

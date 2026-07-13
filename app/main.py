@@ -1,13 +1,13 @@
 """
 FastAPI application factory.
 
-Middleware stack (outermost → innermost):
-  1. RequestLoggingMiddleware  — logs every request with duration + request_id
-  2. SecurityHeadersMiddleware — X-Request-ID, security headers, HSTS
+Middleware stack (outermost -> innermost):
+  1. RequestLoggingMiddleware  - logs every request with duration + request_id
+  2. SecurityHeadersMiddleware - X-Request-ID, security headers, HSTS
   3. CORSMiddleware
 
 Error handlers:
-  All exceptions → consistent {"error": {"status_code", "error_code", "detail"}} envelope.
+  All exceptions -> consistent {"error": {"status_code", "error_code", "detail"}} envelope.
 """
 
 import time
@@ -37,7 +37,7 @@ from app.core.logging import configure_logging, get_logger
 log = get_logger(__name__)
 
 
-# ── Middleware ────────────────────────────────────────────────────────────────
+# -- Middleware ----------------------------------------------------------------
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -48,7 +48,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         settings = get_settings()
 
         # Reject an over-sized body from its declared Content-Length BEFORE it is
-        # read into memory — defense-in-depth above each endpoint's file-size check.
+        # read into memory - defense-in-depth above each endpoint's file-size check.
         # The batch route carries many files, so it gets a larger ceiling than the
         # single-file cap (which would otherwise 413 a valid multi-file batch).
         max_bytes = settings.max_request_bytes
@@ -82,7 +82,7 @@ def _content_length_exceeds(request: Request, max_bytes: int) -> JSONResponse | 
     """Return a 413 response when the request's Content-Length exceeds `max_bytes`.
 
     Returns None when there is no Content-Length (e.g. chunked) or it is within
-    the limit — those bodies are still bounded by each endpoint's own size check.
+    the limit - those bodies are still bounded by each endpoint's own size check.
     """
     raw = request.headers.get("content-length")
     if raw is None:
@@ -105,7 +105,7 @@ def _content_length_exceeds(request: Request, max_bytes: int) -> JSONResponse | 
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Log every request: method, path, status, duration — no body content."""
+    """Log every request: method, path, status, duration - no body content."""
 
     async def dispatch(self, request: Request, call_next):
         start = time.monotonic()
@@ -125,7 +125,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# ── Error envelope ────────────────────────────────────────────────────────────
+# -- Error envelope ------------------------------------------------------------
 
 def _error_body(
     status_code: int,
@@ -150,7 +150,7 @@ def _error_body(
     }
 
 
-# ── App factory ───────────────────────────────────────────────────────────────
+# -- App factory ---------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -176,10 +176,10 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=settings.app_version,
         description=(
-            "**Resume Parser API** — converts PDF, DOCX, and image resumes into structured JSON "
+            "**Resume Parser API** - converts PDF, DOCX, and image resumes into structured JSON "
             "ready for healthcare staffing profile fields.\n\n"
             "Specialised for nursing and allied health: normalises 350+ clinical specialties, "
-            "credentials (RN, LPN, CRT, RRT, OT, PT, SLP…), and certifications (BLS, ACLS, CCRN…).\n\n"
+            "credentials (RN, LPN, CRT, RRT, OT, PT, SLP...), and certifications (BLS, ACLS, CCRN...).\n\n"
             "All responses include `X-Request-ID` for tracing."
         ),
         docs_url="/docs" if not settings.is_production else None,
@@ -188,7 +188,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Middleware — outermost first.
+    # Middleware - outermost first.
     # CORS is handled here (single source of truth); the Lambda Function URL does
     # NOT also set CORS, which would double the Access-Control-* headers.
     #
@@ -213,12 +213,12 @@ def create_app() -> FastAPI:
 
     app.include_router(router)
 
-    # ── Unified error handlers ────────────────────────────────────────────────
+    # -- Unified error handlers ------------------------------------------------
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         if isinstance(exc.detail, dict) and "error_code" in exc.detail:
-            # Structured error from api_error() factory — preserves the hint
+            # Structured error from api_error() factory - preserves the hint
             body = _error_body(
                 exc.status_code,
                 exc.detail["error_code"],
@@ -236,11 +236,11 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        # Build a clear validation message: "field 'X' — message"
+        # Build a clear validation message: "field 'X' - message"
         errors = exc.errors()
         if errors:
             err  = errors[0]
-            loc  = " → ".join(str(p) for p in err.get("loc", []) if p not in ("body", "query"))
+            loc  = " -> ".join(str(p) for p in err.get("loc", []) if p not in ("body", "query"))
             detail = f"{loc}: {err.get('msg', 'invalid value')}" if loc else err.get("msg", "Validation failed")
         else:
             detail = "Validation failed"
@@ -253,7 +253,7 @@ def create_app() -> FastAPI:
     async def domain_error_handler(request: Request, exc: ResumeParserError) -> JSONResponse:
         log.warning("domain_error", error_type=type(exc).__name__, error=str(exc))
         # These are client-input problems (an unreadable/encrypted PDF, a scan OCR
-        # can't decode, a spoofed type), not server faults — surface them as 4xx so
+        # can't decode, a spoofed type), not server faults - surface them as 4xx so
         # callers know retrying the same file won't help, rather than a blanket 500.
         if isinstance(exc, OCRError):
             status, code = 422, ErrorCode.OCR_FAILED

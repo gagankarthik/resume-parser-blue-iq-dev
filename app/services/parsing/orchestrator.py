@@ -1,11 +1,11 @@
 """
-Multi-agent orchestrator — the high-accuracy parsing path.
+Multi-agent orchestrator - the high-accuracy parsing path.
 
 Pipeline:
-  Stage 1  StructureAgent          → map roles + bullet counts (sequential)
+  Stage 1  StructureAgent          -> map roles + bullet counts (sequential)
   Stage 2  Personal / Work / Education / Credentials / Supplemental (parallel)
-           — Work extracts each mapped role independently
-  Stage 4  ValidatorAgent          → reconcile bullet counts, re-extract mismatches
+           - Work extracts each mapped role independently
+  Stage 4  ValidatorAgent          -> reconcile bullet counts, re-extract mismatches
 
 Resilience: every Stage-2 agent runs under return_exceptions, so one section
 failing degrades only THAT section (empty default) instead of killing the whole
@@ -46,12 +46,12 @@ from app.services.parsing.rule_parser import RuleExtracted
 
 log = get_logger(__name__)
 
-# Each agent receives the full résumé text, and the WorkAgent sends it once PER
-# role. Cap the text so a pathologically long résumé can't blow the model context
+# Each agent receives the full resume text, and the WorkAgent sends it once PER
+# role. Cap the text so a pathologically long resume can't blow the model context
 # window or run up unbounded token cost across the fan-out. Kept in line with the
 # single-shot parser's MAX_TOTAL_CHARS so the multi-agent path (used for the LONGER
-# résumés that trip multi_agent_min_chars) doesn't silently see LESS text than the
-# fallback would — the earlier 30K cap dropped the tail of 30-60K CVs with no
+# resumes that trip multi_agent_min_chars) doesn't silently see LESS text than the
+# fallback would - the earlier 30K cap dropped the tail of 30-60K CVs with no
 # signal. Truncation now emits a warning (see parse()).
 _MAX_AGENT_CHARS = 60_000
 
@@ -59,10 +59,10 @@ _MAX_AGENT_CHARS = 60_000
 # whatever it has (partial + warning) instead of letting the pipeline's outer
 # wait_for cancel the whole parse and discard all completed work. The sum stays
 # comfortably under the pipeline's orchestrator timeout so this graceful path wins,
-# and the whole parse stays inside the pipeline's ≤2-minute budget.
+# and the whole parse stays inside the pipeline's <=2-minute budget.
 _STRUCTURE_TIMEOUT = 20   # one sequential call
 # Per-role work fan-out + section agents. A dense resume (e.g. 12 roles) needs
-# well over 60s here — at 60s the WorkExperienceAgent was cancelled and the parse
+# well over 60s here - at 60s the WorkExperienceAgent was cancelled and the parse
 # came back with experience=0. Sized against the larger pipeline budget so the
 # work stage can actually finish before the graceful net fires.
 _STAGE2_TIMEOUT    = 120
@@ -145,11 +145,11 @@ async def parse(
     # Budget to hold back for the stages AFTER structure (Stage 2 + validation).
     # The fixed 40s suits the large async budget, but on the tighter SYNC budget it
     # would starve the structure call (e.g. only ~6s of a 43s budget), so scale it
-    # down proportionally. Capped at 40 so any budget ≥ ~67s (the async path) keeps
+    # down proportionally. Capped at 40 so any budget >= ~67s (the async path) keeps
     # today's exact behaviour.
     struct_reserve = min(40.0, budget * 0.6) if budget else 40.0
 
-    # ── Stage 1: structure ────────────────────────────────────────────────────
+    # -- Stage 1: structure ----------------------------------------------------
     try:
         structure = await asyncio.wait_for(
             structure_agent.run(text, meter),
@@ -163,10 +163,10 @@ async def parse(
     roles = structure.roles if structure else []
     log.info("orchestrator_structure", roles=len(roles))
 
-    # ── Stage 2: parallel section extraction (self-bounded) ───────────────────
+    # -- Stage 2: parallel section extraction (self-bounded) -------------------
     # Run the sections as explicit tasks under a soft deadline. Any section still
     # in flight when the deadline hits is cancelled and degrades to its empty
-    # default (with a warning) — so one slow section can't time out the whole
+    # default (with a warning) - so one slow section can't time out the whole
     # orchestrator and force the pipeline to throw everything away and re-parse.
     raw = await _run_sections_bounded(
         [
@@ -191,8 +191,8 @@ async def parse(
     creds: CredentialsResult    = _unwrap(raw[3], CredentialsResult(), "CredentialsAgent", warnings)
     supp: SupplementalResult    = _unwrap(raw[4], SupplementalResult(), "SupplementalAgent", warnings)
 
-    # ── Stage 4: validation / re-extraction ───────────────────────────────────
-    # Skipped entirely when the deadline leaves no useful time — the validator is
+    # -- Stage 4: validation / re-extraction -----------------------------------
+    # Skipped entirely when the deadline leaves no useful time - the validator is
     # a refinement pass, never worth jeopardising an already-complete extraction.
     if work and roles and (deadline is None or deadline - time.monotonic() > 8):
         try:
@@ -233,7 +233,7 @@ async def parse_light(
     text: str, anchors: RuleExtracted, budget: float
 ) -> tuple[ParsedResumeAI, int, list[str]]:
     """Section-only extraction: personal / education / credentials / supplemental
-    in parallel — NO structure, NO per-role work stage, NO validator.
+    in parallel - NO structure, NO per-role work stage, NO validator.
 
     The per-role work stage is the slow, cancellation-prone part of the full
     orchestrator; on the tight SYNC budget it gets cancelled and drops the whole

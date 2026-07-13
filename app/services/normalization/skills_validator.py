@@ -5,7 +5,7 @@ After normalization, every skill string is checked against the canonical
 taxonomy (specialties, professions/credentials, and common clinical
 certifications). The result tells enterprise clients which skills the parser
 could ground in a known healthcare term ("recognized") and which are free-form
-or out-of-taxonomy ("unrecognized") — useful for flagging records that need
+or out-of-taxonomy ("unrecognized") - useful for flagging records that need
 human review.
 
 This is read-only and deterministic: it derives entirely from the parsed
@@ -33,13 +33,13 @@ KNOWN_CERTIFICATIONS: frozenset[str] = frozenset(
     )
 )
 
-# Real clinical skills rarely equal a bare specialty name — they read like
+# Real clinical skills rarely equal a bare specialty name - they read like
 # "EKG Rhythms", "Telemetry monitoring", "IV/PICC", "Neonatal health monitoring".
 # Recognizing only exact specialties/certs left these at 0% recognized, which
 # looks broken. A skill that CONTAINS one of these clinical terms (as a whole
 # word) is a genuine healthcare skill and is recognized. Terms are precise
-# clinical nouns/acronyms — deliberately not generic words like "monitoring" or
-# "assessment" — to avoid false positives.
+# clinical nouns/acronyms - deliberately not generic words like "monitoring" or
+# "assessment" - to avoid false positives.
 CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
     # Cardiac / monitoring
     "ekg", "ecg", "telemetry", "cardiac", "hemodynamic", "arrhythmia", "rhythm",
@@ -48,7 +48,7 @@ CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
     "ventilator", "ventilation", "intubation", "extubation", "tracheostomy",
     "trach", "bipap", "cpap", "oxygenation", "capnography", "nebulizer",
     "suctioning", "abg", "airway",
-    # Vascular access / infusion. NOTE: no bare "iv" — as a whole word it also
+    # Vascular access / infusion. NOTE: no bare "iv" - as a whole word it also
     # matches the Roman numeral in "Level IV" / "Grade IV", inflating recognition.
     # The real skills carry a qualifier, so match those forms instead.
     "iv therapy", "iv insertion", "iv access", "iv push", "peripheral iv",
@@ -64,17 +64,17 @@ CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
     "specimen", "phlebotomy", "wound", "dressing",
     # Charting / systems
     "epic", "cerner", "meditech", "emr", "ehr", "emar", "charting", "pyxis", "picis",
-    # Assessments / tubes / procedures / aesthetics — specific multi-word or
+    # Assessments / tubes / procedures / aesthetics - specific multi-word or
     # acronym forms (no bare ambiguous tokens) to broaden recognition of real
     # nursing skills without the "Level IV" class of false positives.
     "aed", "cath", "ng tube", "g-tube", "gtube", "peg tube", "feeding tube",
     "ciwa", "nihss", "stroke assessment", "care plan", "care plans", "vital signs",
     "acute care", "seizure", "botox", "botulinum", "dermal filler", "injectable",
     "aesthetic", "ported cath", "central venous",
-    # Imaging / allied-health (radiologic, CT, MRI, mammography, sonography…). The
-    # taxonomy and the terms above are nurse-centric, so a rad-tech résumé's real
+    # Imaging / allied-health (radiologic, CT, MRI, mammography, sonography...). The
+    # taxonomy and the terms above are nurse-centric, so a rad-tech resume's real
     # skills ("X-Ray", "Medical Imaging") were landing 0% recognized. Whole-word
-    # modality names and clear acronyms only — no bare ambiguous tokens.
+    # modality names and clear acronyms only - no bare ambiguous tokens.
     "x-ray", "xray", "radiography", "radiologic", "radiography", "fluoroscopy",
     "fluoro", "mammography", "mammogram", "mammo", "sonography", "sonographer",
     "ultrasound", "ct", "mri", "mra", "computed tomography", "magnetic resonance",
@@ -92,16 +92,16 @@ _CLINICAL_RE = re.compile(
 
 def _is_clinical_skill(name: str) -> bool:
     """True when a free-form skill contains a known clinical term as a whole word
-    (e.g. 'Telemetry monitoring' → 'telemetry'; 'IV/PICC' → 'iv'/'picc')."""
+    (e.g. 'Telemetry monitoring' -> 'telemetry'; 'IV/PICC' -> 'iv'/'picc')."""
     return bool(_CLINICAL_RE.search(name))
 
 def validate_skills(parsed: ParsedResumeAI) -> SkillsValidation:
     """
     Classify each parsed skill against the healthcare taxonomy.
 
-    Recognized  → matched a canonical specialty, profession/credential, a known
+    Recognized  -> matched a canonical specialty, profession/credential, a known
                   certification, or a taxonomy abbreviation.
-    Unrecognized → free-form skill with no taxonomy match.
+    Unrecognized -> free-form skill with no taxonomy match.
 
     Deduplicates case-insensitively while preserving first-seen order.
     """

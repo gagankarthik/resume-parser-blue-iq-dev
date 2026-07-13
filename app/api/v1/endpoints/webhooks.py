@@ -1,9 +1,9 @@
 """
 Webhook management endpoints.
 
-POST   /webhooks      — register a new webhook (returns HMAC secret once)
-GET    /webhooks      — list registered webhooks (secret not returned)
-DELETE /webhooks/{id} — remove a webhook
+POST   /webhooks      - register a new webhook (returns HMAC secret once)
+GET    /webhooks      - list registered webhooks (secret not returned)
+DELETE /webhooks/{id} - remove a webhook
 
 Webhooks are scoped to the company derived from the API key.
 """

@@ -1,5 +1,5 @@
 """
-GigHealth facilities API transform tests — flattening the flat envelope into
+GigHealth facilities API transform tests - flattening the flat envelope into
 catalog rows, preserving exact names and coercing ids/nullable health systems.
 """
 

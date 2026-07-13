@@ -66,7 +66,7 @@ def create_presigned_upload(
     condition makes S3 itself reject anything larger than ``max_bytes``, and
     server-side encryption is enforced via the policy.
 
-    Returns ``{"key", "url", "fields"}`` — the client POSTs the file to ``url``
+    Returns ``{"key", "url", "fields"}`` - the client POSTs the file to ``url``
     with ``fields`` (plus the ``file`` field) as multipart form data.
     """
     settings = get_settings()
@@ -94,14 +94,14 @@ def download_file(s3_key: str) -> bytes:
 
 
 def delete_file(s3_key: str) -> None:
-    """Guaranteed delete — called after processing regardless of outcome."""
+    """Guaranteed delete - called after processing regardless of outcome."""
     settings = get_settings()
     s3 = _get_s3()
     try:
         s3.delete_object(Bucket=settings.s3_bucket_name, Key=s3_key)
         log.info("s3_delete", key=s3_key)
     except ClientError as exc:
-        # Log but never raise — deletion failure must not block the response
+        # Log but never raise - deletion failure must not block the response
         log.error("s3_delete_failed", key=s3_key, error=str(exc))
 
 

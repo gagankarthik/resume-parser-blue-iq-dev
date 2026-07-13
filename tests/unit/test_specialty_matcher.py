@@ -35,7 +35,7 @@ def catalog(tmp_path):
     return specialty_catalog.reload(str(path))
 
 
-# ── Deterministic tiers (with catalog) ────────────────────────────────────────
+# -- Deterministic tiers (with catalog) ----------------------------------------
 
 def test_tier1_name_via_abbreviation(catalog):
     m = specialty_matcher.match("Med Surg")          # abbrev → "Medical Surgical"
@@ -55,7 +55,7 @@ def test_tier3_keyword(catalog):
     assert (m.specialty_id, m.match_tier, m.confidence) == ("1042", "keywords", 0.80)
 
 
-# ── Candidate extraction: a specialty embedded in a phrase still resolves ──────
+# -- Candidate extraction: a specialty embedded in a phrase still resolves ------
 
 @pytest.fixture
 def icu_catalog(tmp_path):
@@ -97,7 +97,7 @@ def test_leading_token_resolves_descriptor(icu_catalog):
 
 def test_fuzzy_exact_match_scores_one(tmp_path):
     # A candidate that is IDENTICAL (after normalization) to a catalog full name but
-    # is not in the exact index path still scores 1.0 via the fuzzy tier — never
+    # is not in the exact index path still scores 1.0 via the fuzzy tier - never
     # capped to the fuzzy max, never sent to AI.
     path = tmp_path / "c.json"
     path.write_text(json.dumps([
@@ -119,7 +119,7 @@ def test_fuzzy_tier_ignores_unrelated_phrase(icu_catalog):
 
 
 def test_duplicate_specialties_collapse_to_one(icu_catalog):
-    # "CCU" and "Critical Care Unit" both resolve to id 18 → a single entry.
+    # "CCU" and "Critical Care Unit" both resolve to id 18 -> a single entry.
     out = specialty_matcher.match_batch(["CCU", "Critical Care Unit"], "RN")
     assert len(out) == 1
     assert out[0].specialty_id == "18"
@@ -142,7 +142,7 @@ def test_base_specialty_preferred_over_variant_on_shared_full_name(tmp_path):
 
 def test_duplicated_exact_phrase_matches_deterministically_at_one(icu_catalog):
     # A doubled specialty ("NICU NICU") must resolve deterministically at 1.0 via the
-    # NAME tier — it must NOT miss the deterministic tiers and fall to the AI cap
+    # NAME tier - it must NOT miss the deterministic tiers and fall to the AI cap
     # (0.7). Regression guard for the "exact match returning 0.7" bug.
     for raw in ("NICU NICU", "CCU CCU CCU"):
         m = specialty_matcher.match(raw)
@@ -171,14 +171,14 @@ def test_garbled_runon_specialty_resolves_and_raw_is_tidied(icu_catalog):
                "Neonatal Care Unit (NICU) Level III and Level IV including "
                "high frequency ventilation and surgical patients.")
     m = specialty_matcher.match(garbled, "RN")
-    # The parenthetical NICU still lands an exact, high-confidence id — not 0.7.
+    # The parenthetical NICU still lands an exact, high-confidence id - not 0.7.
     assert (m.specialty_id, m.match_tier, m.confidence) == ("82", "name", 1.0)
     # raw is preserved for audit but collapsed to a legible, bounded string.
     assert m.raw is not None and len(m.raw.split()) <= 9
     assert "NICU" in m.raw
 
 
-# ── Profession-scoped id selection ────────────────────────────────────────────
+# -- Profession-scoped id selection --------------------------------------------
 
 @pytest.fixture
 def prof_catalog(tmp_path):
@@ -206,14 +206,14 @@ def test_profession_pair_splits_lpn_lvn(prof_catalog):
 
 
 def test_full_title_aliases_to_catalog_code(prof_catalog):
-    # Résumés spell professions out; they must scope to the catalog's short code.
+    # Resumes spell professions out; they must scope to the catalog's short code.
     assert specialty_matcher.match("ICU", "Registered Nurse").specialty_id == "56"
     assert specialty_matcher.match("ICU", "Certified Nursing Assistant").specialty_id == "757"
     assert specialty_matcher.match("ICU", "Licensed Practical Nurse").specialty_id == "411"
 
 
 def test_unknown_profession_falls_back_to_flat(prof_catalog):
-    # No PT "ICU" → falls back to the flat first-wins record (RN, listed first).
+    # No PT "ICU" -> falls back to the flat first-wins record (RN, listed first).
     assert specialty_matcher.match("ICU", "PT").specialty_id == "56"
 
 
@@ -232,7 +232,7 @@ def test_unmatched_kept_without_id(catalog):
     assert m.name == "Underwater Basket Weaving"     # not dropped
 
 
-# ── No-catalog fallback ───────────────────────────────────────────────────────
+# -- No-catalog fallback -------------------------------------------------------
 
 def test_no_catalog_resolves_name_without_id():
     specialty_catalog.reload("")
@@ -250,7 +250,7 @@ def test_batch_dedups_by_canonical_name(catalog):
     assert [m.name for m in out] == ["Intensive Care Unit", "Medical Surgical"]
 
 
-# ── Tier 4: batched AI shortlist ──────────────────────────────────────────────
+# -- Tier 4: batched AI shortlist ----------------------------------------------
 
 def _parsed_with_unmatched():
     parsed = ParsedResumeAI(experience=[
@@ -290,7 +290,7 @@ def _parsed_with_phrase(phrase: str) -> ParsedResumeAI:
 
 async def test_tier4_applies_validated_ai_match(catalog, monkeypatch):
     # A lexically plausible phrase (shares "critical" with the record's keyword) that
-    # the deterministic + fuzzy tiers still miss → the AI tier applies the pick.
+    # the deterministic + fuzzy tiers still miss -> the AI tier applies the pick.
     parsed = _parsed_with_phrase("Critical Care Overflow")
     sm = parsed.experience[0].specialties[0]
     assert sm.matched is False
@@ -313,8 +313,8 @@ async def test_tier4_applies_validated_ai_match(catalog, monkeypatch):
 
 
 async def test_tier4_drops_implausible_ai_pick(catalog, monkeypatch):
-    # A confident pick with NO lexical footing ("Cardiac Drip Unit" → "Intensive Care
-    # Unit") is a hallucination risk — dropped and left unmatched for human review.
+    # A confident pick with NO lexical footing ("Cardiac Drip Unit" -> "Intensive Care
+    # Unit") is a hallucination risk - dropped and left unmatched for human review.
     parsed = _parsed_with_phrase("Cardiac Drip Unit")
 
     async def fake_call(self, system, user, response_format, meter, *, max_tokens=None):
@@ -333,7 +333,7 @@ async def test_tier4_drops_implausible_ai_pick(catalog, monkeypatch):
 
 async def test_tier4_drops_low_confidence_ai_pick(catalog, monkeypatch):
     # Even a plausible pick is dropped when the model's own certainty is below the
-    # acceptance floor — prefer "unmatched, review" over a weak guess.
+    # acceptance floor - prefer "unmatched, review" over a weak guess.
     parsed = _parsed_with_phrase("Critical Care Overflow")
 
     async def fake_call(self, system, user, response_format, meter, *, max_tokens=None):

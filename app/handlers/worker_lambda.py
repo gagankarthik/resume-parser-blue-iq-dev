@@ -2,7 +2,7 @@
 Async OCR worker pipeline.
 
 In the single-Lambda deployment this is invoked by the unified entry point
-(`app.handlers.lambda_handler`) when the function receives a non-HTTP event —
+(`app.handlers.lambda_handler`) when the function receives a non-HTTP event -
 i.e. a self-invoke with InvocationType='Event'. It is not registered as a
 separate Lambda handler.
 
@@ -14,9 +14,9 @@ Expected event payload:
     "filename":        "resume.pdf",
     "file_size_bytes": 204800,
     "batch_id":        "01J3K5..."   (optional)
-    "force_textract":  false          (optional — skip Tesseract, use Textract)
-    "key_hash":        "..."          (optional — attribute usage to the API key)
-    "key_prefix":      "rp_live_ab"   (optional — display prefix for the key)
+    "force_textract":  false          (optional - skip Tesseract, use Textract)
+    "key_hash":        "..."          (optional - attribute usage to the API key)
+    "key_prefix":      "rp_live_ab"   (optional - display prefix for the key)
   }
 """
 
@@ -68,7 +68,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     finally:
         loop.close()
         # CRITICAL: install a FRESH, open loop. This warm container also serves
-        # HTTP events via Mangum, which reuses the thread's current event loop —
+        # HTTP events via Mangum, which reuses the thread's current event loop -
         # leaving the closed loop installed poisoned every subsequent HTTP
         # request from this container with "RuntimeError: Event loop is closed".
         asyncio.set_event_loop(asyncio.new_event_loop())

@@ -12,7 +12,7 @@ def _validate(skills: list[str]):
     return validate_skills(ParsedResumeAI(skills=skills))
 
 
-# ── Recognized canonical specialties ──────────────────────────────────────────
+# -- Recognized canonical specialties ------------------------------------------
 
 def test_canonical_specialty_recognized():
     result = _validate(["Intensive Care Unit"])
@@ -38,7 +38,7 @@ def test_profession_abbreviation_recognized():
     assert result.recognized == ["Registered Nurse"]
 
 
-# ── Certifications ────────────────────────────────────────────────────────────
+# -- Certifications ------------------------------------------------------------
 
 def test_certification_recognized():
     result = _validate(["ACLS"])
@@ -51,7 +51,7 @@ def test_certification_case_insensitive():
     assert result.recognized == ["bls"]
 
 
-# ── Unrecognized free-form ────────────────────────────────────────────────────
+# -- Unrecognized free-form ----------------------------------------------------
 
 def test_unrecognized_freeform_skill():
     result = _validate(["Patient Advocacy"])
@@ -68,10 +68,10 @@ def test_mixed_recognized_and_unrecognized():
     assert result.recognized_ratio == 0.5
 
 
-# ── Free-form clinical skills recognized by clinical-term containment ──────────
+# -- Free-form clinical skills recognized by clinical-term containment ----------
 
 def test_clinical_skill_phrases_recognized():
-    """Real nursing skills read like phrases, not bare specialties — they must
+    """Real nursing skills read like phrases, not bare specialties - they must
     still be recognized so validation isn't a misleading 0%."""
     result = _validate([
         "Neonatal health monitoring", "EKG Rhythms", "IV/PICC",
@@ -91,12 +91,12 @@ def test_non_clinical_skill_stays_unrecognized():
 
 
 def test_clinical_term_requires_whole_word():
-    # "derivative" contains "iv" but not as a whole word → not clinical.
+    # "derivative" contains "iv" but not as a whole word -> not clinical.
     result = _validate(["Derivative analysis"])
     assert result.unrecognized == ["Derivative analysis"]
 
 
-# ── Group mapping ─────────────────────────────────────────────────────────────
+# -- Group mapping -------------------------------------------------------------
 
 def test_group_mapping_populated():
     result = _validate(["Intensive Care Unit", "Neonatal Intensive Care Unit"])
@@ -109,7 +109,7 @@ def test_unrecognized_not_in_groups():
     assert result.groups == {}
 
 
-# ── Dedup & edge cases ────────────────────────────────────────────────────────
+# -- Dedup & edge cases --------------------------------------------------------
 
 def test_dedup_case_insensitive():
     result = _validate(["ICU", "icu", "Intensive Care Unit"])
@@ -130,7 +130,7 @@ def test_empty_skills():
     assert result.unrecognized == []
 
 
-# ── Spreadsheet coverage (2.11.26 updates) ────────────────────────────────────
+# -- Spreadsheet coverage (2.11.26 updates) ------------------------------------
 
 def test_punctuation_variant_recognized():
     # Spreadsheet uses "Med Surg/ Tele"; taxonomy stores "Med Surg / Tele".
@@ -175,7 +175,7 @@ def test_dietary_group_populated():
     assert result.groups["Dietician"] == "Dietary"
 
 
-# ── Common shorthand / synonym variants seen on real resumes ──────────────────
+# -- Common shorthand / synonym variants seen on real resumes ------------------
 
 def test_ampersand_matches_and():
     # "Labor & Delivery" must resolve like "Labor and Delivery".

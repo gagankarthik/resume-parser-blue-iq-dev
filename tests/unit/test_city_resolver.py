@@ -1,5 +1,5 @@
 """
-City resolver tests — the opt-in live enrichment stamps city_id + score-confidence,
+City resolver tests - the opt-in live enrichment stamps city_id + score-confidence,
 de-dupes identical lookups, honours the accept floor, and stays a no-op when
 disabled or when a role lacks the geography ids.
 """
@@ -100,9 +100,9 @@ async def test_missing_geography_ids_skipped(monkeypatch):
     assert all(e.city_id is None for e in parsed.experience)
 
 
-# ── Regressions from the live-API probe ───────────────────────────────────────
+# -- Regressions from the live-API probe ---------------------------------------
 #
-# Real scores measured against api.gighealth.com for the résumé that surfaced this:
+# Real scores measured against api.gighealth.com for the resume that surfaced this:
 #
 #   "Buffalo"       -> Buffalo        1.0    exact, right city
 #   "Williamsville" -> Williamsville  1.0    exact, right city
@@ -115,7 +115,7 @@ async def test_missing_geography_ids_skipped(monkeypatch):
 
 
 async def test_wrong_city_at_point_six_is_rejected(monkeypatch):
-    """THE REGRESSION. `Willisville` scores 0.6 as a match for `Williamsville` — a
+    """THE REGRESSION. `Willisville` scores 0.6 as a match for `Williamsville` - a
     real, wrong city. The old 0.5 floor stamped it. A wrong city_id silently corrupts
     placement data; a null one gets reviewed."""
     settings = _FakeSettings()
@@ -131,8 +131,8 @@ async def test_wrong_city_at_point_six_is_rejected(monkeypatch):
 
 
 async def test_exact_match_still_accepted(monkeypatch):
-    """The floor must not be so high that real cities stop resolving — every city on
-    the failing résumé scored exactly 1.0 against the live API."""
+    """The floor must not be so high that real cities stop resolving - every city on
+    the failing resume scored exactly 1.0 against the live API."""
     settings = _FakeSettings()
     for city, cid in [("Buffalo", "3512"), ("Williamsville", "77062"), ("Newport News", "19331")]:
         city_resolver._reset_cache()
@@ -145,7 +145,7 @@ async def test_exact_match_still_accepted(monkeypatch):
 async def test_missing_api_key_is_a_loud_noop(monkeypatch):
     """ROOT CAUSE of the null city_ids in production. An unkeyed Lambda used to return
     silently, so `city_id: null` on every role looked like a parser bug rather than a
-    missing env var. It must still be a no-op — but it must SAY so."""
+    missing env var. It must still be a no-op - but it must SAY so."""
     settings = _FakeSettings(gig_specialties_api_key="")
     monkeypatch.setattr(city_resolver, "get_settings", lambda: settings)
     parsed = ParsedResumeAI(experience=[
@@ -161,7 +161,7 @@ async def test_missing_api_key_is_a_loud_noop(monkeypatch):
 
 async def test_api_failure_is_logged_and_never_fails_the_parse(monkeypatch):
     """A 403 (key lacks the `cities` permission) must not be indistinguishable from
-    'no city matched' — it used to be swallowed into an empty list with no log."""
+    'no city matched' - it used to be swallowed into an empty list with no log."""
     settings = _FakeSettings()
     monkeypatch.setattr(city_resolver, "get_settings", lambda: settings)
 
@@ -181,9 +181,9 @@ async def test_api_failure_is_logged_and_never_fails_the_parse(monkeypatch):
 
 
 async def test_cache_spares_quota_across_resumes(monkeypatch):
-    """The partner guide asks integrators to cache rather than call per transaction —
+    """The partner guide asks integrators to cache rather than call per transaction -
     every call counts against the monthly quota. A warm worker must not re-query the
-    same city for each résumé."""
+    same city for each resume."""
     settings = _FakeSettings()
     calls: list[str] = []
 

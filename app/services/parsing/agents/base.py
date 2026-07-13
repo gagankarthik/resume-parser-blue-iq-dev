@@ -1,19 +1,19 @@
 """
-BaseAgent — shared structured-output LLM calling for every section agent.
+BaseAgent - shared structured-output LLM calling for every section agent.
 
 Design notes:
-  • One AsyncOpenAI client + semaphore are reused *per event loop* (connection-pool
+  * One AsyncOpenAI client + semaphore are reused *per event loop* (connection-pool
     reuse across the ~5 Stage-2 agents + N per-role WorkAgent calls). The worker
     Lambda creates a fresh event loop on every invocation, so a process-global
     client/semaphore bound to a previous (now-closed) loop would raise
     "bound to a different event loop" (semaphore) or "Event loop is closed"
     (httpx pool) on the 2nd+ warm-container invocation. We therefore rebuild both
     whenever the running loop changes.
-  • The semaphore caps in-flight LLM calls so a long travel-nurse résumé
-    (many roles → many parallel per-role calls) can't blow the OpenAI TPM ceiling.
-  • Structured outputs (`beta.chat.completions.parse`) keep the per-agent schema
-    guarantee — agents never hand-parse JSON.
-  • TokenMeter accumulates total tokens across the whole pipeline for billing.
+  * The semaphore caps in-flight LLM calls so a long travel-nurse resume
+    (many roles -> many parallel per-role calls) can't blow the OpenAI TPM ceiling.
+  * Structured outputs (`beta.chat.completions.parse`) keep the per-agent schema
+    guarantee - agents never hand-parse JSON.
+  * TokenMeter accumulates total tokens across the whole pipeline for billing.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ _BACKOFF_BASE  = 5     # seconds
 _JITTER_FACTOR = 0.2
 
 # Shared across all agents running on the SAME event loop. Rebuilt when the
-# running loop changes (see module docstring — warm Lambda worker reuse).
+# running loop changes (see module docstring - warm Lambda worker reuse).
 _client: AsyncOpenAI | None = None
 _semaphore: asyncio.Semaphore | None = None
 _bound_loop: asyncio.AbstractEventLoop | None = None
@@ -50,7 +50,7 @@ def _ensure_for_loop() -> None:
 
     Called from within an async context, so ``get_running_loop()`` is valid and
     the (synchronous, await-free) rebuild is atomic w.r.t. concurrent agents on
-    the same loop — no locking needed.
+    the same loop - no locking needed.
     """
     global _client, _semaphore, _bound_loop
     loop = asyncio.get_running_loop()

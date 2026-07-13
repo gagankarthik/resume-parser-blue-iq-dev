@@ -1,17 +1,17 @@
 """
-GigHealth cities API client — live fuzzy city search.
+GigHealth cities API client - live fuzzy city search.
 
 Unlike geographies/facilities/specialties, the cities endpoint is NOT bulk
 reference data that can be snapshotted: it fuzzy-matches a single city name WITHIN
 a given state and returns the top matches ordered by descending score::
 
     GET /api/v1/external/cities?countryId={id}&stateId={id}&cityName={name}
-    → data[] {id, city, stateId, state, statecode, countryId, score}
+    -> data[] {id, city, stateId, state, statecode, countryId, score}
 
 ``countryId`` / ``stateId`` come from the geographies catalog (resolved offline by
-``geography_matcher``); ``score`` is a 0–1 match confidence. Because this is a
+``geography_matcher``); ``score`` is a 0-1 match confidence. Because this is a
 per-lookup matching call (and counts against the partner monthly quota), it is used
-only by the opt-in ``city_resolver`` enrichment — never bulk-cached — and the async
+only by the opt-in ``city_resolver`` enrichment - never bulk-cached - and the async
 client here keeps the transport concern out of the resolver.
 """
 
@@ -42,7 +42,7 @@ class CityMatch:
 def parse_matches(payload: dict) -> list[CityMatch]:
     """Parse the cities envelope into ordered ``CityMatch`` records (pure/testable).
 
-    Rows missing an id or city are dropped; ``score`` is coerced to a 0–1 float
+    Rows missing an id or city are dropped; ``score`` is coerced to a 0-1 float
     (defaulting to 0.0). Order is preserved (the API returns them best-first).
     """
     data = payload.get("data") if isinstance(payload, dict) else None
@@ -94,7 +94,7 @@ async def search(
     Raises ``gig_api.GigApiError`` on a failed call so the caller can tell an auth /
     permission / quota problem apart from a genuine no-match. This used to swallow
     every HTTP error into an empty list, which made a missing API key look exactly
-    like "no city matched" — the resolver's caller is responsible for degrading
+    like "no city matched" - the resolver's caller is responsible for degrading
     gracefully, but it must degrade with a reason.
     """
     rows = await gig_api.get_async(

@@ -4,9 +4,9 @@ Batch resume parsing endpoints.
 POST /api/v1/resume/batch
   Upload up to MAX_BATCH_SIZE resumes in one request.
   Files are validated (size + magic bytes) immediately.
-  Valid files → S3 + async processing (Lambda invoke or BackgroundTasks).
-  Invalid files → reported in skipped_files, not counted in total.
-  Always returns immediately — results arrive via webhook + polling.
+  Valid files -> S3 + async processing (Lambda invoke or BackgroundTasks).
+  Invalid files -> reported in skipped_files, not counted in total.
+  Always returns immediately - results arrive via webhook + polling.
 
 GET /api/v1/resume/batch/{batch_id}
   Poll overall progress: total / completed / failed / processing counts.
@@ -50,7 +50,7 @@ log = get_logger(__name__)
 )
 async def batch_parse(
     background_tasks: BackgroundTasks,
-    files: list[UploadFile] = File(..., description="Resume files — PDF, DOCX, PNG, JPG, TIFF"),
+    files: list[UploadFile] = File(..., description="Resume files - PDF, DOCX, PNG, JPG, TIFF"),
     record: dict = Depends(get_api_key_record),
 ) -> BatchSubmitResponse:
     settings = get_settings()
@@ -66,7 +66,7 @@ async def batch_parse(
     skipped: list[BatchSkipped] = []
     valid: list[tuple[str, bytes]] = []
 
-    # Validate every file first — cheap, in-process, no I/O.
+    # Validate every file first - cheap, in-process, no I/O.
     for file in files:
         filename = file.filename or "upload"
         content = await file.read()
@@ -93,7 +93,7 @@ async def batch_parse(
             s3_key = s3_client.upload_temp_file(job_id, filename, content)
             db.create_job(job_id, company_id, batch_id=batch_id)
         except Exception:
-            # One bad file must not sink the whole batch — report it as skipped and
+            # One bad file must not sink the whole batch - report it as skipped and
             # let the rest through.
             log.exception("batch_stage_failed", batch_id=batch_id, job_id=job_id)
             return None
@@ -112,7 +112,7 @@ async def batch_parse(
     # file (S3 put + DynamoDB put); running them in a sequential loop made submit
     # time grow linearly with the batch, so a large batch could burn the caller's
     # gateway timeout before the 202 was ever returned. The worker fan-out below was
-    # already parallel for exactly this reason — the uploads were not.
+    # already parallel for exactly this reason - the uploads were not.
     loop = asyncio.get_running_loop()
     staged = await asyncio.gather(
         *(loop.run_in_executor(None, _stage, filename, content) for filename, content in valid)
@@ -123,7 +123,7 @@ async def batch_parse(
         if job is None:
             skipped.append(BatchSkipped(
                 filename=filename,
-                reason="Could not be queued for processing — please retry this file.",
+                reason="Could not be queued for processing - please retry this file.",
             ))
         else:
             accepted_jobs.append(job)

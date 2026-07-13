@@ -1,12 +1,12 @@
 """
-Digital PDF text extractor — PyMuPDF.
+Digital PDF text extractor - PyMuPDF.
 
 Column-aware reading order:
   1. Extract all text blocks with bounding boxes.
-  2. Detect multi-column layout: if blocks cluster into ≥2 horizontal bands
+  2. Detect multi-column layout: if blocks cluster into >=2 horizontal bands
      separated by a significant gap (>8% of page width), read column-by-column
      top-to-bottom rather than naively left-to-right.
-  3. But guard against the common résumé case where a "column" is really a strip
+  3. But guard against the common resume case where a "column" is really a strip
      of right-aligned annotations (e.g. employment / graduation dates sitting on
      the same line as each entry). Those must be read row-by-row so each date
      stays attached to its entry instead of being detached into a block at the
@@ -41,13 +41,13 @@ _ROW_PAIR_RATIO = 0.6
 # fraction of the left column to qualify as annotations.
 _ANNOTATION_SPARSITY = 0.6
 # Fraction of right blocks that must read as annotations (short tokens or dates)
-# rather than prose for the strip to qualify. This is what stops a genuine — but
-# sparse and coincidentally row-aligned — text column from being misread.
+# rather than prose for the strip to qualify. This is what stops a genuine - but
+# sparse and coincidentally row-aligned - text column from being misread.
 _ANNOTATION_CONTENT_RATIO = 0.8
 # A block counts as a short token (not prose) below this many characters/words.
 _ANNOTATION_MAX_CHARS = 35
 _ANNOTATION_MAX_WORDS = 5
-# A 4-digit year (19xx/20xx) — the hallmark of a date strip; dates beside entries
+# A 4-digit year (19xx/20xx) - the hallmark of a date strip; dates beside entries
 # are annotations regardless of length ("January, 2020 - December, 2022").
 _YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 
@@ -122,7 +122,7 @@ def _is_annotation_text(text: str) -> bool:
 
     Date-like text qualifies regardless of length; otherwise the block must be a
     short, few-word token. A long multi-word block with no year is prose and
-    disqualifies the strip — that is what protects a genuine sparse text column.
+    disqualifies the strip - that is what protects a genuine sparse text column.
     """
     if _YEAR_RE.search(text):
         return True
@@ -132,13 +132,13 @@ def _is_annotation_text(text: str) -> bool:
 
 def _is_row_annotated(columns: list[list[tuple]]) -> bool:
     """True when the non-leftmost columns are a sparse strip of annotations that
-    each line up with a leftmost-column row (e.g. dates beside résumé entries),
+    each line up with a leftmost-column row (e.g. dates beside resume entries),
     rather than an independent text column.
 
     Three conditions must all hold:
-      • pairing  — most right blocks share a row with a left-column block;
-      • sparsity — the right strip carries far fewer blocks than the left column;
-      • content  — the right blocks read as annotations (dates / short tokens),
+      * pairing  - most right blocks share a row with a left-column block;
+      * sparsity - the right strip carries far fewer blocks than the left column;
+      * content  - the right blocks read as annotations (dates / short tokens),
                    not prose, so a genuine but sparse column is not misread.
     """
     items = [(ci, b) for ci, col in enumerate(columns) for b in col]
@@ -197,14 +197,14 @@ def _detect_columns(
             column_starts.append(xs[i])
 
     if len(column_starts) < 2:
-        # Single column — sort by y then x
+        # Single column - sort by y then x
         return [sorted(blocks, key=lambda b: (b[1], b[0]))]
 
     # Assign each block to the nearest column start
     columns: list[list[tuple]] = [[] for _ in column_starts]
     for block in blocks:
         bx = block[0]
-        # Find the column whose start is closest to (and ≤) this block's x
+        # Find the column whose start is closest to (and <=) this block's x
         col_idx = 0
         for i, start in enumerate(column_starts):
             if bx >= start - 5:   # 5px tolerance for slight misalignment

@@ -4,7 +4,7 @@ Integration tests for POST /api/v1/resume/batch.
 Batch submit does two blocking AWS calls per file (S3 put + DynamoDB put) before it
 can return its 202. Those used to run in a sequential loop, so submit time grew
 linearly with the batch and a large batch could burn the caller's gateway timeout
-before the 202 was ever returned — the same failure that produced the 504 on
+before the 202 was ever returned - the same failure that produced the 504 on
 /resume/parse. Staging is now concurrent, and one unstageable file no longer sinks
 the whole batch.
 
@@ -57,9 +57,9 @@ def _stub_batch_io(monkeypatch, *, upload_delay: float = 0.0) -> None:
     # else regardless of how USE_LAMBDA_WORKER happens to be set in the environment.
     #
     # This matters more than it looks. Without the local stub, a CI run (where
-    # use_lambda_worker is false) takes the BackgroundTasks path — and Starlette's
+    # use_lambda_worker is false) takes the BackgroundTasks path - and Starlette's
     # TestClient runs background tasks synchronously BEFORE client.post() returns. The
-    # timing test below would then be timing a full local parse of 12 résumés against
+    # timing test below would then be timing a full local parse of 12 resumes against
     # real AWS, not the staging it means to measure.
     async def _no_local_processing(batch_id, jobs):
         return None
@@ -69,7 +69,7 @@ def _stub_batch_io(monkeypatch, *, upload_delay: float = 0.0) -> None:
 
 
 def test_batch_pairs_each_job_with_its_filename(monkeypatch):
-    """The caller must be able to match a result back to the file it came from —
+    """The caller must be able to match a result back to the file it came from -
     a bare job_ids array can't be lined up once files are skipped."""
     _stub_batch_io(monkeypatch)
 
@@ -87,7 +87,7 @@ def test_batch_pairs_each_job_with_its_filename(monkeypatch):
 
 
 def test_batch_stages_files_concurrently(monkeypatch):
-    """THE REGRESSION. With staging serialized, 12 files × a 0.2s upload would take
+    """THE REGRESSION. With staging serialized, 12 files x a 0.2s upload would take
     ~2.4s and scale linearly into the gateway timeout. Concurrent staging must finish
     in roughly the time of a single upload."""
     _stub_batch_io(monkeypatch, upload_delay=0.2)

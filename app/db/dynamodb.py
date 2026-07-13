@@ -3,17 +3,17 @@
 The table operations now live in per-entity repository modules (api_keys,
 companies, jobs, webhooks, audit_logs, feedback, batches). This module re-exports
 them so the long-standing ``from app.db import dynamodb as db; db.fn(...)`` call
-sites — and `tests/unit/test_dynamo_serialization.py`'s import of the serde
-helpers — keep working unchanged.
+sites - and `tests/unit/test_dynamo_serialization.py`'s import of the serde
+helpers - keep working unchanged.
 
 Tables:
-  api_keys      — pk: key_hash
-  jobs          — pk: job_id       (async job tracking, TTL 1h)
-  batches       — pk: batch_id     (batch tracking, TTL 24h)
-  webhooks      — pk: company_id, sk: webhook_id
-  audit_logs    — pk: job_id, sk: timestamp
-  companies     — pk: company_id  (GSI email-index)
-  feedback      — pk: feedback_id (GSI company-created-index, TTL)
+  api_keys      - pk: key_hash
+  jobs          - pk: job_id       (async job tracking, TTL 1h)
+  batches       - pk: batch_id     (batch tracking, TTL 24h)
+  webhooks      - pk: company_id, sk: webhook_id
+  audit_logs    - pk: job_id, sk: timestamp
+  companies     - pk: company_id  (GSI email-index)
+  feedback      - pk: feedback_id (GSI company-created-index, TTL)
 """
 
 from app.db.api_keys import (

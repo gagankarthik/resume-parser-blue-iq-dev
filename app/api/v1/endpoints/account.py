@@ -1,7 +1,7 @@
 """
 Account-scoped self-serve endpoints (Bearer session token).
 
-Everything here is scoped to the authenticated account's company_id — a user can
+Everything here is scoped to the authenticated account's company_id - a user can
 only see and manage their own keys and usage.
 
   GET    /api/v1/account/keys                 list my keys

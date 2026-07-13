@@ -1,4 +1,4 @@
-"""StructureAgent — Stage 1: map every work-history role and its bullet count.
+"""StructureAgent - Stage 1: map every work-history role and its bullet count.
 
 It does NOT extract the full role; it pins down how many roles exist, their
 identity, and how many duty bullets each has, so the WorkAgent can extract each

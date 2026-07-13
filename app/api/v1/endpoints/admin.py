@@ -3,7 +3,7 @@ Admin / product-platform endpoints (gated by X-Admin-Token).
 
 Consumed server-to-server by the product platform (resume-parser-ui-blue-iq-dev)
 for company onboarding, API-key management, and usage/token stats. Never called
-from a browser directly — the platform's backend holds the admin token.
+from a browser directly - the platform's backend holds the admin token.
 
   POST   /api/v1/admin/companies                      create a company (onboarding)
   GET    /api/v1/admin/companies                      list companies
@@ -41,7 +41,7 @@ router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)], tags=
 log = get_logger(__name__)
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
+# -- Schemas -------------------------------------------------------------------
 
 class CompanyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -54,7 +54,7 @@ def _slug(name: str) -> str:
     return (s or "company")[:40]
 
 
-# Whitelist serializer — NEVER leak password_hash (or other internal fields).
+# Whitelist serializer - NEVER leak password_hash (or other internal fields).
 _PUBLIC_FIELDS = ("company_id", "name", "email", "plan", "status", "created_at", "active_key_count")
 
 
@@ -62,7 +62,7 @@ def _public(company: dict) -> dict:
     return {k: company[k] for k in _PUBLIC_FIELDS if k in company}
 
 
-# ── Companies ─────────────────────────────────────────────────────────────────
+# -- Companies -----------------------------------------------------------------
 
 @router.post("/companies", status_code=201, summary="Create a company (onboarding)")
 async def create_company(payload: CompanyCreate) -> dict:
@@ -144,7 +144,7 @@ async def update_company(company_id: str, payload: CompanyUpdate) -> dict:
 @router.get("/companies/{company_id}/logs", summary="Recent activity logs")
 async def company_logs(company_id: str, days: int = 30, limit: int = 100) -> list[dict]:
     """Recent audit-log entries for a company (most recent first). Audit records
-    never contain résumé content — only operational metadata."""
+    never contain resume content - only operational metadata."""
     days = max(1, min(days, 365))
     limit = max(1, min(limit, 500))
     since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
@@ -169,7 +169,7 @@ async def company_logs(company_id: str, days: int = 30, limit: int = 100) -> lis
     ]
 
 
-# ── API keys ──────────────────────────────────────────────────────────────────
+# -- API keys ------------------------------------------------------------------
 
 @router.post("/companies/{company_id}/keys", status_code=201, summary="Issue an API key")
 async def issue_key(company_id: str) -> dict:
@@ -180,7 +180,7 @@ async def issue_key(company_id: str) -> dict:
     prefix = key_display_prefix(raw_key)
     db.create_api_key(key_hash=key_hash, key_prefix=prefix, company_id=company_id)
     log.info("api_key_issued", company_id=company_id, key_prefix=prefix)
-    # api_key is returned ONCE — never retrievable again.
+    # api_key is returned ONCE - never retrievable again.
     return {
         "api_key": raw_key,
         "key_prefix": prefix,
@@ -219,7 +219,7 @@ async def revoke_key(key_hash: str) -> dict:
     return {"key_hash": key_hash, "status": "revoked"}
 
 
-# ── Usage / stats ─────────────────────────────────────────────────────────────
+# -- Usage / stats -------------------------------------------------------------
 
 @router.get("/companies/{company_id}/usage", summary="Usage & token stats")
 async def usage(company_id: str, days: int = 30) -> dict:
@@ -263,7 +263,7 @@ async def usage(company_id: str, days: int = 30) -> dict:
     }
 
 
-# ── Platform-wide stats (admin overview) ──────────────────────────────────────
+# -- Platform-wide stats (admin overview) --------------------------------------
 
 @router.get("/stats", summary="Platform-wide usage & company stats")
 async def platform_stats(days: int = 30) -> dict:
@@ -344,7 +344,7 @@ async def platform_stats(days: int = 30) -> dict:
     }
 
 
-# ── Webhooks ──────────────────────────────────────────────────────────────────
+# -- Webhooks ------------------------------------------------------------------
 # Same store the API-key-scoped /webhooks surface uses; here it is managed
 # server-to-server by the dashboard, scoped to an explicit company_id.
 
@@ -357,7 +357,7 @@ class WebhookCreate(BaseModel):
 async def list_webhooks(company_id: str) -> list[dict]:
     if not db.get_company(company_id):
         raise api_error(404, ErrorCode.INVALID_REQUEST, "Company not found")
-    # Never return hmac_secret — it is shown only once at creation.
+    # Never return hmac_secret - it is shown only once at creation.
     return [
         {
             "webhook_id": h.get("webhook_id"),
@@ -395,7 +395,7 @@ async def create_webhook(company_id: str, payload: WebhookCreate) -> dict:
         events=events,
     )
     log.info("webhook_created", company_id=company_id, webhook_id=webhook_id)
-    # hmac_secret is returned ONCE — never retrievable again.
+    # hmac_secret is returned ONCE - never retrievable again.
     return {
         "webhook_id": webhook_id,
         "url": payload.url,

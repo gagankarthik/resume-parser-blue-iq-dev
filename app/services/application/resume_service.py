@@ -1,8 +1,8 @@
 """Resume parsing use-case (application) layer.
 
-Orchestration shared by the resume endpoints — running the pipeline, writing the
-usage audit log, shaping the persisted job result, and dispatching async work —
-lives here so the HTTP handlers stay thin (validate → delegate → respond) and the
+Orchestration shared by the resume endpoints - running the pipeline, writing the
+usage audit log, shaping the persisted job result, and dispatching async work -
+lives here so the HTTP handlers stay thin (validate -> delegate -> respond) and the
 orchestration is defined once instead of being repeated per route.
 
 None of this changes behavior: each helper is the exact call the endpoints made
@@ -25,7 +25,7 @@ log = get_logger(__name__)
 def terminal_status(result: PipelineResult) -> str:
     """Client-facing terminal status for a finished parse.
 
-    Returns "partial" when the parse degraded — `result.parsed` holds only what
+    Returns "partial" when the parse degraded - `result.parsed` holds only what
     rule-based extraction could recover (contact anchors) and the record needs
     human review. Returns "completed" only for a clean parse. A partial parse
     must never be reported as "completed"; consumers gate ingestion on this.
@@ -50,7 +50,7 @@ async def run_parse(
     and being severed into a bare 504 by the proxy.
 
     `sync_probe=True` means the caller will PROMOTE any partial to the async worker
-    (full budget, complete parse) instead of returning it — so the pipeline skips
+    (full budget, complete parse) instead of returning it - so the pipeline skips
     the section-only enrich pass and gives the single-shot the reserve time.
     """
     return await run_pipeline(

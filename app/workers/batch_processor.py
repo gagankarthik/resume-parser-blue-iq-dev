@@ -1,5 +1,5 @@
 """
-Batch processing orchestrator — local (asyncio) mode.
+Batch processing orchestrator - local (asyncio) mode.
 
 For cloud (Lambda), the API Lambda invokes one Worker Lambda per file.
 For local dev, this module runs all files concurrently under a semaphore
@@ -30,7 +30,7 @@ def _get_semaphore() -> asyncio.Semaphore:
 
 
 async def _process_one(sem: asyncio.Semaphore, job: dict[str, Any]) -> None:
-    """Process a single file inside the semaphore — errors are swallowed
+    """Process a single file inside the semaphore - errors are swallowed
     because process_resume_async already handles them and updates DynamoDB."""
     async with sem:
         await process_resume_async(
