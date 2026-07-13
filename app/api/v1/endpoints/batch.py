@@ -24,7 +24,7 @@ from app.core.exceptions import UnsupportedFileTypeError
 from app.core.file_validator import validate_file
 from app.core.logging import get_logger
 from app.db import dynamodb as db
-from app.models.schemas import BatchSkipped, BatchStatusResponse, BatchSubmitResponse
+from app.models.schemas import BatchJob, BatchSkipped, BatchStatusResponse, BatchSubmitResponse
 from app.storage import s3_client
 from app.workers.batch_processor import process_batch_locally
 from app.workers.dispatch import invoke_worker
@@ -63,14 +63,14 @@ async def batch_parse(
             f"Too many files: {len(files)}. Maximum is {settings.max_batch_size} per batch.",
         )
 
-    accepted_jobs: list[dict] = []
     skipped: list[BatchSkipped] = []
+    valid: list[tuple[str, bytes]] = []
 
+    # Validate every file first — cheap, in-process, no I/O.
     for file in files:
         filename = file.filename or "upload"
         content = await file.read()
 
-        # Per-file size check
         if len(content) > settings.max_file_size_bytes:
             skipped.append(BatchSkipped(
                 filename=filename,
@@ -78,18 +78,26 @@ async def batch_parse(
             ))
             continue
 
-        # Per-file magic bytes + extension check
         try:
             validate_file(filename, content)
         except UnsupportedFileTypeError as exc:
             skipped.append(BatchSkipped(filename=filename, reason=str(exc)))
             continue
 
-        job_id = str(ULID())
-        s3_key = s3_client.upload_temp_file(job_id, filename, content)
-        db.create_job(job_id, company_id, batch_id=batch_id)
+        valid.append((filename, content))
 
-        accepted_jobs.append({
+    def _stage(filename: str, content: bytes) -> dict | None:
+        """Put one file in S3 and open its job row. Blocking; runs off the loop."""
+        job_id = str(ULID())
+        try:
+            s3_key = s3_client.upload_temp_file(job_id, filename, content)
+            db.create_job(job_id, company_id, batch_id=batch_id)
+        except Exception:
+            # One bad file must not sink the whole batch — report it as skipped and
+            # let the rest through.
+            log.exception("batch_stage_failed", batch_id=batch_id, job_id=job_id)
+            return None
+        return {
             "job_id": job_id,
             "company_id": company_id,
             "s3_key": s3_key,
@@ -98,7 +106,27 @@ async def batch_parse(
             "batch_id": batch_id,
             "key_hash": record["key_hash"],
             "key_prefix": record.get("key_prefix", ""),
-        })
+        }
+
+    # Stage the accepted files CONCURRENTLY. Staging is two blocking AWS calls per
+    # file (S3 put + DynamoDB put); running them in a sequential loop made submit
+    # time grow linearly with the batch, so a large batch could burn the caller's
+    # gateway timeout before the 202 was ever returned. The worker fan-out below was
+    # already parallel for exactly this reason — the uploads were not.
+    loop = asyncio.get_running_loop()
+    staged = await asyncio.gather(
+        *(loop.run_in_executor(None, _stage, filename, content) for filename, content in valid)
+    )
+
+    accepted_jobs: list[dict] = []
+    for (filename, _), job in zip(valid, staged):
+        if job is None:
+            skipped.append(BatchSkipped(
+                filename=filename,
+                reason="Could not be queued for processing — please retry this file.",
+            ))
+        else:
+            accepted_jobs.append(job)
 
     total = len(accepted_jobs)
 
@@ -141,6 +169,7 @@ async def batch_parse(
         total=total,
         skipped=len(skipped),
         skipped_files=skipped,
+        jobs=[BatchJob(job_id=j["job_id"], filename=j["filename"]) for j in accepted_jobs],
         job_ids=[j["job_id"] for j in accepted_jobs],
         status="processing",
         poll_url=f"/api/v1/resume/batch/{batch_id}",
