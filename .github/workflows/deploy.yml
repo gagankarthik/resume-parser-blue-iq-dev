@@ -1,9 +1,12 @@
 name: Build, Test & Deploy
 
+# PRs are gated by pr-check.yml, which is the single authoritative quality gate
+# (ruff + mypy + the full suite behind --cov-fail-under=70). This workflow used to
+# also trigger on pull_request, so every PR ran lint + mypy + the whole suite TWICE
+# — and the two disagreed: the run here enforced no coverage gate at all, so it was
+# ambiguous which one was actually blocking. Deploy now only runs on main.
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
 
 concurrency:
