@@ -9,11 +9,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python dependencies
-COPY pyproject.toml poetry.lock* ./
+# Install Python dependencies.
+# See Dockerfile.lambda: poetry.lock is named exactly (not globbed) so a missing
+# lockfile fails the build instead of silently resolving dependencies fresh.
+# --no-root: app/ is copied below.
+COPY pyproject.toml poetry.lock ./
 RUN pip install --no-cache-dir poetry==1.8.4 \
     && poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi
+    && poetry install --only main --no-root --no-interaction --no-ansi
 
 COPY app/ ./app/
 

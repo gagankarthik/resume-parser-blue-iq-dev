@@ -27,11 +27,16 @@ RUN mkdir -p /usr/share/tessdata \
         https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata \
         -o /usr/share/tessdata/eng.traineddata
 
-# Copy and install dependencies
-COPY pyproject.toml poetry.lock* ./
+# Copy and install dependencies.
+# poetry.lock is NOT globbed (`poetry.lock*`): the glob silently succeeds when the
+# lockfile is absent, which let the image resolve dependencies fresh at build time —
+# two builds of identical source could ship different library versions. Naming the
+# file exactly makes a missing lockfile fail the build, which is what we want.
+# --no-root: app/ is copied below, so there is no root package to install yet.
+COPY pyproject.toml poetry.lock ./
 RUN pip install --no-cache-dir poetry==1.8.4 \
     && poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi
+    && poetry install --only main --no-root --no-interaction --no-ansi
 
 # Copy application
 COPY app/ ${LAMBDA_TASK_ROOT}/app/
