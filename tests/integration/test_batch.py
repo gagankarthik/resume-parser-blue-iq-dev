@@ -52,7 +52,20 @@ def _stub_batch_io(monkeypatch, *, upload_delay: float = 0.0) -> None:
     monkeypatch.setattr(batch.s3_client, "upload_temp_file", _upload)
     monkeypatch.setattr(batch.db, "create_job", lambda *a, **kw: None)
     monkeypatch.setattr(batch.db, "create_batch", lambda *a, **kw: None)
+
+    # Neutralize BOTH dispatch paths, so these tests measure the endpoint and nothing
+    # else regardless of how USE_LAMBDA_WORKER happens to be set in the environment.
+    #
+    # This matters more than it looks. Without the local stub, a CI run (where
+    # use_lambda_worker is false) takes the BackgroundTasks path — and Starlette's
+    # TestClient runs background tasks synchronously BEFORE client.post() returns. The
+    # timing test below would then be timing a full local parse of 12 résumés against
+    # real AWS, not the staging it means to measure.
+    async def _no_local_processing(batch_id, jobs):
+        return None
+
     monkeypatch.setattr(batch, "invoke_worker", lambda settings, job: True)
+    monkeypatch.setattr(batch, "process_batch_locally", _no_local_processing)
 
 
 def test_batch_pairs_each_job_with_its_filename(monkeypatch):
