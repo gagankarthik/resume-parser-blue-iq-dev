@@ -230,6 +230,8 @@ Point-in-time recovery is enabled on the durable tables (`api_keys`, `jobs`, `we
 
 ## 10. Privacy & Compliance
 
+### Data retention
+
 | Data | Where | Lifetime |
 |---|---|---|
 | Raw resume file | S3 `temp/{job_id}/{filename}`, SSE-AES256 | Deleted in `finally` block immediately after processing |
