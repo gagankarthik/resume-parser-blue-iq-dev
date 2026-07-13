@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-import httpx
+from app.services.normalization import gig_api
 
 DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/specialities"
 
@@ -92,12 +92,11 @@ def keywords_for(name: str) -> tuple[str, ...]:
 def fetch_payload(api_url: str, api_key: str, *, timeout: float = 30.0) -> dict:
     """GET the Gig specialties API and return the decoded JSON envelope.
 
-    Raises on HTTP error / non-JSON so the refresh script fails loudly — the
-    request path never calls this (it reads the bundled snapshot).
+    Raises ``gig_api.GigApiError`` on HTTP error / non-JSON / ``success: false`` so the
+    refresh script fails loudly — the request path never calls this (it reads the
+    bundled snapshot). 429s are retried with backoff, per the partner guide.
     """
-    resp = httpx.get(api_url, headers={"x-api-key": api_key}, timeout=timeout)
-    resp.raise_for_status()
-    return resp.json()
+    return gig_api.get_sync_envelope(api_url, api_key, timeout=timeout)
 
 
 def flatten_payload(payload: dict) -> list[dict]:

@@ -21,7 +21,7 @@ loads the committed snapshot so a Lambda invocation makes no live HTTP call.
 
 from __future__ import annotations
 
-import httpx
+from app.services.normalization import gig_api
 
 DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/facilities"
 
@@ -29,12 +29,11 @@ DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/facilities"
 def fetch_payload(api_url: str, api_key: str, *, timeout: float = 30.0) -> dict:
     """GET the Gig facilities API and return the decoded JSON envelope.
 
-    Raises on HTTP error / non-JSON so the refresh script fails loudly — the
-    request path never calls this (it reads the bundled snapshot).
+    Raises ``gig_api.GigApiError`` on HTTP error / non-JSON / ``success: false`` so the
+    refresh script fails loudly — the request path never calls this (it reads the
+    bundled snapshot). 429s are retried with backoff, per the partner guide.
     """
-    resp = httpx.get(api_url, headers={"x-api-key": api_key}, timeout=timeout)
-    resp.raise_for_status()
-    return resp.json()
+    return gig_api.get_sync_envelope(api_url, api_key, timeout=timeout)
 
 
 def flatten_payload(payload: dict) -> list[dict]:

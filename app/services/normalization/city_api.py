@@ -21,6 +21,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from app.services.normalization import gig_api
+
 DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/cities"
 
 
@@ -54,6 +56,11 @@ def parse_matches(payload: dict) -> list[CityMatch]:
     return out
 
 
+def rows_to_matches(rows: list[dict]) -> list[CityMatch]:
+    """Convert already-unwrapped envelope rows into ordered ``CityMatch`` records."""
+    return [m for m in (_row(r) for r in rows) if m is not None]
+
+
 def _row(row: object) -> CityMatch | None:
     if not isinstance(row, dict):
         return None
@@ -84,20 +91,18 @@ async def search(
 ) -> list[CityMatch]:
     """Fuzzy-search cities within a state. Returns matches best-first, or [].
 
-    Network/HTTP errors are swallowed to an empty list — city enrichment is
-    best-effort and must never fail a parse.
+    Raises ``gig_api.GigApiError`` on a failed call so the caller can tell an auth /
+    permission / quota problem apart from a genuine no-match. This used to swallow
+    every HTTP error into an empty list, which made a missing API key look exactly
+    like "no city matched" — the resolver's caller is responsible for degrading
+    gracefully, but it must degrade with a reason.
     """
-    try:
-        resp = await client.get(
-            api_url,
-            params={"countryId": country_id, "stateId": state_id, "cityName": city_name},
-            headers={"x-api-key": api_key},
-            timeout=timeout,
-        )
-        resp.raise_for_status()
-        return parse_matches(resp.json())
-    except (httpx.HTTPError, ValueError):
-        return []
+    rows = await gig_api.get_async(
+        client, api_url, api_key,
+        params={"countryId": country_id, "stateId": state_id, "cityName": city_name},
+        timeout=timeout,
+    )
+    return rows_to_matches(rows)
 
 
 def _id(raw: object) -> str | None:

@@ -3,6 +3,7 @@
 import pytest
 
 from app.core import rate_limit
+from app.services.normalization import city_resolver
 
 
 @pytest.fixture(autouse=True)
@@ -16,3 +17,18 @@ def _reset_rate_limiter():
     rate_limit.reset()
     yield
     rate_limit.reset()
+
+
+@pytest.fixture(autouse=True)
+def _reset_city_cache():
+    """Clear the cross-résumé city lookup cache before each test.
+
+    The cache is process-global ON PURPOSE — it is what stops a warm Lambda from
+    re-spending monthly partner quota on the same cities over and over. That also
+    means it survives between tests: without this reset, a city resolved by one test
+    is served from cache in the next, which silently turns an "did we call the API?"
+    assertion into a false pass.
+    """
+    city_resolver._reset_cache()
+    yield
+    city_resolver._reset_cache()
