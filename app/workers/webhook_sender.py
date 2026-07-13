@@ -28,7 +28,7 @@ _RETRY_DELAYS       = [2, 5, 10]          # seconds between attempts
 CIRCUIT_OPEN_AFTER  = 5                    # consecutive failures to open circuit
 CIRCUIT_RESET_AFTER = 300                  # seconds before attempting a dead URL again
 
-# url → (failure_count, last_failure_epoch)
+# url -> (failure_count, last_failure_epoch)
 _circuit: dict[str, tuple[int, float]] = {}
 
 

@@ -79,7 +79,7 @@ async def test_pipeline_degrades_to_partial_on_ai_failure(monkeypatch):
 @pytest.mark.asyncio
 async def test_pipeline_falls_back_to_single_shot_when_orchestrator_fails(monkeypatch):
     """Orchestrator failure must transparently fall back to the single-shot parser
-    (a clean, non-partial result) — not degrade to anchors-only."""
+    (a clean, non-partial result) - not degrade to anchors-only."""
     from app.models.schemas import ParsedResumeAI, PersonalInfo
 
     async def _boom_orch(_text, _anchors, budget=None):
@@ -103,7 +103,7 @@ async def test_pipeline_falls_back_to_single_shot_when_orchestrator_fails(monkey
 
 @pytest.mark.asyncio
 async def test_short_resume_skips_orchestrator_for_speed(monkeypatch):
-    """The complexity gate must keep short résumés on the fast single-shot path."""
+    """The complexity gate must keep short resumes on the fast single-shot path."""
     from app.models.schemas import ParsedResumeAI, PersonalInfo
 
     async def _orch(_text, _anchors, budget=None):  # must NOT run for a short résumé
@@ -123,7 +123,7 @@ async def test_short_resume_skips_orchestrator_for_speed(monkeypatch):
     assert result.ai_tokens_used == 42
 
 
-# ── Sync path: single-shot primary, section-only enrich on timeout ─────────────
+# -- Sync path: single-shot primary, section-only enrich on timeout -------------
 
 @pytest.mark.asyncio
 async def test_sync_uses_single_shot_primary(monkeypatch):
@@ -162,7 +162,7 @@ async def test_sync_uses_single_shot_primary(monkeypatch):
 @pytest.mark.asyncio
 async def test_sync_enrich_backfills_experience_on_timeout(monkeypatch):
     """When the sync single-shot times out, the section-only enrich pass supplies
-    the semantic sections and the deterministic floor supplies work history — so
+    the semantic sections and the deterministic floor supplies work history - so
     experience is NEVER silently dropped. Flagged partial for review."""
     from app.models.schemas import EducationItem, ParsedResumeAI, PersonalInfo
 
@@ -170,7 +170,7 @@ async def test_sync_enrich_backfills_experience_on_timeout(monkeypatch):
         raise TimeoutError("single-shot timed out")
 
     async def _light(_text, _anchors, budget):
-        # Semantic sections only — no experience (that comes from the floor).
+        # Semantic sections only - no experience (that comes from the floor).
         return (
             ParsedResumeAI(
                 personal_info=PersonalInfo(full_name="Jane RN", headline="Registered Nurse"),
@@ -213,10 +213,10 @@ async def test_sync_enrich_backfills_experience_on_timeout(monkeypatch):
     assert any("human review" in w for w in result.warnings)
 
 
-# ── Sync path must fit the gateway ceiling (504 regression) ───────────────────
+# -- Sync path must fit the gateway ceiling (504 regression) -------------------
 #
 # A synchronous parse that outlives the caller's gateway is severed into a bodyless
-# 504 — no data, no job id, nothing to poll. For a DIRECT API caller that gateway is
+# 504 - no data, no job id, nothing to poll. For a DIRECT API caller that gateway is
 # our own CloudFront (60s origin read timeout), which is what _SYNC_WALL_BUDGET is
 # sized against. Callers behind a tighter gateway (the console, on Amplify's hard
 # 30s) cannot be saved by any budget value and must send `async_only` instead.
@@ -232,7 +232,7 @@ def test_sync_budget_fits_under_the_direct_caller_ceiling():
     assert pipeline._SYNC_WALL_BUDGET <= _CLOUDFRONT_ORIGIN_CEILING - _HANDOFF_AND_TRANSFER_HEADROOM
 
     # The reserves are carved OUT of that budget, so each must fit inside it and still
-    # leave a usable AI window — otherwise every sync parse degrades on arrival.
+    # leave a usable AI window - otherwise every sync parse degrades on arrival.
     assert pipeline._SYNC_EXTRACT_RESERVE < pipeline._SYNC_WALL_BUDGET
     assert pipeline._SYNC_ENRICH_RESERVE < pipeline._SYNC_WALL_BUDGET
     assert pipeline._SYNC_WALL_BUDGET - pipeline._SYNC_ENRICH_RESERVE >= pipeline._MIN_SYNC_AI_TIMEOUT
@@ -240,7 +240,7 @@ def test_sync_budget_fits_under_the_direct_caller_ceiling():
 
 @pytest.mark.asyncio
 async def test_sync_extraction_is_cut_off_by_the_wall_budget(monkeypatch):
-    """Extraction used to run OUTSIDE the sync budget, on its own 60s/90s caps — so a
+    """Extraction used to run OUTSIDE the sync budget, on its own 60s/90s caps - so a
     slow step could burn the whole gateway ceiling before the AI parse even began.
     It must now be clamped to the time the budget can actually afford."""
     import time as _time
@@ -271,7 +271,7 @@ async def test_sync_extraction_is_cut_off_by_the_wall_budget(monkeypatch):
 @pytest.mark.asyncio
 async def test_sync_does_not_run_ocr_inline_and_degrades_for_promotion(monkeypatch):
     """A digital PDF with an undecodable text layer must NOT trigger an inline OCR
-    pass on the sync path — OCR is budgeted at 90s, three times the entire gateway
+    pass on the sync path - OCR is budgeted at 90s, three times the entire gateway
     ceiling, so starting it guarantees a 504. It must degrade to a flagged partial,
     which the endpoints promote to the async worker."""
     monkeypatch.setattr(
@@ -310,7 +310,7 @@ async def test_sync_does_not_run_ocr_inline_and_degrades_for_promotion(monkeypat
 @pytest.mark.asyncio
 async def test_async_still_runs_ocr_inline_for_a_broken_text_layer(monkeypatch):
     """The async worker has no gateway ceiling, so it must still recover a broken
-    text layer with a real OCR pass — that path is unchanged."""
+    text layer with a real OCR pass - that path is unchanged."""
     from app.models.schemas import ParsedResumeAI, PersonalInfo
 
     monkeypatch.setattr(
@@ -344,7 +344,7 @@ async def test_async_still_runs_ocr_inline_for_a_broken_text_layer(monkeypatch):
 @pytest.mark.asyncio
 async def test_sync_skips_an_ai_call_it_cannot_afford(monkeypatch):
     """When extraction has eaten the budget, the sync path must not open an AI call
-    that cannot land inside the ceiling — it degrades immediately so the caller can
+    that cannot land inside the ceiling - it degrades immediately so the caller can
     still promote to async while there is time to dispatch."""
     async def _ai_must_not_run(_sections, _anchors):
         raise AssertionError("must not start an AI call the budget cannot afford")
@@ -365,7 +365,7 @@ async def test_sync_skips_an_ai_call_it_cannot_afford(monkeypatch):
     assert any("human review" in w for w in result.warnings)
 
 
-# ── Surname/email mismatch review flag ───────────────────────────────────────
+# -- Surname/email mismatch review flag ---------------------------------------
 
 def _parsed_with(name, email):
     from app.models.schemas import ParsedResumeAI, PersonalInfo
@@ -393,7 +393,7 @@ def test_surname_with_trailing_digits_not_flagged():
 
 
 def test_short_credential_suffix_not_flagged():
-    # "...smithrn" — a 2-letter credential tail must not trip the flag.
+    # "...smithrn" - a 2-letter credential tail must not trip the flag.
     assert pipeline._surname_mismatch_warning(
         _parsed_with("Jane Smith", "janesmithrn@example.com")
     ) is None

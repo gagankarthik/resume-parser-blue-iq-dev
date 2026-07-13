@@ -1,13 +1,13 @@
 """
-Unified AWS Lambda entry point — a single function serves both roles:
+Unified AWS Lambda entry point - a single function serves both roles:
 
-  • HTTP API     — Lambda Function URL events → FastAPI (via Mangum)
-  • Async worker — self-invoked events (InvocationType="Event") → OCR pipeline
+  * HTTP API     - Lambda Function URL events -> FastAPI (via Mangum)
+  * Async worker - self-invoked events (InvocationType="Event") -> OCR pipeline
 
 Deploy this file as the Lambda handler: app.handlers.lambda_handler.handler
 
 Routing: Function URL / API Gateway events carry "rawPath"/"requestContext".
-Async worker events are plain job dicts (job_id, s3_key, …), so anything that
+Async worker events are plain job dicts (job_id, s3_key, ...), so anything that
 isn't an HTTP event is handed to the worker pipeline.
 
 Environment variables (set in Terraform):
@@ -29,7 +29,7 @@ from mangum import Mangum  # noqa: E402
 from app.handlers.worker_lambda import handler as _worker_handler  # noqa: E402
 from app.main import app  # noqa: E402
 
-# lifespan="off" — Lambda has no persistent process, skip startup/shutdown events
+# lifespan="off" - Lambda has no persistent process, skip startup/shutdown events
 _http_handler = Mangum(app, lifespan="off")
 
 

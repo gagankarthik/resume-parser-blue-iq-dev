@@ -1,6 +1,6 @@
 """HTTP request/response DTOs for the public API.
 
-Strict validation + OpenAPI metadata — distinct from the resume DOMAIN models in
+Strict validation + OpenAPI metadata - distinct from the resume DOMAIN models in
 resume.py, which sanitize rather than reject.
 """
 
@@ -29,13 +29,13 @@ class ParseResponse(BaseModel):
     )
 
     job_id:            str                        = Field(..., description="Unique job identifier (ULID)")
-    status:            str                        = Field(..., description="'completed' (clean) or 'partial' (degraded — see `partial`/`warnings`) for sync jobs; 'processing' for async (OCR) jobs")
-    data:              ParsedResumeAI | None   = Field(None, description="Parsed resume data — present when status is 'completed' or 'partial'")
-    confidence:        ConfidenceScores | None = Field(None, description="Per-section confidence scores — present when status is 'completed' or 'partial'")
-    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — present when status is 'completed' or 'partial'")
-    partial:           bool                       = Field(False, description="True when parsing degraded — `data` holds only what could be recovered (e.g. contact anchors) and needs human review. See `warnings`.")
+    status:            str                        = Field(..., description="'completed' (clean) or 'partial' (degraded - see `partial`/`warnings`) for sync jobs; 'processing' for async (OCR) jobs")
+    data:              ParsedResumeAI | None   = Field(None, description="Parsed resume data - present when status is 'completed' or 'partial'")
+    confidence:        ConfidenceScores | None = Field(None, description="Per-section confidence scores - present when status is 'completed' or 'partial'")
+    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy - present when status is 'completed' or 'partial'")
+    partial:           bool                       = Field(False, description="True when parsing degraded - `data` holds only what could be recovered (e.g. contact anchors) and needs human review. See `warnings`.")
     warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing (e.g. AI parse failed and a partial record was returned). Empty on a clean parse.")
-    poll_url:          str | None              = Field(None, description="Polling URL — present when status is 'processing'")
+    poll_url:          str | None              = Field(None, description="Polling URL - present when status is 'processing'")
 
 
 class UploadUrlRequest(BaseModel):
@@ -87,7 +87,7 @@ class UploadUrlResponse(BaseModel):
         }
     )
 
-    job_id:             str            = Field(..., description="Job identifier (ULID) — pass this to parse-uploaded")
+    job_id:             str            = Field(..., description="Job identifier (ULID) - pass this to parse-uploaded")
     upload_url:         str            = Field(..., description="S3 endpoint to POST the file to (multipart form data)")
     fields:             dict[str, str] = Field(..., description="Form fields that must accompany the upload, exactly as given")
     s3_key:             str            = Field(..., description="The S3 object key the file will be stored under")
@@ -118,7 +118,7 @@ class ParseUploadedRequest(BaseModel):
                     "immediately and run the full parse on the async worker. Use this "
                     "when your own gateway cannot hold a request open long enough for "
                     "a complete parse (a proxy or serverless host with a short request "
-                    "timeout) — blocking there would cost you a 504 with no data. "
+                    "timeout) - blocking there would cost you a 504 with no data. "
                     "Costs one poll round-trip; never returns a partial.",
     )
 
@@ -148,12 +148,12 @@ class JobStatusResponse(BaseModel):
 
     job_id:            str                        = Field(..., description="Job identifier")
     status:            str                        = Field(..., description="pending | processing | completed | partial | failed")
-    data:              ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is 'completed' or 'partial'")
-    confidence:        ConfidenceScores | None = Field(None, description="Confidence scores — set when status is 'completed' or 'partial'")
-    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — set when status is 'completed' or 'partial'")
-    partial:           bool                       = Field(False, description="True when parsing degraded — `data` holds only what could be recovered and needs human review. See `warnings`.")
+    data:              ParsedResumeAI | None   = Field(None, description="Parsed data - set when status is 'completed' or 'partial'")
+    confidence:        ConfidenceScores | None = Field(None, description="Confidence scores - set when status is 'completed' or 'partial'")
+    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy - set when status is 'completed' or 'partial'")
+    partial:           bool                       = Field(False, description="True when parsing degraded - `data` holds only what could be recovered and needs human review. See `warnings`.")
     warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing. Empty on a clean parse.")
-    error:             str | None              = Field(None, description="Error description — set when status is 'failed'")
+    error:             str | None              = Field(None, description="Error description - set when status is 'failed'")
 
 
 class WebhookCreateRequest(BaseModel):
@@ -197,7 +197,7 @@ class WebhookResponse(BaseModel):
     webhook_id:   str           = Field(..., description="Webhook identifier")
     url:          str           = Field(..., description="Delivery URL")
     events:       list[str]     = Field(..., description="Subscribed events")
-    hmac_secret:  str | None = Field(None, description="HMAC signing secret — only returned on creation")
+    hmac_secret:  str | None = Field(None, description="HMAC signing secret - only returned on creation")
     status:       str           = Field(..., description="active | disabled")
     created_at:   str           = Field(..., description="ISO 8601 creation timestamp")
 
@@ -222,8 +222,8 @@ class ErrorDetail(BaseModel):
     status_code:  int = Field(..., description="HTTP status code")
     error_code:   str = Field(..., description="Machine-readable error identifier (e.g. FILE_TOO_LARGE)")
     detail:       str = Field(..., description="Developer-readable error description")
-    hint:         str = Field(..., description="User-facing actionable message — display this to your end user")
-    request_id:   str = Field(..., description="Request ID — include in support tickets")
+    hint:         str = Field(..., description="User-facing actionable message - display this to your end user")
+    request_id:   str = Field(..., description="Request ID - include in support tickets")
 
 
 class HealthResponse(BaseModel):
@@ -255,10 +255,10 @@ class RetryResponse(BaseModel):
     original_job_id:   str                        = Field(..., description="The job ID that was retried")
     retry_count:       int                        = Field(..., description="How many times this job has been retried (1 = first retry)")
     status:            str                        = Field(..., description="completed | partial | processing")
-    data:              ParsedResumeAI | None   = Field(None, description="Parsed data — set when status is completed or partial")
-    confidence:        ConfidenceScores | None = Field(None, description="Confidence scores — set when status is completed or partial")
-    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy — set when status is completed or partial")
-    partial:           bool                       = Field(False, description="True when parsing degraded — `data` holds only what could be recovered and needs human review. See `warnings`.")
+    data:              ParsedResumeAI | None   = Field(None, description="Parsed data - set when status is completed or partial")
+    confidence:        ConfidenceScores | None = Field(None, description="Confidence scores - set when status is completed or partial")
+    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy - set when status is completed or partial")
+    partial:           bool                       = Field(False, description="True when parsing degraded - `data` holds only what could be recovered and needs human review. See `warnings`.")
     warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing. Empty on a clean parse.")
-    poll_url:          str | None              = Field(None, description="Polling URL — set for async retries")
+    poll_url:          str | None              = Field(None, description="Polling URL - set for async retries")
 

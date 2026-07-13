@@ -1,10 +1,10 @@
 """
-FastAPI dependency injection — authentication and caching.
+FastAPI dependency injection - authentication and caching.
 
 API key cache:
   In-memory dict with 5-minute TTL per Lambda instance.
   Reduces DynamoDB reads from 1/request to ~1/300 requests per instance.
-  Revoked keys remain valid for up to TTL — acceptable trade-off.
+  Revoked keys remain valid for up to TTL - acceptable trade-off.
   Cache is per-process; Lambda cold starts naturally clear it.
 """
 
@@ -44,7 +44,7 @@ def get_current_account(authorization: str = Depends(_bearer_scheme)) -> str:
     return company_id
 
 
-# ── In-memory API key cache ───────────────────────────────────────────────────
+# -- In-memory API key cache ---------------------------------------------------
 _KEY_CACHE: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL_SECONDS = 300  # 5 minutes
 
@@ -92,12 +92,12 @@ def _evict_key_cache(key_hash: str) -> None:
     _KEY_CACHE.pop(key_hash, None)
 
 
-# ── Dependencies ──────────────────────────────────────────────────────────────
+# -- Dependencies --------------------------------------------------------------
 
 def get_api_key_record(api_key: str = Depends(_api_key_scheme)) -> dict:
     """
     Validate X-API-Key header.
-    Order: presence → format → DynamoDB lookup → status.
+    Order: presence -> format -> DynamoDB lookup -> status.
     """
     if not api_key:
         raise api_error(401, ErrorCode.MISSING_API_KEY, "Missing X-API-Key header")
@@ -140,7 +140,7 @@ def require_admin(token: str = Depends(_admin_token_scheme)) -> None:
     """
     expected = get_settings().admin_api_token
     if not expected:
-        # No token configured → admin surface is disabled.
+        # No token configured -> admin surface is disabled.
         raise api_error(403, ErrorCode.REVOKED_API_KEY, "Admin API is not enabled")
     if not token or not hmac.compare_digest(token, expected):
         log.warning("admin_auth_failed")

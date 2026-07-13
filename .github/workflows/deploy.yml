@@ -3,7 +3,7 @@ name: Build, Test & Deploy
 # PRs are gated by pr-check.yml, which is the single authoritative quality gate
 # (ruff + mypy + the full suite behind --cov-fail-under=70). This workflow used to
 # also trigger on pull_request, so every PR ran lint + mypy + the whole suite TWICE
-# — and the two disagreed: the run here enforced no coverage gate at all, so it was
+# - and the two disagreed: the run here enforced no coverage gate at all, so it was
 # ambiguous which one was actually blocking. Deploy now only runs on main.
 on:
   push:
@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 jobs:
-  # ── 1. Unit tests — fast, no AWS needed ──────────────────────────────────────
+  # -- 1. Unit tests - fast, no AWS needed --------------------------------------
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -57,13 +57,13 @@ jobs:
       - name: Run integration tests
         run: poetry run pytest tests/integration/ -v --tb=short
         env:
-          # Use dummy values — integration tests mock DynamoDB
+          # Use dummy values - integration tests mock DynamoDB
           AWS_ACCESS_KEY_ID:     test
           AWS_SECRET_ACCESS_KEY: test
           AWS_REGION:            us-east-1
           OPENAI_API_KEY:        sk-test-key
 
-  # ── 2. Build & push container image — runs only on main push ─────────────────
+  # -- 2. Build & push container image - runs only on main push -----------------
   build-and-push:
     name: Build & Push to ECR
     runs-on: ubuntu-latest
@@ -117,7 +117,7 @@ jobs:
           docker push ${{ steps.image.outputs.uri }}
           docker push ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO_NAME }}:latest
 
-  # ── 3. Deploy to Lambda — runs only after successful image push ───────────────
+  # -- 3. Deploy to Lambda - runs only after successful image push ---------------
   deploy:
     name: Deploy to Lambda
     runs-on: ubuntu-latest
@@ -150,13 +150,13 @@ jobs:
             --region ${{ env.AWS_REGION }}
 
       # NOTE: Lambda environment variables and sizing (memory/timeout) are owned by
-      # Terraform (infrastructure/terraform — see lambda.tf `local.lambda_env` and the
+      # Terraform (infrastructure/terraform - see lambda.tf `local.lambda_env` and the
       # api_lambda_* variables). This workflow only ships new code, so it never resets
       # the env. Provide secrets to Terraform via TF_VAR_* (openai_api_key,
       # admin_api_token, auth_secret) when running `terraform apply`. To change runtime
-      # config or secrets, update Terraform and apply — not this workflow.
+      # config or secrets, update Terraform and apply - not this workflow.
 
-      - name: Smoke test — health check
+      - name: Smoke test - health check
         id: smoke
         run: |
           API_URL=$(aws lambda get-function-url-config \
@@ -164,12 +164,12 @@ jobs:
             --query FunctionUrl --output text --region ${{ env.AWS_REGION }})
           echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
 
-          # Retry briefly — URL/permission changes can take a few seconds to propagate.
+          # Retry briefly - URL/permission changes can take a few seconds to propagate.
           STATUS=000
           for i in 1 2 3 4 5; do
             STATUS=$(curl -s -o body.txt -w "%{http_code}" "${API_URL}api/v1/health")
             [ "$STATUS" = "200" ] && break
-            echo "Attempt $i: HTTP $STATUS — retrying in 5s"
+            echo "Attempt $i: HTTP $STATUS - retrying in 5s"
             sleep 5
           done
           if [ "$STATUS" != "200" ]; then
@@ -181,7 +181,7 @@ jobs:
           fi
           echo "Health check passed: HTTP $STATUS"
 
-      - name: Diagnose on failure — dump Lambda logs + config
+      - name: Diagnose on failure - dump Lambda logs + config
         if: failure()
         run: |
           FN=resume-parser-production-api

@@ -2,10 +2,10 @@
 OpenAI (gpt-4.1-mini) structured-output parser.
 
 Retry strategy:
-  • MAX_RETRIES=3 total attempts
-  • RateLimitError → exponential backoff with ±20% jitter (prevents thundering herd)
+  * MAX_RETRIES=3 total attempts
+  * RateLimitError -> exponential backoff with ±20% jitter (prevents thundering herd)
     Delays before the two retries: ~5s, ~10s (before jitter); the 3rd attempt raises
-  • Other errors → 1s pause then retry; raise AIParsingError after exhaustion
+  * Other errors -> 1s pause then retry; raise AIParsingError after exhaustion
 
 Token safety:
   Sections are truncated to MAX_SECTION_CHARS to stay within max_tokens budget.
@@ -30,13 +30,13 @@ MAX_RETRIES       = 3
 BACKOFF_BASE      = 5      # seconds
 JITTER_FACTOR     = 0.2    # ±20 % of backoff delay
 # Input caps. gpt-4.1-mini has a very large context window, so the constraint is
-# cost/latency, not the model — keep these generous so a long résumé's later
+# cost/latency, not the model - keep these generous so a long resume's later
 # sections (more work history, education, references) are never truncated away
 # before the model sees them. ~60K chars ≈ 15K tokens, comfortably inside context.
 MAX_SECTION_CHARS = 20_000  # per section
 MAX_TOTAL_CHARS   = 60_000  # total résumé text
 
-# One client per event loop — connection-pool reuse across parses, rebuilt when the
+# One client per event loop - connection-pool reuse across parses, rebuilt when the
 # running loop changes (same pattern/rationale as the multi-agent BaseAgent). The
 # worker Lambda creates a fresh loop per invocation, so a client cached from a
 # previous (now-closed) loop would fail on warm-container reuse.

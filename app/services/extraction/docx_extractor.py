@@ -37,7 +37,7 @@ def extract(content: bytes) -> str:
 def _runs_text(element) -> str:
     """Text of a paragraph, preserving intra-paragraph structure: soft line breaks
     (w:br) become newlines and tabs (w:tab) become spaces. Without this a wrapped
-    line ("Degree: July 21, 2018" then "Next Degree: …") collapses into one run-on
+    line ("Degree: July 21, 2018" then "Next Degree: ...") collapses into one run-on
     string and the AI loses the dates / entry boundaries."""
     out: list[str] = []
     for node in element.iter():

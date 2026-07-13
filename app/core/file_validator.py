@@ -1,12 +1,12 @@
 """
 Magic-bytes file validation.
 
-Extension checks alone are trivially bypassed — an attacker can rename any file.
+Extension checks alone are trivially bypassed - an attacker can rename any file.
 This validates the actual binary signature of the file content before processing.
 
 Supported types and their signatures:
   PDF  : %PDF  (0x25 50 44 46)
-  DOCX : PK\x03\x04  (ZIP archive — DOCX/XLSX/PPTX are ZIP containers)
+  DOCX : PK\x03\x04  (ZIP archive - DOCX/XLSX/PPTX are ZIP containers)
   RTF  : {\rtf
   PNG  : \x89PNG\r\n\x1a\n
   JPEG : \xFF\xD8\xFF
@@ -98,7 +98,7 @@ def _is_ooxml_docx(content: bytes) -> bool:
 def is_supported_extension(filename: str) -> bool:
     """True if the filename has a supported extension.
 
-    Extension-only check (no content) — used by the presigned-upload endpoint to
+    Extension-only check (no content) - used by the presigned-upload endpoint to
     reject obviously-wrong files before issuing an upload URL. Magic-byte
     validation still runs on the downloaded content before parsing.
     """

@@ -1,5 +1,5 @@
 """
-Tests for the deterministic (no-LLM) heuristic parser — the fallback "floor".
+Tests for the deterministic (no-LLM) heuristic parser - the fallback "floor".
 
 It must recover real structure (experience/education/skills) without inventing
 data, so a degraded parse carries more than contact anchors.
@@ -73,7 +73,7 @@ def test_current_role_sets_present_and_is_current():
 def test_comma_month_year_and_line_split_ranges():
     # Real-world PDF shape: "Month, YYYY" with a comma, and ranges wrapped across a
     # line break. Both defeated the earlier line-anchored, comma-less date logic and
-    # produced ZERO experience — which then silently emptied the sync enrich backfill.
+    # produced ZERO experience - which then silently emptied the sync enrich backfill.
     text = (
         "Work Experience\n"
         "Travel Registered Nurse\n"

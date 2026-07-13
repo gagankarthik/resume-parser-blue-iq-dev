@@ -1,7 +1,7 @@
-"""CredentialsAgent — skills, certifications, and state licenses in one pass.
+"""CredentialsAgent - skills, certifications, and state licenses in one pass.
 
 Kept together because the model must decide, per item, whether something is a
-free-form skill, a certification (BLS/ACLS/CCRN…), or a STATE LICENSE (with a
+free-form skill, a certification (BLS/ACLS/CCRN...), or a STATE LICENSE (with a
 number). Seeing them together prevents a state RN licence from being filed as a
 certification or lost entirely.
 """

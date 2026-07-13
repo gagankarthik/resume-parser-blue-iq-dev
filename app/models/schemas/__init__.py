@@ -1,6 +1,6 @@
 """Pydantic schemas package.
 
-Split by concern — validators / resume domain models / analysis / api DTOs /
+Split by concern - validators / resume domain models / analysis / api DTOs /
 feedback / batch. This ``__init__`` re-exports the full public surface (plus the
 three private helpers other modules import) so existing
 ``from app.models.schemas import X`` imports keep working unchanged.

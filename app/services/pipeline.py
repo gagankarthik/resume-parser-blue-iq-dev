@@ -2,18 +2,18 @@
 Full parsing pipeline orchestrator.
 
 Steps (all with per-step timeouts):
-  1. Classify file type → choose extraction strategy
-  2. Extract text (sync extractors run in executor — non-blocking)
+  1. Classify file type -> choose extraction strategy
+  2. Extract text (sync extractors run in executor - non-blocking)
   3. Clean text (Unicode-safe, preserves international names)
   4. Rule-based anchor extraction (email, phone, URLs)
   5. Section detection
   6. AI parsing (async, GPT-4o structured output)
   7. Pydantic validation
   8. Normalization (healthcare specialties, degrees, dates)
-  8b. Specialty → catalog-id matching (deterministic tiers + batched AI tier)
+  8b. Specialty -> catalog-id matching (deterministic tiers + batched AI tier)
   9. Confidence scoring
 
-Nothing is stored — raw content is never written to disk or database.
+Nothing is stored - raw content is never written to disk or database.
 """
 
 import asyncio
@@ -45,13 +45,13 @@ _TIMEOUT_OCR        = 90    # Textract on multi-page scans — bounded so OCR al
 # The orchestrator self-bounds each stage (see orchestrator._STAGE2_TIMEOUT et al.)
 # and returns a partial result rather than being cancelled, so this is only a hard
 # safety net set just above its internal budget. The single-shot fallback is one
-# LLM call, so it gets a tighter cap — together they bound the worst case instead
+# LLM call, so it gets a tighter cap - together they bound the worst case instead
 # of stacking two full 2-minute timeouts when the orchestrator degrades.
 _TIMEOUT_ORCHESTRATOR = 130
 # Single-shot cap. Measured single-shot parse time for a dense multi-role resume
-# is 39–55s (e.g. a 12-role radiology resume: 39.1s → 12 roles fully extracted),
+# is 39-55s (e.g. a 12-role radiology resume: 39.1s -> 12 roles fully extracted),
 # so a 45s cap sat right on the cliff and normal OpenAI latency variance tipped
-# it into a contact-only "partial". Give it real headroom — the Lambda function
+# it into a contact-only "partial". Give it real headroom - the Lambda function
 # timeout is 300s, so the binding constraint is the total budget below, not this.
 _TIMEOUT_AI_PARSE     = 90
 
@@ -59,7 +59,7 @@ _TIMEOUT_AI_PARSE     = 90
 # under this budget. Sized to let a slow orchestrator degrade AND still leave a
 # full single-shot fallback, comfortably inside the 300s Lambda timeout.
 _TOTAL_BUDGET     = 200
-# Time held back from the orchestrator for the single-shot fallback + scoring —
+# Time held back from the orchestrator for the single-shot fallback + scoring -
 # large enough for a full _TIMEOUT_AI_PARSE fallback attempt after a degrade.
 _FALLBACK_RESERVE = 100
 
@@ -70,20 +70,20 @@ _FALLBACK_RESERVE = 100
 #
 # This budget CANNOT protect a caller behind a tighter gateway. The UAT console, for
 # one, reaches this API through a Next.js route handler on AWS Amplify Hosting,
-# whose SSR compute has a HARD 30s request timeout — not configurable, no quota to
+# whose SSR compute has a HARD 30s request timeout - not configurable, no quota to
 # raise, and Next's `maxDuration` is not honored there. A measured single-shot parse
-# of even a *typical* two-role résumé takes ~20s, so a complete synchronous parse
+# of even a *typical* two-role resume takes ~20s, so a complete synchronous parse
 # does not fit 30s once extraction, normalization and transfer are counted: there is
 # no budget value that makes it work. Such callers must not block on a parse at all
-# — they pass `async_only` and poll instead (see app/api/v1/endpoints/resume.py).
+# - they pass `async_only` and poll instead (see app/api/v1/endpoints/resume.py).
 _SYNC_WALL_BUDGET = 50
 # Smallest AI-parse window worth opening on the sync path. If less than this is
-# left after extraction, don't start a call we know cannot land — degrade straight
+# left after extraction, don't start a call we know cannot land - degrade straight
 # to the floor so the caller promotes to async while it still has budget to do so.
 _MIN_SYNC_AI_TIMEOUT = 8
 # Time held back from the SYNC single-shot parse for the section-only "enrich"
 # pass that runs when it times out. The single-shot is capped this many seconds
-# BELOW the wall budget so a résumé that would run long is cut early, leaving room
+# BELOW the wall budget so a resume that would run long is cut early, leaving room
 # to recover the semantic sections (headline, secondary phone, education
 # locations, skills, certs) with fast section agents instead of dropping to the
 # contact-only floor. Only used by a sync caller that RETURNS the partial; probe
@@ -92,7 +92,7 @@ _SYNC_ENRICH_RESERVE = 14
 # Time the sync path holds back from EXTRACTION for the AI parse + scoring that
 # must follow it. Extraction used to run entirely outside the sync budget, on its
 # own 60s/90s caps, so one slow step could blow the gateway ceiling before the AI
-# parse even began — an independent source of 504s that this budget never saw.
+# parse even began - an independent source of 504s that this budget never saw.
 _SYNC_EXTRACT_RESERVE = 20
 # Never hand an extraction step less than this; below it the step is pointless.
 _MIN_EXTRACT_TIMEOUT = 5
@@ -140,7 +140,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
     start = time.monotonic()
     loop  = asyncio.get_event_loop()
 
-    # Don't log the raw filename — résumé filenames routinely embed the candidate's
+    # Don't log the raw filename - resume filenames routinely embed the candidate's
     # name ("jane_smith_rn.pdf"), i.e. PII in CloudWatch. Extension + length suffice.
     log.info(
         "pipeline_start", job_id=inp.job_id,
@@ -149,7 +149,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
     )
 
     # Wall-clock budget for the whole run. Declared HERE, above extraction, so that
-    # every stage below is bounded by it — extraction included. (It used to be
+    # every stage below is bounded by it - extraction included. (It used to be
     # declared just before the AI parse, which left extraction's 60s/90s per-step
     # caps free to overrun the sync gateway ceiling on their own.)
     budget = _SYNC_WALL_BUDGET if inp.sync else _TOTAL_BUDGET
@@ -168,7 +168,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
             return cap
         return max(_MIN_EXTRACT_TIMEOUT, min(cap, _remaining() - _SYNC_EXTRACT_RESERVE))
 
-    # ── 1. Classify ───────────────────────────────────────────────────────────
+    # -- 1. Classify -----------------------------------------------------------
     strategy, _ = classifier.classify(inp.filename, inp.content)
     file_type   = strategy.value
     ocr_used    = False
@@ -177,7 +177,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
     # flagged partial, which the endpoints promote to the async worker.
     sync_needs_ocr = False
 
-    # ── 2. Extract (sync extractors → executor, async-safe) ───────────────────
+    # -- 2. Extract (sync extractors -> executor, async-safe) -------------------
     try:
         if strategy == ExtractionStrategy.PDF:
             raw_text = await asyncio.wait_for(
@@ -191,7 +191,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
             # the resume is still read instead of feeding the AI garbage.
             if _is_low_quality_pdf_text(raw_text):
                 if inp.sync:
-                    # An OCR pass alone is budgeted at _TIMEOUT_OCR — several times the
+                    # An OCR pass alone is budgeted at _TIMEOUT_OCR - several times the
                     # whole sync wall budget. Starting it behind a gateway that severs
                     # the connection at 30s just guarantees a bodyless 504. Bail out to
                     # a partial instead: the caller promotes the file to the async
@@ -240,28 +240,28 @@ async def run(inp: PipelineInput) -> PipelineResult:
             f"Text extraction timed out after {timeout}s"
         ) from exc
 
-    # ── 3. Clean text (Unicode-safe) ─────────────────────────────────────────
+    # -- 3. Clean text (Unicode-safe) -----------------------------------------
     cleaned = _clean_text(raw_text)
 
-    # ── 4. Rule-based anchors ─────────────────────────────────────────────────
+    # -- 4. Rule-based anchors -------------------------------------------------
     anchors  = rule_parser.extract(cleaned)
 
-    # ── 5. Section detection ──────────────────────────────────────────────────
+    # -- 5. Section detection --------------------------------------------------
     sections = section_detector.detect(cleaned)
 
-    # ── 6. AI parsing ────────────────────────────────────────────────────────
+    # -- 6. AI parsing --------------------------------------------------------
     # The two request shapes get different ladders because they have very
     # different budgets:
-    #   ASYNC (worker, full budget): multi-agent orchestrator (structure → per-role
-    #     → validate) → single-shot fallback → deterministic floor.
-    #   SYNC (gateway ceiling — see _SYNC_WALL_BUDGET): single-shot PRIMARY — fast
-    #     AND complete for the résumés it parses inside its cap. The cap sits below
-    #     the wall budget so a résumé that would run long is cut early, leaving room
+    #   ASYNC (worker, full budget): multi-agent orchestrator (structure -> per-role
+    #     -> validate) -> single-shot fallback -> deterministic floor.
+    #   SYNC (gateway ceiling - see _SYNC_WALL_BUDGET): single-shot PRIMARY - fast
+    #     AND complete for the resumes it parses inside its cap. The cap sits below
+    #     the wall budget so a resume that would run long is cut early, leaving room
     #     for a section-only "enrich" pass (semantic sections, no slow per-role work
-    #     stage) plus deterministic work history — far richer than the bare floor.
+    #     stage) plus deterministic work history - far richer than the bare floor.
     #     Probe callers skip the enrich and promote to async instead.
     #     (The full orchestrator was tried on sync and dropped the per-role work
-    #     stage — cancelled on the tight budget — silently losing all experience.)
+    #     stage - cancelled on the tight budget - silently losing all experience.)
     settings  = get_settings()
     warnings: list[str] = []
     partial   = False
@@ -270,18 +270,18 @@ async def run(inp: PipelineInput) -> PipelineResult:
 
     if sync_needs_ocr:
         # Unreadable text layer on the sync path (see extraction). There is nothing
-        # worth feeding the AI, and OCR does not fit the budget — degrade to the
+        # worth feeding the AI, and OCR does not fit the budget - degrade to the
         # deterministic floor and flag it. `partial` is the signal the endpoints use
         # to promote the file to the async worker, which reads it properly via OCR.
         parsed_ai = heuristic_parser.parse(cleaned, anchors)
         partial   = True
         warnings.append(
-            "This PDF's text layer could not be decoded, so the résumé needs OCR — "
+            "This PDF's text layer could not be decoded, so the resume needs OCR - "
             "which does not fit the synchronous budget. Re-run it on the asynchronous "
             "path (the API does this for you) to get a complete record."
         )
     elif not inp.sync:
-        # ── ASYNC: orchestrator primary → single-shot → floor ─────────────────
+        # -- ASYNC: orchestrator primary -> single-shot -> floor -----------------
         use_orchestrator = (
             settings.use_multi_agent
             and len(cleaned) >= settings.multi_agent_min_chars
@@ -324,16 +324,16 @@ async def run(inp: PipelineInput) -> PipelineResult:
                     f"human review. ({reason})"
                 )
     else:
-        # ── SYNC: single-shot primary ─────────────────────────────────────────
+        # -- SYNC: single-shot primary -----------------------------------------
         # In PROBE mode the caller promotes any partial to the async worker (full
         # budget, complete parse), so the section-only enrich would be thrown away
-        # — skip it and hand the single-shot the reserve time instead (bigger cap →
-        # more résumés finish synchronously). Otherwise (a caller that returns the
+        # - skip it and hand the single-shot the reserve time instead (bigger cap ->
+        # more resumes finish synchronously). Otherwise (a caller that returns the
         # partial directly) keep the enrich reserve.
         enrich_reserve = 3.0 if inp.sync_probe else _SYNC_ENRICH_RESERVE
-        # Clamp to what is genuinely left. The old `max(15.0, …)` floor here meant a
+        # Clamp to what is genuinely left. The old `max(15.0, ...)` floor here meant a
         # slow extraction could still hand the AI a 15s window the budget could not
-        # afford, overshooting the gateway ceiling — the very 504 this budget exists
+        # afford, overshooting the gateway ceiling - the very 504 this budget exists
         # to prevent. If the window is too small to be worth opening, degrade now and
         # let the caller promote to async while there is still time to dispatch.
         ai_timeout = min(_TIMEOUT_AI_PARSE, _remaining() - enrich_reserve)
@@ -352,15 +352,15 @@ async def run(inp: PipelineInput) -> PipelineResult:
                 if isinstance(exc, TimeoutError) else f"AI parsing failed: {exc}"
             )
             log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
-            # Deterministic floor is the base — never empty, never times out.
+            # Deterministic floor is the base - never empty, never times out.
             floor = heuristic_parser.parse(cleaned, anchors)
             parsed_ai = floor
             partial = True
             # Enrich: recover the high-value semantic sections (headline, secondary
             # phone, education locations, skills, certs, licenses) with the fast
-            # section-only agents — omitting the slow per-role work stage — and keep
+            # section-only agents - omitting the slow per-role work stage - and keep
             # the deterministic work history. Skipped in probe mode (the partial is
-            # not returned to the caller — it triggers an async re-parse instead).
+            # not returned to the caller - it triggers an async re-parse instead).
             if not inp.sync_probe and settings.use_multi_agent and _remaining() > 9:
                 try:
                     light, ltok, lwarn = await asyncio.wait_for(
@@ -382,7 +382,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
                 f"This record needs human review. ({reason})"
             )
 
-    # ── 7–9. Normalize + score ────────────────────────────────────────────────
+    # -- 7-9. Normalize + score ------------------------------------------------
     normalized = normalize(parsed_ai)
 
     # Deterministic compliance scan (needs the full text) + tracked-cert expiry
@@ -392,7 +392,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
 
     # Tier-4 specialty resolution: one batched LLM call maps any per-role specialty
     # the deterministic tiers missed to a catalog id (no-op without a catalog or
-    # when nothing is unmatched). Best-effort and time-bounded — a failure leaves
+    # when nothing is unmatched). Best-effort and time-bounded - a failure leaves
     # the deterministic matches intact and never fails the parse.
     spec_budget = _remaining() - 5  # keep a little headroom for scoring
     if spec_budget > 0:
@@ -406,7 +406,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
 
     # City id enrichment: opt-in, live fuzzy match against the cities endpoint using
     # the offline-resolved country_id/state_id. No-op unless enabled + keyed. Best-
-    # effort and time-bounded — a failure leaves the deterministic result intact.
+    # effort and time-bounded - a failure leaves the deterministic result intact.
     if get_settings().enable_city_api_match and _remaining() > 3:
         try:
             await asyncio.wait_for(
@@ -421,13 +421,13 @@ async def run(inp: PipelineInput) -> PipelineResult:
     if mismatch:
         warnings.append(mismatch)
 
-    # A résumé almost always carries an email; on OCR'd documents a missing one
+    # A resume almost always carries an email; on OCR'd documents a missing one
     # usually means the scan quality defeated OCR (e.g. an underlined hyperlink
-    # in a phone screenshot) — surface it for review instead of a silent null.
+    # in a phone screenshot) - surface it for review instead of a silent null.
     if ocr_used and not partial and not normalized.personal_info.email:
         warnings.append(
             "No email address was detected. The document was read via OCR and the "
-            "email may be unreadable in the source image — please verify manually."
+            "email may be unreadable in the source image - please verify manually."
         )
 
     duration_ms = int((time.monotonic() - start) * 1000)
@@ -457,10 +457,10 @@ async def run(inp: PipelineInput) -> PipelineResult:
 
 def _surname_mismatch_warning(parsed: ParsedResumeAI) -> str | None:
     """Flag a likely-incomplete surname by comparing the parsed name against the
-    email local part: "Rubie Ricafort" with "rubie.ricafortmoulds@…" suggests a
-    hyphenated/double surname ("Ricafort-Moulds") the résumé body truncated.
+    email local part: "Rubie Ricafort" with "rubie.ricafortmoulds@..." suggests a
+    hyphenated/double surname ("Ricafort-Moulds") the resume body truncated.
     Conservative: only fires when the local part continues the surname with a
-    ≥4-letter alphabetic run that is not another part of the name.
+    >=4-letter alphabetic run that is not another part of the name.
     """
     pi = parsed.personal_info
     if not (pi.full_name and pi.email):
@@ -480,8 +480,8 @@ def _surname_mismatch_warning(parsed: ParsedResumeAI) -> str | None:
     if len(suffix) >= 4 and suffix.isalpha() and suffix not in tokens:
         return (
             f"The email address suggests a longer surname than the parsed name "
-            f"(\"{pi.full_name}\" vs \"…{surname}{suffix}@\"). The résumé may "
-            "truncate a hyphenated or double surname — review full_name."
+            f"(\"{pi.full_name}\" vs \"...{surname}{suffix}@\"). The resume may "
+            "truncate a hyphenated or double surname - review full_name."
         )
     return None
 
@@ -490,7 +490,7 @@ def _backfill_from_floor(primary: ParsedResumeAI, floor: ParsedResumeAI) -> Pars
     """Fill sections the semantic parse left empty with the deterministic parser's
     recovery. Used on the sync enrich path: `primary` carries the high-quality
     section-agent output (personal / education / credentials); `floor` supplies the
-    work history — and any other section the agents could not finish in time — so
+    work history - and any other section the agents could not finish in time - so
     a section is never silently dropped when its agent times out under the tight
     enrich budget (e.g. a slow CredentialsAgent losing every certification)."""
     if not primary.experience:
@@ -511,7 +511,7 @@ def _fallback_from_anchors(anchors: rule_parser.RuleExtracted) -> ParsedResumeAI
 
     Used when the AI parser fails so the caller still receives a structured,
     if sparse, record instead of nothing. Only high-confidence regex anchors are
-    populated — never invented data.
+    populated - never invented data.
     """
     personal = PersonalInfo(
         email=anchors.emails[0] if anchors.emails else None,
@@ -535,14 +535,14 @@ _MIN_PDF_WORDY_RATIO = 0.55
 def _is_low_quality_pdf_text(text: str) -> bool:
     """Heuristic: does this digital-PDF text layer look broken/garbled?
 
-    Conservative by design — a false positive only costs one OCR pass, but a
+    Conservative by design - a false positive only costs one OCR pass, but a
     false negative feeds the AI unreadable junk. Flags text that is too short,
     riddled with PyMuPDF CID artefacts, or has too few wordy characters.
     """
     stripped = text.strip()
     if len(stripped) < _MIN_PDF_TEXT_CHARS:
         return True
-    # PyMuPDF emits "(cid:NN)" when a font has no Unicode map — a strong signal
+    # PyMuPDF emits "(cid:NN)" when a font has no Unicode map - a strong signal
     # the text layer cannot be decoded to real characters.
     if stripped.count("(cid:") >= 5:
         return True
@@ -552,7 +552,7 @@ def _is_low_quality_pdf_text(text: str) -> bool:
     wordy = sum(c.isalnum() or c in ".,/-:;()&'@" for c in non_space)
     if wordy / len(non_space) < _MIN_PDF_WORDY_RATIO:
         return True
-    # A readable résumé always has a decent run of alphabetic characters; an all-
+    # A readable resume always has a decent run of alphabetic characters; an all-
     # symbol or replacement-char (�) layer does not.
     letters = sum(c.isalpha() for c in non_space)
     if letters / len(non_space) < 0.40:
@@ -563,12 +563,12 @@ def _is_low_quality_pdf_text(text: str) -> bool:
 def _clean_text(text: str) -> str:
     """
     Clean extracted text while preserving:
-      • All Unicode letters (é, ñ, ü, Arabic, Chinese, etc.) — healthcare
+      * All Unicode letters (é, ñ, ü, Arabic, Chinese, etc.) - healthcare
         workers often have non-ASCII names
-      • Newlines and spaces needed for structure
+      * Newlines and spaces needed for structure
     Removes only:
-      • C0/C1 control characters (null bytes, bells, form feeds)
-      • Surrogates and private-use area garbage
+      * C0/C1 control characters (null bytes, bells, form feeds)
+      * Surrogates and private-use area garbage
     """
     # Remove C0 control chars except tab (\x09) and LF (\x0a)
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", text)
@@ -576,7 +576,7 @@ def _clean_text(text: str) -> str:
     text = re.sub(r"[\ud800-\udfff-]", " ", text)
     # Fix common OCR ligature artefacts
     text = text.replace("ﬁ", "fi").replace("ﬂ", "fl")
-    # Collapse excessive blank lines (3+ → 2)
+    # Collapse excessive blank lines (3+ -> 2)
     text = re.sub(r"\n{3,}", "\n\n", text)
     # Strip trailing whitespace per line
     lines = [line.rstrip() for line in text.splitlines()]

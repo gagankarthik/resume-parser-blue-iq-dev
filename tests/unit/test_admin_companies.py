@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from app.api import dependencies
 from app.api.v1.endpoints import admin
 
-# ── PATCH /admin/companies/{id} ───────────────────────────────────────────────
+# -- PATCH /admin/companies/{id} -----------------------------------------------
 
 async def test_update_company_changes_status(monkeypatch):
     captured: dict = {}
@@ -49,7 +49,7 @@ async def test_update_company_not_found(monkeypatch):
     assert ei.value.status_code == 404
 
 
-# ── GET /admin/companies/{id}/logs ────────────────────────────────────────────
+# -- GET /admin/companies/{id}/logs --------------------------------------------
 
 async def test_company_logs_shapes_sorts_and_coerces(monkeypatch):
     logs = [
@@ -93,7 +93,7 @@ async def test_company_logs_surface_key_attribution(monkeypatch):
     assert by_id["2"]["key_prefix"] == ""
 
 
-# ── Deactivation enforcement in API-key auth ──────────────────────────────────
+# -- Deactivation enforcement in API-key auth ----------------------------------
 
 def test_company_is_active_blocks_disabled(monkeypatch):
     dependencies._COMPANY_STATUS_CACHE.clear()

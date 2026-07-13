@@ -1,5 +1,5 @@
 """
-Healthcare profession and specialty taxonomy — matching/lookup logic.
+Healthcare profession and specialty taxonomy - matching/lookup logic.
 
 The reference DATA (abbreviation maps, specialty lists, group mapping) now lives
 in taxonomy_data.py. This module builds the punctuation-insensitive lookup indexes
@@ -8,10 +8,10 @@ here (imported into this namespace) so existing
 `from ...healthcare_taxonomy import PROFESSION_ABBREVIATIONS` imports keep working.
 
 Provides:
-  resolve_specialty / normalize_specialty — raw string → canonical name
-  get_specialty_group                     — canonical specialty → group label
-  expand_profession                       — credential abbrev → full name
-  _match_key                              — punctuation/whitespace-insensitive key
+  resolve_specialty / normalize_specialty - raw string -> canonical name
+  get_specialty_group                     - canonical specialty -> group label
+  expand_profession                       - credential abbrev -> full name
+  _match_key                              - punctuation/whitespace-insensitive key
 """
 
 import re
@@ -23,9 +23,9 @@ from app.services.normalization.taxonomy_data import (
     SPECIALTY_GROUPS,
 )
 
-# ── Punctuation-robust matching ───────────────────────────────────────────────
+# -- Punctuation-robust matching -----------------------------------------------
 # Resumes and the source spreadsheet disagree on punctuation: en-dash vs hyphen
-# ("Ultrasound Tech – General" vs "...- General"), slash spacing ("Med Surg / Tele"
+# ("Ultrasound Tech - General" vs "...- General"), slash spacing ("Med Surg / Tele"
 # vs "Med Surg/ Tele"), hyphen-vs-space ("Med-Surg" vs "Med Surg"), and ampersand
 # vs "and" ("Labor & Delivery" vs "Labor and Delivery"). We match on a normalized
 # key so every variant resolves to the same canonical name without enumerating
@@ -37,8 +37,8 @@ def _match_key(s: str) -> str:
 
     Hyphens and whitespace are treated as the same separator, so "Med-Surg",
     "Med Surg", and "Med - Surg" all collapse to one key. An ampersand is treated
-    as "and" ("Labor & Delivery" → "Labor and Delivery"). Slashes are kept (they
-    are meaningful — "Med Surg / Tele" — but their surrounding spacing is removed).
+    as "and" ("Labor & Delivery" -> "Labor and Delivery"). Slashes are kept (they
+    are meaningful - "Med Surg / Tele" - but their surrounding spacing is removed).
     Both the canonical names and the lookup string get this treatment, so the
     transform stays internally consistent.
     """
@@ -66,8 +66,8 @@ def resolve_specialty(raw: str) -> str | None:
       2. Specialty abbreviation/shorthand (e.g. "ICU", "Med Surg/ Tele")
       3. Full profession/credential name (e.g. "Registered Nurse")
       4. Profession/credential abbreviation (e.g. "RN", "OT")
-      5. Credential-prefix expansion — "OT - Acute Care" → "Occupational
-         Therapist – Acute Care" — so every "<credential> - <setting>" variant
+      5. Credential-prefix expansion - "OT - Acute Care" -> "Occupational
+         Therapist - Acute Care" - so every "<credential> - <setting>" variant
          from the taxonomy resolves without enumerating each setting.
 
     Returns the canonical name, or None when the string is out-of-taxonomy.

@@ -2,7 +2,7 @@
 Multi-agent orchestrator tests.
 
 LLM calls are mocked at the `_structured_call` boundary so the REAL agent and
-orchestrator logic runs — structure-driven per-role extraction, validator bullet
+orchestrator logic runs - structure-driven per-role extraction, validator bullet
 reconciliation, per-section failure isolation, and final assembly.
 """
 
@@ -123,7 +123,7 @@ async def test_orchestrator_carries_professional_associations(monkeypatch):
     assert "Sepsis Clinical Services Committee" in parsed.professional_associations
 
 
-# ── WorkExperienceAgent: per-role extraction + structure-map seeding ─────────
+# -- WorkExperienceAgent: per-role extraction + structure-map seeding ---------
 
 async def test_work_agent_extracts_one_entry_per_role_and_seeds_identity(monkeypatch):
     agent = WorkExperienceAgent()
@@ -149,7 +149,7 @@ async def test_work_agent_extracts_one_entry_per_role_and_seeds_identity(monkeyp
 
 async def test_work_agent_stubs_failed_role_to_keep_alignment(monkeypatch):
     """A role whose extraction keeps failing is backfilled from the structure map
-    (not dropped), so the output stays 1:1 with `roles` — guarding the validator's
+    (not dropped), so the output stays 1:1 with `roles` - guarding the validator's
     positional pairing against the label-shift / duplicate-employer regression."""
     agent = WorkExperienceAgent()
 
@@ -218,7 +218,7 @@ async def test_work_agent_clears_agency_on_standalone_employer(monkeypatch):
     assert out[0].employer_phone == "304-287-2120"
 
 
-# ── ValidatorAgent: bullet-count reconciliation ──────────────────────────────
+# -- ValidatorAgent: bullet-count reconciliation ------------------------------
 
 async def test_validator_reextracts_and_fixes_mismatch(monkeypatch):
     agent = ValidatorAgent()

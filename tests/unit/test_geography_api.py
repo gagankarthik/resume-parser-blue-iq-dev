@@ -1,5 +1,5 @@
 """
-GigHealth geographies API transform tests — normalising the nested country/state
+GigHealth geographies API transform tests - normalising the nested country/state
 envelope into clean rows, coercing ids to strings, dropping malformed entries.
 """
 

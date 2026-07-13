@@ -1,5 +1,5 @@
 """
-Specialty catalog loader tests — JSON/CSV parsing, index building, and the
+Specialty catalog loader tests - JSON/CSV parsing, index building, and the
 missing/empty-file fallback (a bad or absent catalog must never break parsing).
 """
 
@@ -35,7 +35,7 @@ def _write(tmp_path, name, payload):
 
 
 def test_default_path_loads_bundled_snapshot():
-    # reload(None) uses the configured default — the bundled Gig snapshot.
+    # reload(None) uses the configured default - the bundled Gig snapshot.
     cat = specialty_catalog.reload(None)
     assert not cat.is_empty
     # Same specialty name carries a different id per profession (RN vs CNA ICU).

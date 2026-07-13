@@ -1,4 +1,4 @@
-# ── Lambda execution role ─────────────────────────────────────────────────────
+# -- Lambda execution role -----------------------------------------------------
 
 data "aws_iam_policy_document" "lambda_assume_role" {
   statement {
@@ -23,9 +23,9 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Application permissions — least-privilege
+# Application permissions - least-privilege
 data "aws_iam_policy_document" "lambda_app" {
-  # DynamoDB — all application tables (and their GSIs)
+  # DynamoDB - all application tables (and their GSIs)
   statement {
     sid    = "DynamoDB"
     effect = "Allow"
@@ -50,9 +50,9 @@ data "aws_iam_policy_document" "lambda_app" {
     ]
   }
 
-  # S3 — temp bucket only.
+  # S3 - temp bucket only.
   # Note: the HeadBucket API call (used by /health) is authorized by
-  # s3:ListBucket — there is no separate s3:HeadBucket IAM action.
+  # s3:ListBucket - there is no separate s3:HeadBucket IAM action.
   statement {
     sid    = "S3Temp"
     effect = "Allow"
@@ -66,7 +66,7 @@ data "aws_iam_policy_document" "lambda_app" {
     ]
   }
 
-  # Textract — real AWS only, no LocalStack
+  # Textract - real AWS only, no LocalStack
   statement {
     sid       = "Textract"
     effect    = "Allow"
@@ -74,9 +74,9 @@ data "aws_iam_policy_document" "lambda_app" {
     resources = ["*"]
   }
 
-  # Lambda — the function invokes ITSELF for async OCR work.
+  # Lambda - the function invokes ITSELF for async OCR work.
   # ARN is constructed (not a resource reference) to avoid a dependency cycle:
-  # function → exec-role policy → function.
+  # function -> exec-role policy -> function.
   statement {
     sid     = "InvokeSelf"
     effect  = "Allow"
@@ -93,7 +93,7 @@ resource "aws_iam_role_policy" "lambda_app" {
   policy = data.aws_iam_policy_document.lambda_app.json
 }
 
-# ── GitHub Actions deployment role ────────────────────────────────────────────
+# -- GitHub Actions deployment role --------------------------------------------
 
 data "aws_caller_identity" "current" {}
 

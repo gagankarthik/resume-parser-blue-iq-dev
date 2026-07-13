@@ -1,4 +1,4 @@
-"""SupplementalAgent — projects, languages, references, awards, publications."""
+"""SupplementalAgent - projects, languages, references, awards, publications."""
 
 from __future__ import annotations
 

@@ -5,23 +5,23 @@ The placement platform ("Gig") exposes its facility directory at
 ``GET /api/v1/external/facilities`` (auth: ``x-api-key``). Unlike the specialties
 tree, the facilities response is a FLAT list already::
 
-    data[] → {id, name, healthSystemId, healthSystemName}
+    data[] -> {id, name, healthSystemId, healthSystemName}
 
 ``healthSystemId`` / ``healthSystemName`` may be null (an independent facility with
 no parent health system). This module normalises each entry into the flat record
-shape the facility catalog loader consumes — ``{id, name, health_system,
-health_system_id}`` — **preserving the platform's exact facility names**.
+shape the facility catalog loader consumes - ``{id, name, health_system,
+health_system_id}`` - **preserving the platform's exact facility names**.
 
 Mirrors ``specialty_api``: the flatten/transform is pure and unit-testable, and the
 network fetch (`fetch_payload`) is only used by
 ``scripts/refresh_facility_catalog.py`` to regenerate the bundled snapshot
-(``app/data/facility_catalog.json``) — never on the request hot path. The parser
+(``app/data/facility_catalog.json``) - never on the request hot path. The parser
 loads the committed snapshot so a Lambda invocation makes no live HTTP call.
 """
 
 from __future__ import annotations
 
-import httpx
+from app.services.normalization import gig_api
 
 DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/facilities"
 
@@ -29,12 +29,11 @@ DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/facilities"
 def fetch_payload(api_url: str, api_key: str, *, timeout: float = 30.0) -> dict:
     """GET the Gig facilities API and return the decoded JSON envelope.
 
-    Raises on HTTP error / non-JSON so the refresh script fails loudly — the
-    request path never calls this (it reads the bundled snapshot).
+    Raises ``gig_api.GigApiError`` on HTTP error / non-JSON / ``success: false`` so the
+    refresh script fails loudly - the request path never calls this (it reads the
+    bundled snapshot). 429s are retried with backoff, per the partner guide.
     """
-    resp = httpx.get(api_url, headers={"x-api-key": api_key}, timeout=timeout)
-    resp.raise_for_status()
-    return resp.json()
+    return gig_api.get_sync_envelope(api_url, api_key, timeout=timeout)
 
 
 def flatten_payload(payload: dict) -> list[dict]:

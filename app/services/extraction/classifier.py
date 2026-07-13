@@ -7,11 +7,11 @@ Validation order:
   3. PDF text density check (digital vs scanned)
 
 Strategy:
-  PDF with extractable text  → pdf_extractor (sync)
-  PDF with no/little text    → ocr_extractor (async — Tesseract → Textract)
-  DOCX                       → docx_extractor (sync)
-  RTF                        → rtf_extractor (sync)
-  Image (PNG/JPG/TIFF/WEBP)  → ocr_extractor (async)
+  PDF with extractable text  -> pdf_extractor (sync)
+  PDF with no/little text    -> ocr_extractor (async - Tesseract -> Textract)
+  DOCX                       -> docx_extractor (sync)
+  RTF                        -> rtf_extractor (sync)
+  Image (PNG/JPG/TIFF/WEBP)  -> ocr_extractor (async)
 """
 
 from enum import Enum
@@ -48,7 +48,7 @@ def classify(filename: str, content: bytes) -> tuple[ExtractionStrategy, bool]:
     if file_type == "pdf":
         return _classify_pdf(content)
 
-    # png / jpeg / tiff / webp → OCR, requires async
+    # png / jpeg / tiff / webp -> OCR, requires async
     return ExtractionStrategy.OCR, True
 
 

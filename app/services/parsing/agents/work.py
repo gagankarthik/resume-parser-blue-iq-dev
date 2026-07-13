@@ -1,8 +1,8 @@
-"""WorkExperienceAgent — Stage 2: extract each role independently.
+"""WorkExperienceAgent - Stage 2: extract each role independently.
 
 Driven by the StructureAgent's role map: one focused LLM call per role, told the
 exact bullet count to honour. This is what fixes dropped employers and the
-"travel assignment flattened into Unknown role" bug — each facility is extracted
+"travel assignment flattened into Unknown role" bug - each facility is extracted
 as its own entry that already knows its profession/agency from the structure map.
 Falls back to a single full-document extraction when no structure map exists.
 """
@@ -117,7 +117,7 @@ class WorkExperienceAgent(BaseAgent):
         # Keep the output 1:1 with the structure map. A role that failed even after
         # retry is backfilled with a stub from its RoleBoundary rather than dropped,
         # so (a) the employer is never lost and (b) downstream positional pairing in
-        # the ValidatorAgent (work[i] ↔ roles[i]) stays correct — collapsing the list
+        # the ValidatorAgent (work[i] ↔ roles[i]) stays correct - collapsing the list
         # here is what caused labels to shift up and employers to duplicate.
         for i, res in enumerate(results):
             if res is None:
@@ -129,7 +129,7 @@ class WorkExperienceAgent(BaseAgent):
     @staticmethod
     def _stub_from_role(role: RoleBoundary) -> ExperienceItem:
         """Minimal entry from the structure map for a role whose focused extraction
-        failed — preserves the employer/identity (no duty bullets) so it isn't lost."""
+        failed - preserves the employer/identity (no duty bullets) so it isn't lost."""
         return ExperienceItem(
             company=role.company,
             role=role.title or role.profession or "Unknown",

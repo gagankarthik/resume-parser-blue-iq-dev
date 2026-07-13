@@ -1,4 +1,4 @@
-"""Audit logs (table: audit_logs) — usage records, never resume content."""
+"""Audit logs (table: audit_logs) - usage records, never resume content."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -25,7 +25,7 @@ def write_audit_log(
     key_hash: str = "",
     key_prefix: str = "",
 ) -> None:
-    """Write an audit record — never stores resume content.
+    """Write an audit record - never stores resume content.
 
     key_hash / key_prefix attribute the job to the API key that produced it, so
     the admin platform can break usage down per key. Both are optional: legacy
@@ -59,7 +59,7 @@ def get_audit_logs_for_company(company_id: str, since_iso: str) -> list[dict]:
     """
     Audit records for a company since an ISO timestamp, via the
     company-timestamp-index GSI. Each record carries file_type, status,
-    duration_ms, ocr_used, ai_tokens_used — enough for usage/token rollups.
+    duration_ms, ocr_used, ai_tokens_used - enough for usage/token rollups.
     """
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_audit_logs)

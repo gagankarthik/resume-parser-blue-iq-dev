@@ -6,7 +6,7 @@ authors = ["BlueIQ <oceanbluesolutions@gmail.com>"]
 readme = "README.md"
 # The distribution name ("resume-parser") does not match the import package
 # ("app"), so Poetry cannot infer it. Without this, `poetry install` fails on
-# the root project under Poetry 2.x — CI only survives because it pins 1.8.4.
+# the root project under Poetry 2.x - CI only survives because it pins 1.8.4.
 packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
@@ -48,8 +48,8 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 ignore = [
-    "E501",   # line too long — long prompt strings and Field descriptions are intentional
-    "UP042",  # StrEnum from typing — we use enum.StrEnum which IS the preferred Py3.11+ form
+    "E501",   # line too long - long prompt strings and Field descriptions are intentional
+    "UP042",  # StrEnum from typing - we use enum.StrEnum which IS the preferred Py3.11+ form
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -58,7 +58,7 @@ ignore = [
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
-# Practical settings for FastAPI/Pydantic — strict=true produces 100+ false positives
+# Practical settings for FastAPI/Pydantic - strict=true produces 100+ false positives
 # on Field(default=None), Depends(), and untyped boto3 returns. We enable the checks
 # that catch real bugs and skip the bureaucratic ones.
 check_untyped_defs = true
@@ -67,7 +67,7 @@ warn_unused_ignores = true
 no_implicit_optional = true
 # Don't fight Pydantic's Field() defaults or boto3's Any returns
 disable_error_code = [
-    "type-arg",       # missing generic args — dict vs dict[str, Any] is noise
+    "type-arg",       # missing generic args - dict vs dict[str, Any] is noise
     "no-untyped-def", # FastAPI route handlers don't need full annotations
     "no-untyped-call",
     "no-any-return",  # boto3 returns Any everywhere

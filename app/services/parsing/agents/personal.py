@@ -1,4 +1,4 @@
-"""PersonalInfoAgent — name, post-nominal credentials, contact, summary."""
+"""PersonalInfoAgent - name, post-nominal credentials, contact, summary."""
 
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ Covers specialty abbreviation expansion, profession credentials, and role title 
 from app.services.normalization.healthcare_taxonomy import expand_profession
 from app.services.normalization.normalizer import _expand_role_credentials, _normalize_skills
 
-# ── Specialty abbreviation expansion ──────────────────────────────────────────
+# -- Specialty abbreviation expansion ------------------------------------------
 
 def test_icu_expands():
     result = _normalize_skills(["ICU"])
@@ -128,7 +128,7 @@ def test_rnfa_expands():
     assert result == ["Registered Nurse First Assistant"]
 
 
-# ── Allied Health abbreviations ───────────────────────────────────────────────
+# -- Allied Health abbreviations -----------------------------------------------
 
 def test_rrt_expands():
     result = _normalize_skills(["RRT"])
@@ -171,7 +171,7 @@ def test_msw_expands():
     assert result == ["Masters of Social Work"]
 
 
-# ── Profession credential expansion ──────────────────────────────────────────
+# -- Profession credential expansion ------------------------------------------
 
 def test_rn_expands():
     assert expand_profession("RN") == "Registered Nurse"
@@ -198,7 +198,7 @@ def test_cota_expands():
     assert expand_profession("COTA") == "Certified Occupational Therapy Assistant"
 
 
-# ── Role title expansion ──────────────────────────────────────────────────────
+# -- Role title expansion ------------------------------------------------------
 
 def test_role_rn_icu():
     assert _expand_role_credentials("RN - ICU") == "Registered Nurse - Intensive Care Unit"
@@ -217,7 +217,7 @@ def test_role_unknown_unchanged():
     assert result == "Staff Nurse"
 
 
-# ── Deduplication ─────────────────────────────────────────────────────────────
+# -- Deduplication -------------------------------------------------------------
 
 def test_dedup_same_specialty_different_case():
     result = _normalize_skills(["ICU", "icu", "Intensive Care Unit"])
@@ -234,7 +234,7 @@ def test_mixed_specialties_deduped():
     assert len(result) == len(set(s.lower() for s in result))
 
 
-# ── Case insensitivity ────────────────────────────────────────────────────────
+# -- Case insensitivity --------------------------------------------------------
 
 def test_lowercase_icu():
     result = _normalize_skills(["icu"])

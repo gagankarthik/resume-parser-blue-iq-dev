@@ -1,5 +1,5 @@
 """
-Geography matcher tests — offline country/state → platform id at conf 1.0,
+Geography matcher tests - offline country/state -> platform id at conf 1.0,
 country-scoped state resolution, alias handling, and graceful misses.
 """
 

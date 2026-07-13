@@ -64,7 +64,7 @@ def test_extraction_notes_malformed_is_sanitized_not_raised():
 
 
 def test_awards_null_coerced_to_list():
-    # LLM may emit null instead of [] — must coerce, not crash.
+    # LLM may emit null instead of [] - must coerce, not crash.
     parsed = ParsedResumeAI.model_validate({"awards": None, "publications": None})
     assert parsed.awards == []
     assert parsed.publications == []
@@ -82,7 +82,7 @@ def test_references_default_empty():
     assert parsed.references == []
 
 
-# ── Work History form fields on ExperienceItem ───────────────────────────────
+# -- Work History form fields on ExperienceItem -------------------------------
 
 def test_experience_work_history_fields_round_trip():
     parsed = ParsedResumeAI.model_validate(
@@ -187,7 +187,7 @@ def test_specialty_name_strips_leaked_json_structure():
     assert [s.name for s in parsed.experience[0].specialties] == ["Med/Surg", "Corrections"]
 
 
-# ── Dates: MM/DD/YYYY, partial precision preserved, never fabricated ──────────
+# -- Dates: MM/DD/YYYY, partial precision preserved, never fabricated ----------
 
 def test_experience_month_year_date_not_padded():
     exp = ParsedResumeAI.model_validate(
@@ -198,7 +198,7 @@ def test_experience_month_year_date_not_padded():
 
 
 def test_ambiguous_bare_month_day_not_guessed():
-    # "June 30" could be the 30th or June 2030 — a FUTURE year, so still ambiguous
+    # "June 30" could be the 30th or June 2030 - a FUTURE year, so still ambiguous
     # and we don't guess.
     exp = ParsedResumeAI.model_validate(
         {"experience": [{"company": "X", "role": "Y", "start_date": "June 30"}]}
@@ -207,7 +207,7 @@ def test_ambiguous_bare_month_day_not_guessed():
 
 
 def test_written_month_past_two_digit_year_is_a_year():
-    # "August 2018 – April 19": the trailing 19 is 2019, a past year — not a day.
+    # "August 2018 - April 19": the trailing 19 is 2019, a past year - not a day.
     # (Regression: this end date used to sanitize to None and get lost.)
     exp = ParsedResumeAI.model_validate(
         {"experience": [{"company": "X", "role": "Y",
@@ -227,7 +227,7 @@ def test_numeric_month_two_digit_year():
 
 
 def test_numeric_two_digit_year_allows_near_future_expiry():
-    # Cert expiries are commonly written MM/YY a few years out — must parse.
+    # Cert expiries are commonly written MM/YY a few years out - must parse.
     cert = ParsedResumeAI.model_validate(
         {"certifications": [{"name": "BLS", "expiry_date": "4/27"}]}
     ).certifications[0]
@@ -296,7 +296,7 @@ def test_certification_bare_date_is_neutral_not_expiry():
     assert cert.issued_date is None
 
 
-# ── State licenses (kept separate from certifications) ───────────────────────
+# -- State licenses (kept separate from certifications) -----------------------
 
 def test_state_license_round_trip():
     parsed = ParsedResumeAI.model_validate(
@@ -341,7 +341,7 @@ def test_license_missing_name_defaulted_not_dropped():
     assert lic.license_number == "9411204"
 
 
-# ── Post-nominal credentials on personal_info ────────────────────────────────
+# -- Post-nominal credentials on personal_info --------------------------------
 
 def test_personal_credentials_coerced_and_trimmed():
     p = ParsedResumeAI.model_validate(

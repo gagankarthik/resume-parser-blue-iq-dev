@@ -1,4 +1,4 @@
-# Resume Parser API — Client Integration Guide
+# Resume Parser API - Client Integration Guide
 
 This guide is for engineers integrating the Resume Parser API into their own
 application (ATS, candidate portal, internal tooling). The API accepts a resume
@@ -34,7 +34,7 @@ Every request (except `/health`) must include your API key:
 X-API-Key: rp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-- Keys are issued to you out-of-band. **Treat the key as a secret** — store it
+- Keys are issued to you out-of-band. **Treat the key as a secret** - store it
   server-side, never ship it in browser/mobile code.
 - If a key is compromised, contact us to revoke and reissue it.
 
@@ -51,7 +51,7 @@ X-API-Key: rp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 ### `POST /api/v1/resume/parse`
 
-**Request** — `multipart/form-data` with a single `file` field.
+**Request** - `multipart/form-data` with a single `file` field.
 
 | Constraint | Value |
 |---|---|
@@ -59,14 +59,14 @@ X-API-Key: rp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 | Supported types | `.pdf`, `.docx`, `.rtf`, `.png`, `.jpg`, `.jpeg`, `.tiff`, `.tif`, `.webp` |
 | Max size | **~6 MB** on this endpoint (the Lambda Function URL caps request bodies at the edge). For files up to **10 MB**, use the [large-file upload flow](#3a-large-file-upload-over-6-mb). |
 
-Files are validated by **magic bytes**, not just extension — a renamed file is rejected.
+Files are validated by **magic bytes**, not just extension - a renamed file is rejected.
 
 ### Two response modes
 
 The processing path is chosen automatically from the file:
 
-- **Digital PDF / DOCX / RTF → synchronous.** The full result is in the response.
-- **Scanned PDF / image → asynchronous** (OCR is slow). You get a `job_id`;
+- **Digital PDF / DOCX / RTF -> synchronous.** The full result is in the response.
+- **Scanned PDF / image -> asynchronous** (OCR is slow). You get a `job_id`;
   fetch the result by polling (Section 4) or via a webhook (Section 6).
 
 **Synchronous response** (`status: "completed"`):
@@ -101,7 +101,7 @@ The processing path is chosen automatically from the file:
 For files larger than the ~6 MB edge cap, upload directly to S3 with a presigned URL and
 then parse by reference. Three steps:
 
-**1. Request an upload URL** — `POST /api/v1/resume/upload-url`
+**1. Request an upload URL** - `POST /api/v1/resume/upload-url`
 
 ```json
 // request
@@ -118,7 +118,7 @@ then parse by reference. Three steps:
 }
 ```
 
-**2. Upload to S3** — POST the file as `multipart/form-data` to `upload_url`, sending **every
+**2. Upload to S3** - POST the file as `multipart/form-data` to `upload_url`, sending **every
 key in `fields`** first, then a `file` field with the bytes. S3 enforces the size limit and
 returns `204` on success. The API key is **not** sent in this step (it goes to S3, not us).
 
@@ -127,10 +127,10 @@ import requests
 pre = requests.post(f"{BASE}/api/v1/resume/upload-url",
                     headers={"X-API-Key": API_KEY}, json={"filename": "jane.pdf"}).json()
 with open("jane.pdf", "rb") as fh:
-    requests.post(pre["upload_url"], data=pre["fields"], files={"file": fh})  # → 204
+    requests.post(pre["upload_url"], data=pre["fields"], files={"file": fh})  # -> 204
 ```
 
-**3. Parse it** — `POST /api/v1/resume/parse-uploaded` with `{ "job_id": "<from step 1>" }`.
+**3. Parse it** - `POST /api/v1/resume/parse-uploaded` with `{ "job_id": "<from step 1>" }`.
 The response is identical to `/resume/parse` (sync for digital PDF/DOCX, async for scans).
 
 > The upload URL expires after `expires_in_seconds` (15 min). After that, request a new one.
@@ -151,33 +151,33 @@ The response is identical to `/resume/parse` (sync for digital PDF/DOCX, async f
 }
 ```
 
-- Statuses: `pending` → `processing` → `completed` | `failed`.
+- Statuses: `pending` -> `processing` -> `completed` | `failed`.
 - On `failed`, `error` contains a description and `data` is `null`.
 - **Results live for 1 hour**, then expire (`404 JOB_NOT_FOUND`). Fetch and persist
   them on your side promptly.
-- Suggested polling: every 2–3 s, with a ~2 min ceiling. Prefer webhooks for scale.
+- Suggested polling: every 2-3 s, with a ~2 min ceiling. Prefer webhooks for scale.
 
 ---
 
 ## 5. Other endpoints
 
-### Retry a parse — `POST /api/v1/resume/{job_id}/retry`
+### Retry a parse - `POST /api/v1/resume/{job_id}/retry`
 Re-upload the **same file** to re-run extraction + AI when a result was poor. Returns
 a new `job_id` linked to the original. Up to 3 retries per job (`RETRY_LIMIT_REACHED`
 after that). Same sync/async behavior as `/parse`.
 
-### Submit feedback — `POST /api/v1/resume/{job_id}/feedback`
+### Submit feedback - `POST /api/v1/resume/{job_id}/feedback`
 After a user reviews and corrects a parsed resume, send the original parser JSON and the
 corrected JSON so we can improve parsing accuracy. Server-to-server (uses your `X-API-Key`).
-Returns `202 Accepted` — feedback is processed asynchronously.
+Returns `202 Accepted` - feedback is processed asynchronously.
 
 ```jsonc
 // request body
 {
   "original": { /* the JSON returned by /resume/parse */ },
   "updated":  { /* the user-corrected JSON */ },
-  "changed":  true,            // optional — derived from the diff if omitted
-  "profile_id": "gig-8821",    // optional — your record id
+  "changed":  true,            // optional - derived from the diff if omitted
+  "profile_id": "gig-8821",    // optional - your record id
   "notes": "fixed name suffix" // optional
 }
 ```
@@ -192,13 +192,13 @@ Returns `202 Accepted` — feedback is processed asynchronously.
   "created_at": "2026-06-03T12:34:56+00:00"
 }
 ```
-Send it only when the user actually changed something, or always as a quality signal —
+Send it only when the user actually changed something, or always as a quality signal -
 both are accepted. `changed_fields` lists the exact leaf paths that differed. Payloads are
 capped at ~350 KB. Records are retained 90 days then auto-deleted.
 
-### Batch — `POST /api/v1/resume/batch`
+### Batch - `POST /api/v1/resume/batch`
 `multipart/form-data` with multiple `files`. Up to **200** files. Returns `202` with a
-`batch_id` and `jobs` — each accepted file paired with its `job_id`, so a result can be
+`batch_id` and `jobs` - each accepted file paired with its `job_id`, so a result can be
 matched back to the file it came from:
 
 ```json
@@ -207,13 +207,13 @@ matched back to the file it came from:
 
 (`job_ids` is the same IDs without the filenames, kept for existing integrations.)
 Invalid files are listed in `skipped_files` and do not count toward `total`. All files
-process asynchronously — track via per-file `parse.completed` webhooks and the
+process asynchronously - track via per-file `parse.completed` webhooks and the
 `batch.completed` webhook, or poll:
 
-### Batch status — `GET /api/v1/resume/batch/{batch_id}`
+### Batch status - `GET /api/v1/resume/batch/{batch_id}`
 Returns `total` / `completed` / `failed` / `processing` counts. Batch records live for 24 h.
 
-### Health — `GET /api/v1/health`
+### Health - `GET /api/v1/health`
 No auth required. Returns `status` (`ok`/`degraded`) and dependency status. Use for uptime checks.
 
 ---
@@ -222,13 +222,13 @@ No auth required. Returns `status` (`ok`/`degraded`) and dependency status. Use 
 
 Instead of polling, register a webhook and we'll POST results to your endpoint.
 
-### Register — `POST /api/v1/webhooks`
+### Register - `POST /api/v1/webhooks`
 
 ```json
 { "url": "https://your-server.com/hooks/resume", "events": ["parse.completed", "parse.failed"] }
 ```
 
-Response (`201`) — **the `hmac_secret` is returned only once; store it now:**
+Response (`201`) - **the `hmac_secret` is returned only once; store it now:**
 
 ```json
 {
@@ -297,7 +297,7 @@ function verify(secret, timestamp, rawBody, signature) {
 
 **Delivery semantics:** retried up to 3 times (≈2 s, 5 s, 10 s) on 5xx/connection errors;
 2xx/4xx are not retried. Respond `2xx` quickly and process asynchronously. Make your
-handler **idempotent** (key on `job_id`) — a delivery may arrive more than once.
+handler **idempotent** (key on `job_id`) - a delivery may arrive more than once.
 
 ---
 
@@ -310,7 +310,7 @@ There are no request-rate limits on the API. Please still upload responsibly
 
 ## 8. Output schema
 
-`data` (present on `completed`). All fields are nullable — missing info is `null`, not omitted.
+`data` (present on `completed`). All fields are nullable - missing info is `null`, not omitted.
 
 ```json
 {
@@ -372,45 +372,45 @@ There are no request-rate limits on the API. Please still upload responsibly
 }
 ```
 
-**Dates** are `MM/DD/YYYY`, preserving the precision actually written — when only a
+**Dates** are `MM/DD/YYYY`, preserving the precision actually written - when only a
 month/year is stated the value is `MM/YYYY` and a year-only value is `YYYY`; a missing
-day or month is **never** invented (`"August 2018"` → `"08/2018"`, not `"08/01/2018"`).
+day or month is **never** invented (`"August 2018"` -> `"08/2018"`, not `"08/01/2018"`).
 `"Present"` is used for current roles.
 
 **Location** keeps the full address line exactly as written (street included); `city`,
 `state`, `country`, and `zip_code` are filled only when explicitly present and are **not**
-inferred or expanded (`"VA"` stays `"VA"`; `country` is `null` unless the résumé names one).
+inferred or expanded (`"VA"` stays `"VA"`; `country` is `null` unless the resume names one).
 
-**Experience `description`** is an **array of strings** — one item per bullet, copied as
+**Experience `description`** is an **array of strings** - one item per bullet, copied as
 written (a multi-sentence bullet stays a single item).
 
 **Experience `specialties`** is an **array of objects**, one per clinical specialty/unit
 for that role (e.g. `{ "name": "Med Surg / Tele", "specialty_id": "1042", "group":
 "Med Surg / Tele", "confidence": 1.0, "matched": true, "match_tier": "name" }`). Each
-specialty is cleaned and mapped to a specialty id via a tiered match — (1) specialty name,
+specialty is cleaned and mapped to a specialty id via a tiered match - (1) specialty name,
 (2) fuller name, (3) keywords, then (4) an AI shortlist pick for anything still unresolved.
-`match_tier` reports which tier fired and `confidence` (`0.0–1.0`) its strength. A specialty
+`match_tier` reports which tier fired and `confidence` (`0.0-1.0`) its strength. A specialty
 that maps to the catalog returns with a `specialty_id`; one that does **not** is still
 returned with `specialty_id: null` and `matched: false` (never dropped) so it can be queued
 for admin review. `raw` preserves the original text as written.
 
 **Certifications**: a bare date next to a cert (e.g. `"BLS: 12/2024"`) is ambiguous, so it
-is placed in the neutral `date` field — `issued_date`/`expiry_date` are set only when the
-résumé explicitly labels them.
+is placed in the neutral `date` field - `issued_date`/`expiry_date` are set only when the
+resume explicitly labels them.
 
-`full_name` excludes trailing credential/licence suffixes (e.g. "RN", "BSN") — those appear
+`full_name` excludes trailing credential/licence suffixes (e.g. "RN", "BSN") - those appear
 in `skills`/`certifications`.
 
 ### Confidence scores
 
-`confidence` is `0.0–1.0` per section — use it to route low-confidence records to human review.
+`confidence` is `0.0-1.0` per section - use it to route low-confidence records to human review.
 
 | Range | Meaning |
 |---|---|
-| 0.90–1.00 | High — fields present and valid |
-| 0.70–0.89 | Good — minor gaps |
-| 0.50–0.69 | Partial — verify key fields |
-| < 0.50 | Low — recommend manual review |
+| 0.90-1.00 | High - fields present and valid |
+| 0.70-0.89 | Good - minor gaps |
+| 0.50-0.69 | Partial - verify key fields |
+| < 0.50 | Low - recommend manual review |
 
 ---
 
@@ -430,9 +430,9 @@ All errors share one envelope:
 }
 ```
 
-- **`error_code`** — machine-readable; branch your logic on this.
-- **`hint`** — plain-language message safe to show end users.
-- **`request_id`** — include it in any support request.
+- **`error_code`** - machine-readable; branch your logic on this.
+- **`hint`** - plain-language message safe to show end users.
+- **`request_id`** - include it in any support request.
 
 | HTTP | Common `error_code`s |
 |---|---|
@@ -468,7 +468,7 @@ def parse_resume(path: str) -> dict:
     if res["status"] == "completed":
         return res["data"]
 
-    # async — poll the job
+    # async - poll the job
     job_id = res["job_id"]
     for _ in range(60):                       # ~2 minutes
         time.sleep(2)
@@ -518,11 +518,11 @@ async function parseResume(file /* Blob/File */) {
   content-free.
 - Resume text is sent to OpenAI for parsing. No copy is retained by us.
 
-> **One exception — the feedback endpoint.** If you call
+> **One exception - the feedback endpoint.** If you call
 > `POST /resume/{job_id}/feedback`, the original **and** corrected parsed JSON you submit are
 > **stored for 90 days** (`feedback_retention_days`) so corrections can be used to improve the
-> parser. That JSON contains candidate PII — name, email, phone, address, work history,
-> licences. This is the only path on which parsed résumé content is retained. If your data
+> parser. That JSON contains candidate PII - name, email, phone, address, work history,
+> licences. This is the only path on which parsed resume content is retained. If your data
 > policy does not permit it, simply do not call the feedback endpoint; nothing else in the
 > integration depends on it.
 

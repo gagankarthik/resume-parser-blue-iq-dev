@@ -1,11 +1,11 @@
 """
-Resume section detector — header keyword matching.
+Resume section detector - header keyword matching.
 
 Segments resume text into labeled sections for the AI parser.
 Sending section-segmented text rather than one blob:
-  • Reduces hallucination (AI knows what context it's reading)
-  • Reduces token count (AI skips irrelevant prose in each section)
-  • Allows partial fallback if one section fails
+  * Reduces hallucination (AI knows what context it's reading)
+  * Reduces token count (AI skips irrelevant prose in each section)
+  * Allows partial fallback if one section fails
 
 Duplicate-section handling:
   If a resume has two "Experience" headers (common in travel-nurse CVs
@@ -106,7 +106,7 @@ def detect(text: str) -> dict[str, str]:
             current = detected
             if current not in buckets:
                 buckets[current] = []
-            # Don't reset — content from duplicate headers is appended below
+            # Don't reset - content from duplicate headers is appended below
         else:
             buckets[current].append(line)
 
@@ -117,7 +117,7 @@ def detect(text: str) -> dict[str, str]:
         if block:
             result[key] = block
 
-    # Fallback: fewer than 2 named sections detected → return full text
+    # Fallback: fewer than 2 named sections detected -> return full text
     named = {k: v for k, v in result.items() if k != "header"}
     if len(named) < 2:
         return {"full_text": text}

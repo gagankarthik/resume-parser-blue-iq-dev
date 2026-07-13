@@ -4,7 +4,7 @@ name: Rollback Production Lambda
 # (a prior commit SHA) without rebuilding. Every deploy pushes an image tagged with
 # its commit SHA to ECR, so any past deploy can be restored in ~1 minute.
 #
-# Usage: Actions → "Rollback Production Lambda" → Run workflow → enter the commit SHA
+# Usage: Actions -> "Rollback Production Lambda" -> Run workflow -> enter the commit SHA
 # (the `image_tag`) to roll back to. Find good SHAs under the deploy workflow's runs.
 on:
   workflow_dispatch:
@@ -79,7 +79,7 @@ jobs:
             --function-name "${{ env.FUNCTION_NAME }}" \
             --region "${{ env.AWS_REGION }}"
 
-      - name: Smoke test — health check
+      - name: Smoke test - health check
         id: get-url
         run: |
           API_URL=$(aws lambda get-function-url-config \
@@ -91,7 +91,7 @@ jobs:
           for i in 1 2 3 4 5; do
             STATUS=$(curl -s -o body.txt -w "%{http_code}" "${API_URL}api/v1/health")
             [ "$STATUS" = "200" ] && break
-            echo "Attempt $i: HTTP $STATUS — retrying in 5s"
+            echo "Attempt $i: HTTP $STATUS - retrying in 5s"
             sleep 5
           done
           if [ "$STATUS" != "200" ]; then

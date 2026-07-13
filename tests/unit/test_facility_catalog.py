@@ -1,5 +1,5 @@
 """
-Facility catalog loader tests — JSON/CSV parsing, name index, and the
+Facility catalog loader tests - JSON/CSV parsing, name index, and the
 missing/empty-file fallback (a bad or absent catalog must never break parsing).
 """
 

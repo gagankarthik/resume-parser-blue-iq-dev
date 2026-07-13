@@ -1,20 +1,20 @@
 """
-Geography reference catalog — the source of truth for platform country/state IDs.
+Geography reference catalog - the source of truth for platform country/state IDs.
 
 Loads the bundled geographies snapshot (``settings.geography_catalog_path``,
 generated from the Gig geographies API by
 ``scripts/refresh_geography_catalog.py``) and exposes the lookup indexes the
-geography matcher needs to resolve a résumé's country/state string to a platform
+geography matcher needs to resolve a resume's country/state string to a platform
 ``countryId`` / ``stateId``:
 
-  • countries — indexed by punctuation/case-insensitive name and by ISO code;
-  • states    — indexed BOTH flat (first-wins across all countries) and scoped by
+  * countries - indexed by punctuation/case-insensitive name and by ISO code;
+  * states    - indexed BOTH flat (first-wins across all countries) and scoped by
     ``(country_id, key)`` on the statecode and the state name, so a state resolves
-    unambiguously once its country is known ("NY" → 35 within the US) and still
+    unambiguously once its country is known ("NY" -> 35 within the US) and still
     resolves flat when it is not.
 
 Design mirrors ``specialty_catalog`` / ``facility_catalog``: loaded once and cached,
-``reload()`` for tests, and OPTIONAL — a missing/garbled snapshot yields an empty
+``reload()`` for tests, and OPTIONAL - a missing/garbled snapshot yields an empty
 catalog (logged once) and the matcher simply leaves the ids null. A bad catalog
 never breaks parsing.
 
@@ -56,8 +56,8 @@ class CountryRecord:
     code:    str | None = None
 
 
-# Common ways a résumé writes a country, mapped to the platform ISO code the
-# geographies snapshot carries. Keys are _match_key-normalized (lowercase; "&"→
+# Common ways a resume writes a country, mapped to the platform ISO code the
+# geographies snapshot carries. Keys are _match_key-normalized (lowercase; "&"->
 # "and"). Lets "USA" / "U.S.A." / "America" resolve to the "US" country record.
 _COUNTRY_CODE_ALIASES: dict[str, str] = {
     "usa": "US",
@@ -213,5 +213,5 @@ def _build_indexes(rows: list[dict]) -> GeographyCatalog:
 
 
 def country_aliases() -> dict[str, str]:
-    """Match-key → ISO code aliases for common résumé spellings of a country."""
+    """Match-key -> ISO code aliases for common resume spellings of a country."""
     return _COUNTRY_CODE_ALIASES

@@ -7,7 +7,7 @@ detects the non-HTTP event and routes it to the OCR worker pipeline.
 
 `settings.worker_lambda_function_name` therefore points at this same function.
 Locally (no worker function configured) callers fall back to FastAPI
-BackgroundTasks instead — see `use_lambda_worker`.
+BackgroundTasks instead - see `use_lambda_worker`.
 """
 
 import json
@@ -24,7 +24,7 @@ def invoke_worker(settings, payload: dict) -> bool:
 
     Returns True when the invocation was accepted. Returns False on failure
     (e.g. an IAM AccessDeniedException on lambda:InvokeFunction) so the caller
-    can mark the job FAILED immediately — otherwise the job sits in
+    can mark the job FAILED immediately - otherwise the job sits in
     "processing" forever and clients poll until they give up.
     """
     client = boto3.client("lambda", region_name=settings.aws_region)

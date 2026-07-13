@@ -27,7 +27,7 @@ router = APIRouter(prefix="/auth", tags=["Account"])
 log = get_logger(__name__)
 
 # Precomputed once at import so a login for a non-existent email still runs a full
-# PBKDF2 verify (against this unknowable hash) instead of short-circuiting — which
+# PBKDF2 verify (against this unknowable hash) instead of short-circuiting - which
 # would leak account existence via response timing.
 _DECOY_PW_HASH = hash_password(secrets.token_hex(16))
 
@@ -98,7 +98,7 @@ async def login(payload: LoginRequest, request: Request) -> dict:
     pw_hash = company.get("password_hash") if company else None
     # Always run a full verify (against a decoy hash when the account/hash is
     # missing) so an unknown email takes the same ~200k-round PBKDF2 time as a
-    # known one — closes the timing oracle on account existence.
+    # known one - closes the timing oracle on account existence.
     ok = verify_password(payload.password, pw_hash or _DECOY_PW_HASH)
     if not company or not pw_hash or not ok:
         raise api_error(401, ErrorCode.INVALID_API_KEY, "Invalid email or password")

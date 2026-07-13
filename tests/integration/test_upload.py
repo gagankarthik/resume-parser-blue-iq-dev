@@ -30,7 +30,7 @@ def _authenticate(monkeypatch, company_id: str = "acme-1") -> None:
     monkeypatch.setattr(deps, "_company_is_active", lambda company_id: True)
 
 
-# ── upload-url ─────────────────────────────────────────────────────────────────
+# -- upload-url -----------------------------------------------------------------
 
 def test_upload_url_requires_api_key():
     resp = client.post("/api/v1/resume/upload-url", json={"filename": "cv.pdf"})
@@ -84,7 +84,7 @@ def test_upload_url_happy_path(monkeypatch):
     assert captured["filename"] == "jane.pdf"
 
 
-# ── parse-uploaded ───────────────────────────────────────────────────────────
+# -- parse-uploaded -----------------------------------------------------------
 
 def test_parse_uploaded_requires_api_key():
     resp = client.post("/api/v1/resume/parse-uploaded", json={"job_id": "J1"})
@@ -222,7 +222,7 @@ def test_parse_uploaded_sync_path_returns_result(monkeypatch):
 
 def test_parse_uploaded_partial_is_promoted_to_async(monkeypatch):
     """A degraded sync parse (AI couldn't finish in the gateway budget) must NOT be
-    returned as a partial — it is PROMOTED to the full-budget async worker so the
+    returned as a partial - it is PROMOTED to the full-budget async worker so the
     caller polls for a COMPLETE record. The response is 'processing' + poll_url and
     the S3 file is kept for the worker."""
     _authenticate(monkeypatch, company_id="acme-1")
@@ -248,7 +248,7 @@ def test_parse_uploaded_partial_is_promoted_to_async(monkeypatch):
     )
 
     async def _fake_pipeline(inp):
-        # The probe must NOT waste the enrich pass — it will be promoted to async.
+        # The probe must NOT waste the enrich pass - it will be promoted to async.
         assert inp.sync is True and inp.sync_probe is True
         return result
 

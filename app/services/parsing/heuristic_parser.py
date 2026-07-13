@@ -1,23 +1,23 @@
 """
-Deterministic, rule-based resume parser — a no-LLM "floor".
+Deterministic, rule-based resume parser - a no-LLM "floor".
 
-We borrow only the IDEA behind open-resume (github.com/xitanggg/open-resume) —
-"always keep a deterministic parser that can't time out or hallucinate" — not its
+We borrow only the IDEA behind open-resume (github.com/xitanggg/open-resume) -
+"always keep a deterministic parser that can't time out or hallucinate" - not its
 implementation. open-resume relies on clean, well-formatted single-column PDFs and
-their positional/font metadata; our résumés come from the medical (non-technical)
+their positional/font metadata; our resumes come from the medical (non-technical)
 side and are rarely formatted consistently, so a layout-driven port would fail on
 them. This parser is therefore OUR OWN: it works on the already-extracted plain
-text and is tuned for how nursing / allied-health résumés actually read — travel
-and per-diem role blocks, healthcare degree keywords (ADN/BSN/MSN…), and the
-Month-YYYY / MM-YYYY date ranges these résumés use.
+text and is tuned for how nursing / allied-health resumes actually read - travel
+and per-diem role blocks, healthcare degree keywords (ADN/BSN/MSN...), and the
+Month-YYYY / MM-YYYY date ranges these resumes use.
 
 It has no semantic understanding and is weaker than the LLM on messy prose, but it
-NEVER times out and NEVER invents data — the ideal fallback when the AI parse is
+NEVER times out and NEVER invents data - the ideal fallback when the AI parse is
 cut off, so a degraded parse still carries real experience, education, and skills
 instead of contact details only. Everything is best-effort and conservative: a
 value that can't be read with reasonable confidence is left null, never guessed.
 The output is flagged `partial` upstream and is meant for human review. Improve
-the heuristics here (not by adopting open-resume) as new résumé shapes surface.
+the heuristics here (not by adopting open-resume) as new resume shapes surface.
 """
 
 import re
@@ -32,13 +32,13 @@ from app.models.schemas import (
 from app.services.parsing import section_detector
 from app.services.parsing.rule_parser import RuleExtracted
 
-# ── Date parsing ──────────────────────────────────────────────────────────────
+# -- Date parsing --------------------------------------------------------------
 _MONTHS = (
     "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|"
     "aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
 )
 # A single date token: "November 2024", "Nov 2024", "November, 2024" (a comma
-# between month and year is common — "April, 2025"), "08/2024", "8/2024", "2024".
+# between month and year is common - "April, 2025"), "08/2024", "8/2024", "2024".
 _DATE_TOKEN = rf"(?:(?:{_MONTHS})\.?,?\s+\d{{4}}|\d{{1,2}}/\d{{4}}|\d{{4}})"
 # A range: "<date> - <date|Present>" with various dashes/"to" separators.
 _DATE_RANGE = re.compile(
@@ -84,7 +84,7 @@ def _norm_date(token: str) -> str | None:
     return None
 
 
-# ── Name ──────────────────────────────────────────────────────────────────────
+# -- Name ----------------------------------------------------------------------
 _CREDENTIAL_TAIL = re.compile(r"\s*,\s*[A-Za-z().\-/ ]+$")
 
 
@@ -105,7 +105,7 @@ def _looks_like_name(line: str) -> bool:
 def _extract_name(header_text: str) -> str | None:
     for line in header_text.splitlines():
         if _looks_like_name(line):
-            # Drop a trailing credential run ("Jane Smith, RN BSN" → "Jane Smith").
+            # Drop a trailing credential run ("Jane Smith, RN BSN" -> "Jane Smith").
             name = line.strip()
             # Only strip after a comma so we don't clip a real surname.
             if "," in name:
@@ -114,18 +114,18 @@ def _extract_name(header_text: str) -> str | None:
     return None
 
 
-# ── Experience ────────────────────────────────────────────────────────────────
+# -- Experience ----------------------------------------------------------------
 def _extract_experience(text: str) -> list[ExperienceItem]:
     """Split an experience section into entries anchored on date ranges.
 
-    Each date-range line starts (or continues) an entry; the 1–2 non-bullet lines
+    Each date-range line starts (or continues) an entry; the 1-2 non-bullet lines
     immediately above supply role/company, and the lines below (until the next
     date range) become description bullets. Conservative: emits an entry only when
     a date range is present, so prose without dates is never fabricated into jobs.
     """
     # PDFs often wrap a date range across a line break ("April, 2025 -\npresent",
     # "December, 2023 - October,\n2025"). The anchoring below is line-based, so
-    # collapse any newline INSIDE a matched range onto one line first — otherwise
+    # collapse any newline INSIDE a matched range onto one line first - otherwise
     # every such role is invisible and the record comes back with zero experience.
     text = _DATE_RANGE.sub(lambda m: m.group(0).replace("\n", " "), text)
     lines = [ln.rstrip() for ln in text.splitlines()]
@@ -164,8 +164,8 @@ def _extract_experience(text: str) -> list[ExperienceItem]:
         role = heading[0] if heading else None
         company = heading[1] if len(heading) > 1 else None
 
-        # Description: bullets/lines below this anchor until the next anchor —
-        # but the 1–2 non-bullet lines immediately above the NEXT anchor are that
+        # Description: bullets/lines below this anchor until the next anchor -
+        # but the 1-2 non-bullet lines immediately above the NEXT anchor are that
         # entry's heading (role/company), not this entry's description. Find where
         # the next heading starts and stop there (mirrors the heading look-back).
         next_anchor = anchors[pos + 1] if pos + 1 < len(anchors) else len(lines)
@@ -206,7 +206,7 @@ def _extract_experience(text: str) -> list[ExperienceItem]:
     return entries
 
 
-# ── Education ─────────────────────────────────────────────────────────────────
+# -- Education -----------------------------------------------------------------
 def _extract_education(text: str) -> list[EducationItem]:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     items: list[EducationItem] = []
@@ -229,7 +229,7 @@ def _extract_education(text: str) -> list[EducationItem]:
             if degree is None and _DEGREE_KEYWORDS.search(nb):
                 degree = nb
         # A graduation year often sits on its own line just below the degree /
-        # institution — scan the entry line and the next two.
+        # institution - scan the entry line and the next two.
         grad_year = None
         for cand in (line, *lines[i + 1 : i + 3]):
             ym = _YEAR.search(cand)
@@ -254,7 +254,7 @@ def _extract_education(text: str) -> list[EducationItem]:
     return items
 
 
-# ── Skills / certifications ───────────────────────────────────────────────────
+# -- Skills / certifications ---------------------------------------------------
 _SPLIT = re.compile(r"[••▪|,;/]|\s{2,}|(?:^|\s)[-\*]\s")
 
 
@@ -281,7 +281,7 @@ def _extract_certifications(text: str) -> list[CertificationItem]:
     return [CertificationItem(name=n) for n in names]
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# -- Entry point ---------------------------------------------------------------
 def parse(text: str, anchors: RuleExtracted) -> ParsedResumeAI:
     """Best-effort deterministic parse. Never raises, never invents data."""
     sections = section_detector.detect(text)
@@ -301,7 +301,7 @@ def parse(text: str, anchors: RuleExtracted) -> ParsedResumeAI:
     )
 
     # Prefer segmented sections; fall back to scanning the whole text for
-    # experience so a résumé with no detectable headers still yields entries.
+    # experience so a resume with no detectable headers still yields entries.
     exp_src = sections.get("experience") or sections.get("full_text") or ""
     experience = _extract_experience(exp_src)
 

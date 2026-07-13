@@ -1,5 +1,5 @@
 """
-Feedback diffing — compares the original parser JSON with the user-corrected
+Feedback diffing - compares the original parser JSON with the user-corrected
 JSON and returns the leaf fields that changed.
 
 The diff drives the `changed` flag and the `changed_fields` list returned by the
@@ -25,7 +25,7 @@ def diff_fields(original: Any, updated: Any, prefix: str = "", _depth: int = 0) 
     Missing keys/indices are treated as a change to/from ``None``.
     """
     if _depth >= _MAX_DEPTH:
-        # Too deep to keep descending — compare what's left as opaque values.
+        # Too deep to keep descending - compare what's left as opaque values.
         return [prefix or ""] if original != updated else []
 
     if isinstance(original, dict) or isinstance(updated, dict):

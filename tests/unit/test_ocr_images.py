@@ -3,7 +3,7 @@ Unit tests for OCR image loading (`_to_images`).
 
 Covers the multi-page TIFF fix: every frame must be returned for OCR, not just
 the first page. Single-frame formats (PNG/JPG/WEBP) return exactly one image.
-These tests only exercise image loading — no Tesseract/Textract calls.
+These tests only exercise image loading - no Tesseract/Textract calls.
 """
 
 import io

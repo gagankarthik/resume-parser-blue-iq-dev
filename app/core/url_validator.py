@@ -3,12 +3,12 @@ SSRF guard for user-supplied webhook URLs.
 
 A webhook URL is attacker-controlled input that the server later makes outbound
 requests to. Without validation a tenant could point a webhook at internal
-infrastructure — the cloud metadata endpoint (169.254.169.254), private RFC1918
-ranges, or loopback — and use our egress to reach it (SSRF).
+infrastructure - the cloud metadata endpoint (169.254.169.254), private RFC1918
+ranges, or loopback - and use our egress to reach it (SSRF).
 
 This validates at registration time:
-  • scheme must be http/https (https only in production)
-  • the host must resolve only to public, routable addresses
+  * scheme must be http/https (https only in production)
+  * the host must resolve only to public, routable addresses
 
 Residual risk: DNS rebinding after registration. Delivery additionally re-checks
 the host, so a record that later resolves to a private address is skipped.
@@ -57,7 +57,7 @@ def validate_webhook_url(url: str) -> None:
             f"Webhook host could not be resolved: {parsed.hostname}"
         ) from exc
 
-    # Every resolved address must be public — reject if ANY is internal.
+    # Every resolved address must be public - reject if ANY is internal.
     for info in infos:
         if not _is_public_ip(info[4][0]):
             raise UnsafeWebhookURLError(

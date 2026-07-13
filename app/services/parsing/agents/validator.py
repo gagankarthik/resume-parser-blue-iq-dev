@@ -1,9 +1,9 @@
-"""ValidatorAgent — Stage 4: reconcile extracted bullets against the structure map.
+"""ValidatorAgent - Stage 4: reconcile extracted bullets against the structure map.
 
 For each role whose extracted description-bullet count doesn't match the count
 the StructureAgent found, re-extract that single role with an explicit count.
 Unlike the general-purpose engine this is ported from, we do NOT drop a
-mismatched role — losing a healthcare assignment (and its dates/licence context)
+mismatched role - losing a healthcare assignment (and its dates/licence context)
 is worse than keeping a slightly-off bullet list. We keep the better of the two
 extractions (the one closer to the expected count) and flag the residual.
 """

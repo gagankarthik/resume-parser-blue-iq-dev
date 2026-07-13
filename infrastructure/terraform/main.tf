@@ -8,7 +8,7 @@ terraform {
     }
   }
 
-  # Remote state — use S3 backend so team + CI share the same state
+  # Remote state - use S3 backend so team + CI share the same state
   backend "s3" {
     bucket         = "resume-parser-tfstate" # create this bucket manually first
     key            = "resume-parser/terraform.tfstate"

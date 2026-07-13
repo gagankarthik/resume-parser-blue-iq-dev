@@ -1,19 +1,19 @@
 """
-Specialty reference catalog — the source of truth for specialty IDs + keywords.
+Specialty reference catalog - the source of truth for specialty IDs + keywords.
 
 The platform delivers a catalog of clinical specialties, each with an id, the
 canonical specialty name, an optional fuller name, and search keywords. This
 module loads that catalog from `settings.specialty_catalog_path` (JSON list, or a
 CSV with the same columns) and exposes punctuation/case-insensitive lookup indexes
 keyed off `healthcare_taxonomy._match_key`, so the specialty matcher can resolve a
-résumé specialty string to a catalog id without enumerating every spelling.
+resume specialty string to a catalog id without enumerating every spelling.
 
 Design:
-  • The catalog is OPTIONAL. When the path is unset or the file is missing/empty,
+  * The catalog is OPTIONAL. When the path is unset or the file is missing/empty,
     `get_catalog()` returns an empty catalog (logged once) and the matcher falls
     back to canonical NAMES from the built-in taxonomy with id=None. Nothing here
-    raises on a missing/garbled file — a bad catalog must never break parsing.
-  • Loaded once and cached at module level (same pattern as the taxonomy's
+    raises on a missing/garbled file - a bad catalog must never break parsing.
+  * Loaded once and cached at module level (same pattern as the taxonomy's
     `_*_BY_KEY` dicts). `reload()` is provided for tests.
 
 Expected record shape (per specialty), extra keys ignored::
@@ -54,10 +54,10 @@ class SpecialtyRecord:
     category_id:   str | None = None
 
 
-# Résumés spell professions out ("Registered Nurse"), but the platform catalog
+# Resumes spell professions out ("Registered Nurse"), but the platform catalog
 # keys them by short code ("RN"). Map the common full titles / abbreviations to the
 # catalog's profession key(s) so scoped matching (and the AI-tier profession guard)
-# line up. Keys are already _match_key-normalized (lowercase; "&"→"and"; slash kept).
+# line up. Keys are already _match_key-normalized (lowercase; "&"->"and"; slash kept).
 _PROFESSION_ALIASES: dict[str, tuple[str, ...]] = {
     # Nursing
     "registered nurse": ("rn",),
@@ -104,7 +104,7 @@ def profession_keys(profession: str | None) -> list[str]:
     """Lookup keys a profession string can match on.
 
     The platform names some professions as a pair ("LPN/ LVN"); split those so a
-    résumé that says just "LPN" (or "LVN") still scopes to that profession. Résumés
+    resume that says just "LPN" (or "LVN") still scopes to that profession. Resumes
     also spell titles out ("Registered Nurse") where the catalog uses codes ("RN"),
     so common titles/abbreviations are aliased to the catalog key(s). Returns the
     full key first, then each slash-separated part, then any aliased catalog keys.
@@ -141,7 +141,7 @@ class SpecialtyCatalog:
     by_prof_name_key:    dict[tuple[str, str], SpecialtyRecord] = field(default_factory=dict)
     by_prof_full_key:    dict[tuple[str, str], SpecialtyRecord] = field(default_factory=dict)
     by_prof_keyword_key: dict[tuple[str, str], SpecialtyRecord] = field(default_factory=dict)
-    # profession match-key → platform profession id (RN→"1", CNA→"18", …).
+    # profession match-key -> platform profession id (RN->"1", CNA->"18", ...).
     profession_ids:      dict[str, str] = field(default_factory=dict)
 
     @property
@@ -149,7 +149,7 @@ class SpecialtyCatalog:
         return not self.records
 
     def profession_id_for(self, profession: str | None) -> str | None:
-        """Resolve a résumé profession string to its platform id (via aliases)."""
+        """Resolve a resume profession string to its platform id (via aliases)."""
         for key in profession_keys(profession):
             pid = self.profession_ids.get(key)
             if pid is not None:
@@ -279,8 +279,8 @@ def _clean_id(raw: object) -> str | None:
 # Name prefixes that mark a MORE-SPECIFIC variant of a base specialty. Several
 # records legitimately share a full name / keyword ("Emergency Room" is the full
 # name of both "ER" and "Pediatric ER"; "Intensive Care Unit" of "ICU", "COVID ICU",
-# "Trauma ICU"). When a bare résumé phrase collides, the base specialty is the right
-# default — so a variant never shadows a base one in the shared indexes.
+# "Trauma ICU"). When a bare resume phrase collides, the base specialty is the right
+# default - so a variant never shadows a base one in the shared indexes.
 _SPECIFICITY_PREFIXES: frozenset[str] = frozenset({
     "pediatric", "peds", "paediatric", "adult", "geriatric",
     "covid", "trauma", "neuro", "outpatient", "inpatient",
@@ -297,7 +297,7 @@ def _prefer(new: SpecialtyRecord, existing: SpecialtyRecord) -> bool:
 
     A base specialty beats a more-specific variant; within the same class the
     shorter (fewer-word, then fewer-char) name wins, so the plainest specialty is the
-    default for an ambiguous phrase. Deterministic — independent of catalog order.
+    default for an ambiguous phrase. Deterministic - independent of catalog order.
     """
     new_base, old_base = _is_base_name(new.name), _is_base_name(existing.name)
     if new_base != old_base:
@@ -329,7 +329,7 @@ def _build_indexes(records: list[SpecialtyRecord]) -> SpecialtyCatalog:
         keyword_keys = [_match_key(kw) for kw in rec.keywords]
         prof_keys = profession_keys(rec.profession)
 
-        # A specialty NAME is the strongest signal — keep it first-wins so a curated
+        # A specialty NAME is the strongest signal - keep it first-wins so a curated
         # earlier row isn't reordered. Full names and keywords are frequently shared
         # across a base specialty and its variants, so those resolve the collision in
         # favour of the base specialty (`put`).

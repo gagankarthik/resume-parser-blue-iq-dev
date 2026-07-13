@@ -1,6 +1,6 @@
 # Custom API domain: a CloudFront distribution in front of the Lambda Function URL
 # so the API is reachable at var.api_custom_domain (e.g. api.parsinglab.blue-iq.ai)
-# with a proper TLS cert. The FastAPI app still owns auth (X-API-Key) and CORS —
+# with a proper TLS cert. The FastAPI app still owns auth (X-API-Key) and CORS -
 # CloudFront only adds the hostname + edge TLS and forwards requests through.
 #
 # Everything here is gated on var.api_custom_domain being set, so the default
@@ -10,7 +10,7 @@
 #   1) terraform apply -target=aws_acm_certificate.api
 #      terraform output api_cert_validation_records   # add these CNAMEs in GoDaddy
 #   2) once the cert validates, terraform apply        # creates the distribution
-#      terraform output cloudfront_domain_name         # CNAME api.* → this value
+#      terraform output cloudfront_domain_name         # CNAME api.* -> this value
 
 locals {
   api_domain_enabled = var.api_custom_domain != ""
@@ -22,7 +22,7 @@ locals {
   origin_req_all_viewer_except_host = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
 }
 
-# ── ACM certificate (us-east-1, DNS-validated) ────────────────────────────────
+# -- ACM certificate (us-east-1, DNS-validated) --------------------------------
 resource "aws_acm_certificate" "api" {
   count             = local.api_domain_enabled ? 1 : 0
   provider          = aws.us_east_1
@@ -45,11 +45,11 @@ resource "aws_acm_certificate_validation" "api" {
   validation_record_fqdns = [for o in aws_acm_certificate.api[0].domain_validation_options : o.resource_record_name]
 }
 
-# ── CloudFront distribution → Lambda Function URL ─────────────────────────────
+# -- CloudFront distribution -> Lambda Function URL -----------------------------
 resource "aws_cloudfront_distribution" "api" {
   count           = local.api_domain_enabled ? 1 : 0
   enabled         = true
-  comment         = "${local.name_prefix} API — ${var.api_custom_domain}"
+  comment         = "${local.name_prefix} API - ${var.api_custom_domain}"
   aliases         = [var.api_custom_domain]
   price_class     = "PriceClass_100" # North America + Europe
   is_ipv6_enabled = true

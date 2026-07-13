@@ -152,7 +152,7 @@ def _dynamo_safe(value: dict) -> dict:
 
 
 def update_job_completed(job_id: str, result: dict) -> None:
-    # A degraded parse (AI timed out / failed → only contact anchors recovered)
+    # A degraded parse (AI timed out / failed -> only contact anchors recovered)
     # gets its own terminal status "partial", NOT "completed". A consumer that
     # gates ingestion on status == "completed" must not silently accept a record
     # that carries a "needs human review" warning. `result["partial"]` is set by
@@ -176,7 +176,7 @@ def update_job_completed(job_id: str, result: dict) -> None:
         if not _is_item_too_large(exc):
             raise
 
-    # The parsed result exceeds DynamoDB's 400 KB item limit (a very dense résumé).
+    # The parsed result exceeds DynamoDB's 400 KB item limit (a very dense resume).
     # Persist a TERMINAL record without the oversized payload so the job never
     # wedges in 'processing' (pollers would otherwise see 'processing' until the
     # TTL, then JOB_NOT_FOUND). Real-time consumers already got the full data via

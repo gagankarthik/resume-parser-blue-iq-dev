@@ -22,7 +22,7 @@ def _authenticate(monkeypatch, company_id: str = "acme-1") -> None:
     monkeypatch.setattr(deps, "_company_is_active", lambda company_id: True)
 
 
-# ── Rate limiting ─────────────────────────────────────────────────────────────
+# -- Rate limiting -------------------------------------------------------------
 
 def test_rate_limit_returns_429_with_retry_after(monkeypatch):
     _authenticate(monkeypatch)
@@ -30,7 +30,7 @@ def test_rate_limit_returns_429_with_retry_after(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_enabled", True)
     monkeypatch.setattr(settings, "rate_limit_per_minute", 3)
 
-    # A GET that only needs auth (no file body) — cheapest way to exercise the limit.
+    # A GET that only needs auth (no file body) - cheapest way to exercise the limit.
     import app.api.v1.endpoints.resume as resume
     monkeypatch.setattr(resume.db, "get_job", lambda job_id: None)
 
@@ -59,11 +59,11 @@ def test_rate_limit_disabled_never_throttles(monkeypatch):
     assert codes == {404}
 
 
-# ── Request body-size guard ───────────────────────────────────────────────────
+# -- Request body-size guard ---------------------------------------------------
 
 def test_oversized_body_rejected_before_read(monkeypatch):
     settings = get_settings()
-    # Shrink the ceiling so a small body trips it (mb=0 → limit = overhead only).
+    # Shrink the ceiling so a small body trips it (mb=0 -> limit = overhead only).
     monkeypatch.setattr(settings, "max_file_size_mb", 0)
     monkeypatch.setattr(settings, "max_request_overhead_bytes", 500)
 
@@ -76,7 +76,7 @@ def test_oversized_body_rejected_before_read(monkeypatch):
     assert resp.json()["error"]["error_code"] == "REQUEST_TOO_LARGE"
 
 
-# ── Security headers ──────────────────────────────────────────────────────────
+# -- Security headers ----------------------------------------------------------
 
 def test_security_headers_present_on_every_response():
     resp = client.post("/api/v1/resume/parse")   # 401, but headers still applied

@@ -21,7 +21,7 @@ def _make_pdf(items: list[tuple[float, float, str]], width: float = 595, height:
 
 
 def test_right_aligned_dates_stay_with_their_entries():
-    # A single-column résumé with a right-aligned date strip: each date shares a
+    # A single-column resume with a right-aligned date strip: each date shares a
     # row (y) with its entry. The detached-column bug read all dates last; the
     # row-aware path must keep every date next to its entry.
     pdf = _make_pdf([
@@ -72,7 +72,7 @@ def test_sparse_prose_second_column_is_not_treated_as_annotations():
     # The hardened case: a genuine right-hand text column that is *sparse* (fewer
     # blocks than the left) and happens to row-align with left blocks. Because its
     # blocks are prose (long, multi-word, no dates) it must NOT be merged row-wise
-    # — it stays an independent column read after the left one.
+    # - it stays an independent column read after the left one.
     pdf = _make_pdf([
         (50, 100, "Profile"),
         (50, 130, "Registered nurse with a decade of experience."),

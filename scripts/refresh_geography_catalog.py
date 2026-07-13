@@ -7,7 +7,7 @@ Regenerate the bundled geography catalog snapshot from the GigHealth API.
     GIG_SPECIAILITIES_API_KEY=... python -m scripts.refresh_geography_catalog
 
 Fetches the platform's countries + states (with their stable ids) and writes them to
-app/data/geography_catalog.json — the snapshot the parser loads to resolve a role's
+app/data/geography_catalog.json - the snapshot the parser loads to resolve a role's
 country/state to a platform country_id/state_id offline. Run this whenever the
 platform's geographies change, then commit the regenerated JSON. Authenticates with
 the same platform key as the other refresh scripts (GIG_SPECIAILITIES_API_KEY).

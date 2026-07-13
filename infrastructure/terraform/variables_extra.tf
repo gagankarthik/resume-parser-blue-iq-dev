@@ -1,4 +1,4 @@
-# GitHub OIDC — for keyless CI/CD authentication
+# GitHub OIDC - for keyless CI/CD authentication
 variable "github_owner" {
   description = "GitHub username (personal account) or organisation name that owns the repository"
   type        = string

@@ -1,7 +1,7 @@
 """DynamoDB serialization round trip for async job results.
 
 boto3 rejects Python floats ("Float types are not supported. Use Decimal
-types instead.") — the parsed-resume result carries float confidence scores,
+types instead.") - the parsed-resume result carries float confidence scores,
 so every async job result must convert floats to Decimals before update_item,
 and back to plain int/float on read so schema validators don't null them.
 (Regression: the FIRST async job that ever dispatched successfully failed on
@@ -44,7 +44,7 @@ def test_write_audit_log_stores_key_attribution(monkeypatch):
 
 
 def test_write_audit_log_omits_empty_key_fields(monkeypatch):
-    """No authenticated key (or legacy callers) → the key fields are left off
+    """No authenticated key (or legacy callers) -> the key fields are left off
     the record entirely rather than written as empty strings."""
     table = _patch_table(monkeypatch)
     db.write_audit_log(

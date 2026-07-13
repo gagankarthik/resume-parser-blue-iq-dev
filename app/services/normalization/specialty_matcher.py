@@ -1,30 +1,30 @@
 """
-Tiered specialty → catalog-id matcher.
+Tiered specialty -> catalog-id matcher.
 
-Each résumé specialty string is resolved to a `SpecialtyMatch` carrying a catalog
+Each resume specialty string is resolved to a `SpecialtyMatch` carrying a catalog
 `specialty_id` (when found), a `confidence`, the `group`, and which tier fired.
 Tiers, highest-confidence first:
 
-  1. name      — the specialty itself (canonicalised through the taxonomy) matches
+  1. name      - the specialty itself (canonicalised through the taxonomy) matches
                  a catalog specialty name.                              conf 1.00
-  2. full_name — it matches a catalog specialty's fuller name.          conf 0.95
-  3. keywords  — it matches one of a catalog specialty's keywords.      conf 0.80
-  4. ai        — (async, batched) the LLM picks the best catalog id from a filtered
-                 shortlist for everything tiers 1–3 missed. The pick is then graded
-                 against the chosen record: if the résumé phrase actually contains
+  2. full_name - it matches a catalog specialty's fuller name.          conf 0.95
+  3. keywords  - it matches one of a catalog specialty's keywords.      conf 0.80
+  4. ai        - (async, batched) the LLM picks the best catalog id from a filtered
+                 shortlist for everything tiers 1-3 missed. The pick is then graded
+                 against the chosen record: if the resume phrase actually contains
                  that record's name/full-name/keyword it earns that tier's
                  confidence (1.00 / 0.95 / 0.80); a genuine semantic match keeps the
                  model's own certainty, capped at 0.70.
 
-Tiers 1–3 do not require a bare, exact spelling: each phrase is probed through
+Tiers 1-3 do not require a bare, exact spelling: each phrase is probed through
 several candidate forms (its canonical name, any parenthetical acronym, the phrase
 with parentheticals removed, and each slash-separated part), so a specialty written
 as "Surgical Intensive Care Unit (SICU)" or embedded in a longer line still resolves
 deterministically at full confidence instead of falling through to the AI tier.
 
 A specialty that matches none of these is returned with `specialty_id=None` and
-`matched=False` — never dropped — so an admin can review it. When no catalog is
-loaded, tiers 1–3 still clean the NAME via the built-in taxonomy (high name
+`matched=False` - never dropped - so an admin can review it. When no catalog is
+loaded, tiers 1-3 still clean the NAME via the built-in taxonomy (high name
 confidence) but leave `specialty_id=None`; the platform's ids light up the moment
 the catalog file is supplied.
 """
@@ -89,9 +89,9 @@ _PLAUSIBILITY_STOPWORDS = frozenset({
 
 
 def _candidate_keys(text: str, canonical: str | None) -> list[str]:
-    """Ordered, de-duplicated match keys to try for one résumé specialty phrase.
+    """Ordered, de-duplicated match keys to try for one resume specialty phrase.
 
-    A résumé rarely writes a specialty as a bare catalog token — it embeds it in a
+    A resume rarely writes a specialty as a bare catalog token - it embeds it in a
     heading or a sentence ("Surgical Intensive Care Unit (SICU)", "Critical Care
     Unit/Cardiac Care Unit", or a whole garbled duty line). We therefore probe, in
     priority order: the taxonomy-canonical name, the phrase as written, any
@@ -117,7 +117,7 @@ def _candidate_keys(text: str, canonical: str | None) -> list[str]:
     for part in re.split(r"\s*/\s*", stripped):         # "CCU/Cardiac Care Unit"
         add(part)
     # Leading-token prefixes catch a specialty that opens a longer descriptor
-    # ("NICU Level III and IV" → "NICU", "ICU Stepdown" → "ICU"). Tried LAST so an
+    # ("NICU Level III and IV" -> "NICU", "ICU Stepdown" -> "ICU"). Tried LAST so an
     # exact whole/paren/slash match always wins first (e.g. "ICU Float" resolves to
     # itself, not to "ICU").
     words = stripped.split()
@@ -155,7 +155,7 @@ def _fuzzy_lookup(
     catalog: SpecialtyCatalog, keys: list[str], prof_keys: list[str],
     *, threshold: float = FUZZY_THRESHOLD,
 ) -> tuple[SpecialtyRecord, float, str] | None:
-    """Tier 3.5 — resolve a near-miss spelling/typo by string similarity.
+    """Tier 3.5 - resolve a near-miss spelling/typo by string similarity.
 
     Compares each short, specialty-like candidate against every in-scope catalog
     record's name and full name, returning the closest above `threshold`. Uses
@@ -189,7 +189,7 @@ def _fuzzy_lookup(
         return None
     ratio, rec, field_tier = best
     # A ratio of 1.0 means the candidate is IDENTICAL (after normalization) to the
-    # record's name/full-name — an exact match, scored 1.0 and tagged with the real
+    # record's name/full-name - an exact match, scored 1.0 and tagged with the real
     # tier, never "fuzzy" and never sent to the AI fallback. Genuine near-misses are
     # graded by their similarity, capped below the exact tiers.
     if ratio >= 1.0:
@@ -206,7 +206,7 @@ def _plausibility_tokens(text: str | None) -> set[str]:
 
 
 def _ai_pick_plausible(phrase: str, rec: SpecialtyRecord) -> bool:
-    """Lexical sanity check on an unverified AI pick — a guard against hallucination.
+    """Lexical sanity check on an unverified AI pick - a guard against hallucination.
 
     Accept only when the phrase and the chosen record share a discriminating token,
     a 4-char token stem (so "Cardiac" corroborates "Cardiology"), or are fuzzily
@@ -248,11 +248,11 @@ def _dedupe_matches(matches: list[SpecialtyMatch]) -> list[SpecialtyMatch]:
 
 
 def _score_against_record(text: str, rec: SpecialtyRecord) -> tuple[float, str] | None:
-    """Grade an AI-chosen record against the résumé phrase, deterministically.
+    """Grade an AI-chosen record against the resume phrase, deterministically.
 
     Returns (confidence, tier) when a candidate spelling of `text` equals the
-    record's name / full name / a keyword — i.e. the AI merely un-hid a match the
-    phrasing obscured — else None (a genuine semantic match to grade as `ai`).
+    record's name / full name / a keyword - i.e. the AI merely un-hid a match the
+    phrasing obscured - else None (a genuine semantic match to grade as `ai`).
     """
     keys = set(_candidate_keys(text, resolve_specialty(text)))
     if not keys:
@@ -267,7 +267,7 @@ def _score_against_record(text: str, rec: SpecialtyRecord) -> tuple[float, str] 
 
 
 def match(raw: str, profession: str | None = None) -> SpecialtyMatch:
-    """Resolve one raw specialty string through the deterministic tiers (1–3).
+    """Resolve one raw specialty string through the deterministic tiers (1-3).
 
     `profession` is the role's credential (e.g. "RN", "LPN"); when supplied it
     scopes the lookup so a name that exists under several professions resolves to
@@ -277,7 +277,7 @@ def match(raw: str, profession: str | None = None) -> SpecialtyMatch:
     # De-duplicate the phrase BEFORE matching: a doubled/run-on specialty ("ICU ICU",
     # "Med Surg Med Surg") otherwise misses the deterministic tiers and falls through
     # to the AI tier (capped at 0.70). Cleaning it first lets an exact catalog match
-    # resolve deterministically at 1.0 — fixing both the spurious 0.7 confidence and
+    # resolve deterministically at 1.0 - fixing both the spurious 0.7 confidence and
     # the duplicated text in the payload at the same root.
     text = _dedup_text(raw)
     if not text:
@@ -290,7 +290,7 @@ def match(raw: str, profession: str | None = None) -> SpecialtyMatch:
     prof_keys = profession_keys(profession)
     cand_keys = _candidate_keys(text, canonical)
 
-    # Tiers 1–3: exact name / full name / keyword over the candidate spellings.
+    # Tiers 1-3: exact name / full name / keyword over the candidate spellings.
     hit = _lookup(catalog, cand_keys, prof_keys)
     if hit is None:
         # Tier 3.5: conservative fuzzy match for a near-miss spelling/typo.
@@ -300,7 +300,7 @@ def match(raw: str, profession: str | None = None) -> SpecialtyMatch:
         return _matched(rec, raw, conf, tier)
 
     # No catalog id. If the taxonomy still recognised the NAME, the specialty is
-    # clean (high name confidence) but awaits an id — surfaced for review.
+    # clean (high name confidence) but awaits an id - surfaced for review.
     if canonical is not None:
         return SpecialtyMatch(
             name=canonical, raw=_tidy_raw(raw), specialty_id=None,
@@ -347,13 +347,13 @@ def _dedup_text(text: str | None) -> str:
 
     The extractor occasionally doubles a specialty string or runs it on
     ("Neonatal Intensive Care Unit (NICU) Level III and Level IV Neonatal Care Unit
-    (NICU) Level III and Level IV including …"). This:
+    (NICU) Level III and Level IV including ..."). This:
       1. collapses whitespace,
-      2. removes an ADJACENT duplicated run of 1–6 words, repeatedly, and
-      3. drops a later EXACT repeat of a 2–6 word phrase (non-adjacent),
+      2. removes an ADJACENT duplicated run of 1-6 words, repeatedly, and
+      3. drops a later EXACT repeat of a 2-6 word phrase (non-adjacent),
     without inventing or reordering content. Applied BEFORE matching so a duplicated
     phrase resolves deterministically (its clean form hits the catalog at full
-    confidence) instead of falling through to the AI tier — and reused by
+    confidence) instead of falling through to the AI tier - and reused by
     `_tidy_raw` for the audit `raw`.
     """
     if not text:
@@ -388,9 +388,9 @@ def _tidy_raw(raw: str | None) -> str | None:
 
 
 def _drop_repeated_phrases(text: str, *, min_words: int = 2, max_words: int = 6) -> str:
-    """Remove a later exact repeat of any `min_words`–`max_words` word phrase.
+    """Remove a later exact repeat of any `min_words`-`max_words` word phrase.
 
-    Scans left→right; once a phrase (by lowercase key) has been seen, a later
+    Scans left->right; once a phrase (by lowercase key) has been seen, a later
     identical run of the same length is skipped. Longer runs are preferred so a
     whole repeated clause is dropped in one piece. Order and first occurrences are
     preserved.
@@ -417,7 +417,7 @@ def _drop_repeated_phrases(text: str, *, min_words: int = 2, max_words: int = 6)
     return " ".join(out)
 
 
-# ── Tier 4: batched AI shortlist resolution ───────────────────────────────────
+# -- Tier 4: batched AI shortlist resolution -----------------------------------
 
 
 async def resolve_unmatched_with_ai(parsed: ParsedResumeAI, *, budget: float) -> int:
@@ -477,14 +477,14 @@ async def resolve_unmatched_with_ai(parsed: ParsedResumeAI, *, budget: float) ->
         rec_prof = set(profession_keys(rec.profession))
         for sm, role_prof in pending.get(m.raw.strip(), ()):
             # Only stamp the id when the candidate's profession is compatible with
-            # the role's (either side unknown, or their keys overlap) — never leak
+            # the role's (either side unknown, or their keys overlap) - never leak
             # e.g. a CNA id onto an RN role.
             role_keys = set(profession_keys(role_prof))
             if rec_prof and role_keys and not (rec_prof & role_keys):
                 continue
             phrase = sm.raw or sm.name or m.raw
-            # Grade the pick. If the résumé phrase actually contains this record's
-            # name/full-name/keyword it is a deterministic match the phrasing hid —
+            # Grade the pick. If the resume phrase actually contains this record's
+            # name/full-name/keyword it is a deterministic match the phrasing hid -
             # award that tier's confidence. Otherwise it is a semantic call: trust it
             # only when the model is sufficiently sure AND the pick is lexically
             # plausible; an unconvincing pick is dropped (left unmatched for review)
@@ -504,7 +504,7 @@ async def resolve_unmatched_with_ai(parsed: ParsedResumeAI, *, budget: float) ->
             sm.matched = True
             applied += 1
 
-    # Two phrases in one role can now resolve to the same id — collapse duplicates.
+    # Two phrases in one role can now resolve to the same id - collapse duplicates.
     for exp in parsed.experience:
         if len(exp.specialties) > 1:
             exp.specialties = _dedupe_matches(exp.specialties)
@@ -523,8 +523,8 @@ def _build_shortlist(
 
     Ranked: candidates that both share a word with an unmatched phrase AND belong
     to a profession in scope come first, then any word-sharing candidate, then the
-    rest — trimmed to `cap`. Returns the formatted "<id> | <name> | <full> |
-    <profession>" lines plus an id→record map (for validating the model's reply and
+    rest - trimmed to `cap`. Returns the formatted "<id> | <name> | <full> |
+    <profession>" lines plus an id->record map (for validating the model's reply and
     applying the chosen record's profession).
     """
     phrase_tokens: set[str] = set()

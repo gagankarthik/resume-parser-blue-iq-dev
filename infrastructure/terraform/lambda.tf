@@ -1,4 +1,4 @@
-# ── Shared environment config ─────────────────────────────────────────────────
+# -- Shared environment config -------------------------------------------------
 
 locals {
   lambda_env = {
@@ -23,14 +23,14 @@ locals {
     OPENAI_API_KEY              = var.openai_api_key
     ADMIN_API_TOKEN             = var.admin_api_token
     AUTH_SECRET                 = var.auth_secret
-    # GigHealth Partner API key — enables the live cities lookup at parse time.
+    # GigHealth Partner API key - enables the live cities lookup at parse time.
     # Facility/geography/specialty ids resolve offline from bundled snapshots and
     # do NOT need this; when empty, city mapping is a safe no-op.
     GIG_SPECIALTIES_API_KEY = var.gig_specialties_api_key
   }
 }
 
-# ── CloudWatch Log Groups ─────────────────────────────────────────────────────
+# -- CloudWatch Log Groups -----------------------------------------------------
 
 resource "aws_cloudwatch_log_group" "api" {
   name              = "/aws/lambda/${local.name_prefix}-api"
@@ -38,7 +38,7 @@ resource "aws_cloudwatch_log_group" "api" {
   tags              = local.common_tags
 }
 
-# ── Resume-parser Lambda (single function: HTTP API + async OCR worker) ─────────
+# -- Resume-parser Lambda (single function: HTTP API + async OCR worker) ---------
 # The unified handler routes Function URL events to FastAPI and self-invoked
 # events to the OCR pipeline. Sized for the heavier OCR path; HTTP requests
 # simply use less of the budget.
@@ -69,7 +69,7 @@ resource "aws_lambda_function" "api" {
     # updates the function via `aws lambda update-function-code`. `var.ecr_image_uri`
     # here only seeds the FIRST create (and pins a valid image if the function is
     # ever recreated). Ignoring image_uri stops Terraform from reverting CI's
-    # SHA-tagged image back to `:latest` on every apply — so `terraform apply` only
+    # SHA-tagged image back to `:latest` on every apply - so `terraform apply` only
     # touches env/config, never the code.
     ignore_changes = [image_uri]
   }
@@ -77,7 +77,7 @@ resource "aws_lambda_function" "api" {
   tags = local.common_tags
 }
 
-# Public HTTPS endpoint — no API Gateway overhead.
+# Public HTTPS endpoint - no API Gateway overhead.
 # CORS is intentionally NOT configured here; the FastAPI app owns CORS so the
 # response carries exactly one set of Access-Control-* headers.
 resource "aws_lambda_function_url" "api" {
@@ -87,7 +87,7 @@ resource "aws_lambda_function_url" "api" {
 
 # Public-invoke permission for the API Function URL.
 # Without this, an AuthType=NONE URL still returns HTTP 403 for unsigned
-# requests — the resource-based policy must explicitly allow lambda:InvokeFunctionUrl.
+# requests - the resource-based policy must explicitly allow lambda:InvokeFunctionUrl.
 resource "aws_lambda_permission" "api_url_public" {
   statement_id           = "FunctionURLAllowPublicAccess"
   action                 = "lambda:InvokeFunctionUrl"

@@ -2,10 +2,10 @@
 Unit tests for the force-Textract option and the digital-PDF OCR quality
 fallback.
 
-  • ocr_extractor.extract(force_textract=True) skips Tesseract and calls Textract.
-  • The global settings.force_textract flag has the same effect.
-  • pipeline._is_low_quality_pdf_text flags broken/garbled text layers but trusts
-    a clean résumé text layer.
+  * ocr_extractor.extract(force_textract=True) skips Tesseract and calls Textract.
+  * The global settings.force_textract flag has the same effect.
+  * pipeline._is_low_quality_pdf_text flags broken/garbled text layers but trusts
+    a clean resume text layer.
 """
 
 import io
@@ -22,7 +22,7 @@ def _png_bytes() -> bytes:
     return buf.getvalue()
 
 
-# ── force_textract routing ────────────────────────────────────────────────────
+# -- force_textract routing ----------------------------------------------------
 
 def test_force_textract_param_skips_tesseract(monkeypatch):
     calls = {"tesseract": 0, "textract": 0}
@@ -88,7 +88,7 @@ def test_default_uses_tesseract_when_confident(monkeypatch):
     assert calls["textract"] == 0
 
 
-# ── digital-PDF quality heuristic ─────────────────────────────────────────────
+# -- digital-PDF quality heuristic ---------------------------------------------
 
 def test_clean_resume_text_is_high_quality():
     text = (

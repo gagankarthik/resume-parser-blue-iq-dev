@@ -1,4 +1,4 @@
-"""Resume domain models — the OpenAI structured-output target.
+"""Resume domain models - the OpenAI structured-output target.
 
 Validators SANITIZE rather than raise, so malformed LLM output never crashes the
 pipeline. These are the models the parser produces and the API returns.
@@ -25,13 +25,13 @@ from app.models.schemas.validators import (
 class SpecialtyMatch(BaseModel):
     """A single clinical specialty for a role, mapped to the specialty catalog.
 
-    The LLM only supplies `name` (the unit/specialty text it read off the résumé).
+    The LLM only supplies `name` (the unit/specialty text it read off the resume).
     Everything else is filled deterministically in post-processing by the specialty
     matcher (`app/services/normalization/specialty_matcher.py`): it cleans the name,
     looks it up against the catalog through a tiered match, and stamps the
     `specialty_id`, `group`, `confidence`, `matched` flag, and which `match_tier`
-    fired. Values the model emits for those fields are IGNORED — the matcher always
-    overwrites them — so the model can never inject a bogus id or confidence.
+    fired. Values the model emits for those fields are IGNORED - the matcher always
+    overwrites them - so the model can never inject a bogus id or confidence.
 
     A specialty that does not map to the catalog is kept with `specialty_id=None`
     and `matched=False` (never dropped) so it can be surfaced for admin review.
@@ -51,11 +51,11 @@ class SpecialtyMatch(BaseModel):
         }
     )
 
-    name:         str        = Field(..., description="The unit/specialty named for this role (e.g. 'Med Surg/Tele', 'ICU'). This is the ONLY field you fill — leave everything else null/default; the system maps it to a specialty id and confidence.")
+    name:         str        = Field(..., description="The unit/specialty named for this role (e.g. 'Med Surg/Tele', 'ICU'). This is the ONLY field you fill - leave everything else null/default; the system maps it to a specialty id and confidence.")
     raw:          str | None = Field(None, description="Original specialty text as written, preserved for review. Set by the system.")
-    specialty_id: str | None = Field(None, description="Matched specialty catalog id, or null when unmatched. Set by the system — never fill this yourself.")
+    specialty_id: str | None = Field(None, description="Matched specialty catalog id, or null when unmatched. Set by the system - never fill this yourself.")
     group:        str | None = Field(None, description="Specialty group label. Set by the system.")
-    confidence:   float      = Field(0.0, ge=0.0, le=1.0, description="Match confidence 0.0–1.0. Set by the system — never fill this yourself.")
+    confidence:   float      = Field(0.0, ge=0.0, le=1.0, description="Match confidence 0.0-1.0. Set by the system - never fill this yourself.")
     matched:      bool       = Field(False, description="True only when a specialty_id was assigned. Set by the system.")
     match_tier:   str | None = Field(None, description="Which match tier resolved the id ('name' | 'full_name' | 'keywords' | 'fuzzy' | 'ai'), or null when unmatched. Set by the system.")
 
@@ -67,7 +67,7 @@ class SpecialtyMatch(BaseModel):
         # Smaller models occasionally leak JSON structural characters into the value
         # when emitting a list of objects under structured output (observed:
         # name='Med/Surg"}],'). A real specialty name never begins or ends with a
-        # quote, brace, bracket, or comma — strip those so the matcher sees the clean
+        # quote, brace, bracket, or comma - strip those so the matcher sees the clean
         # name (e.g. 'Med/Surg') instead of a corrupted one.
         cleaned = re.sub(r"""^[\s"'{}\[\],]+|[\s"'{}\[\],]+$""", "", v)
         return cleaned or "Unknown"
@@ -81,7 +81,7 @@ class SpecialtyMatch(BaseModel):
     @classmethod
     def _coerce_id(cls, v: object) -> str | None:
         # Accept ints or strings from the catalog without guessing the platform's
-        # id type — store everything as a string. Blank/None → None.
+        # id type - store everything as a string. Blank/None -> None.
         if v is None:
             return None
         if isinstance(v, bool):  # guard: bool is an int subclass
@@ -130,12 +130,12 @@ class PersonalInfo(BaseModel):
         }
     )
 
-    full_name:      str | None = Field(None, description="Candidate's name ONLY — exclude trailing credential/licence/degree suffixes (e.g. 'Jane Smith', not 'Jane Smith, RN BSN')")
-    credentials:    list[str]    = Field(default_factory=list, description="Post-nominal credentials that follow the candidate's name (e.g. 'RN', 'BSN', 'MPH', 'CCRN'), each as a separate item, in the order written. These are stripped from full_name and MUST be preserved here — never drop them.")
-    headline:       str | None = Field(None, description="The professional title/headline shown under the candidate's name (e.g. 'Registered Nurse / Aesthetic Nurse Injector', 'ICU Travel RN'), copied as written. Null when the résumé has no such tagline.")
+    full_name:      str | None = Field(None, description="Candidate's name ONLY - exclude trailing credential/licence/degree suffixes (e.g. 'Jane Smith', not 'Jane Smith, RN BSN')")
+    credentials:    list[str]    = Field(default_factory=list, description="Post-nominal credentials that follow the candidate's name (e.g. 'RN', 'BSN', 'MPH', 'CCRN'), each as a separate item, in the order written. These are stripped from full_name and MUST be preserved here - never drop them.")
+    headline:       str | None = Field(None, description="The professional title/headline shown under the candidate's name (e.g. 'Registered Nurse / Aesthetic Nurse Injector', 'ICU Travel RN'), copied as written. Null when the resume has no such tagline.")
     email:          str | None = Field(None, description="Primary email address")
     phone:          str | None = Field(None, description="Primary phone number in original format")
-    phone_secondary: str | None = Field(None, description="A SECOND phone number when the résumé lists more than one, in its original format. Null when only one number is given.")
+    phone_secondary: str | None = Field(None, description="A SECOND phone number when the resume lists more than one, in its original format. Null when only one number is given.")
     location:       str | None = Field(None, description="The candidate's FULL address line exactly as written, including street/number if present (e.g. '135 Brush Hill Road, Milton, MA 02186'). Do NOT shorten it to just city/state/zip.")
     linkedin_url:   str | None = Field(None, description="LinkedIn profile URL")
     github_url:     str | None = Field(None, description="GitHub profile URL")
@@ -174,12 +174,12 @@ class ExperienceItem(BaseModel):
     A single work-history entry.
 
     Field names mirror the platform's "Edit Work History" form so a parsed entry
-    maps straight onto it: `company` → Facility Name, `is_current` → Currently
-    Employed, `city`/`state`/`country`/`zip_code` → the location block,
-    `profession`/`specialties` → Select Profession / Select Specialties, and the
+    maps straight onto it: `company` -> Facility Name, `is_current` -> Currently
+    Employed, `city`/`state`/`country`/`zip_code` -> the location block,
+    `profession`/`specialties` -> Select Profession / Select Specialties, and the
     facility/position attributes feed the optional "Additional Details" section.
     All of these extra fields are optional and stay null/empty when the resume
-    doesn't state them. (Latitude/longitude are intentionally omitted — the
+    doesn't state them. (Latitude/longitude are intentionally omitted - the
     platform geocodes them from city/state/zip.)
     """
 
@@ -231,49 +231,49 @@ class ExperienceItem(BaseModel):
     start_date:    str | None = Field(None, description="Start date as MM/DD/YYYY. If only month/year is stated use MM/YYYY; if only a year, YYYY. NEVER invent a missing day or month.")
     end_date:      str | None = Field(None, description="End date as MM/DD/YYYY (or MM/YYYY / YYYY when the day/month is not stated), or 'Present' for a current role.")
     is_current:    bool          = Field(False, description="True if this is the candidate's current position ('Currently Employed')")
-    location:      str | None = Field(None, description="The FULL workplace location/address exactly as written on the résumé, including street if present (e.g. '500 J Clyde Morris Blvd, Newport News, VA 23601')")
-    # ── Structured facility location (Work History form) ──────────────────────
-    city:          str | None = Field(None, description="Facility city, only if stated — copied verbatim")
-    state:         str | None = Field(None, description="Facility state/province, only if stated — copied exactly as written (keep 'NY', do NOT expand to 'New York')")
-    country:       str | None = Field(None, description="Facility country — ONLY if explicitly written on the résumé; otherwise null. Do NOT infer 'United States'.")
-    zip_code:      str | None = Field(None, description="Facility postal/ZIP code, only if stated — never guessed from the city")
-    # ── Structured location ids (platform geographies) ────────────────────────
-    country_id:    str | None = Field(None, description="Matched platform country id for `country`. Set by the system from the geographies catalog — never fill this yourself; null when unmatched.")
-    country_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that country_id is correct (1.0 on an exact catalog match). Set by the system.")
-    state_id:      str | None = Field(None, description="Matched platform state id for `state` (scoped to country_id). Set by the system from the geographies catalog — never fill this yourself; null when unmatched.")
-    state_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that state_id is correct (1.0 on an exact catalog match). Set by the system.")
+    location:      str | None = Field(None, description="The FULL workplace location/address exactly as written on the resume, including street if present (e.g. '500 J Clyde Morris Blvd, Newport News, VA 23601')")
+    # -- Structured facility location (Work History form) ----------------------
+    city:          str | None = Field(None, description="Facility city, only if stated - copied verbatim")
+    state:         str | None = Field(None, description="Facility state/province, only if stated - copied exactly as written (keep 'NY', do NOT expand to 'New York')")
+    country:       str | None = Field(None, description="Facility country - ONLY if explicitly written on the resume; otherwise null. Do NOT infer 'United States'.")
+    zip_code:      str | None = Field(None, description="Facility postal/ZIP code, only if stated - never guessed from the city")
+    # -- Structured location ids (platform geographies) ------------------------
+    country_id:    str | None = Field(None, description="Matched platform country id for `country`. Set by the system from the geographies catalog - never fill this yourself; null when unmatched.")
+    country_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that country_id is correct (1.0 on an exact catalog match). Set by the system.")
+    state_id:      str | None = Field(None, description="Matched platform state id for `state` (scoped to country_id). Set by the system from the geographies catalog - never fill this yourself; null when unmatched.")
+    state_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that state_id is correct (1.0 on an exact catalog match). Set by the system.")
     city_id:       str | None = Field(None, description="Matched platform city id for `city`. Set by the system via the live cities fuzzy-match (only when enabled); null otherwise. Never fill this yourself.")
-    city_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that city_id is correct (the cities API match score). Set by the system.")
+    city_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that city_id is correct (the cities API match score). Set by the system.")
     employer_phone: str | None = Field(None, description="Employer/facility phone number exactly as written, only if stated next to this role (e.g. '304-287-2120'). Null if not stated.")
-    # ── Clinical classification (Select Profession / Select Specialties) ──────
+    # -- Clinical classification (Select Profession / Select Specialties) ------
     profession:    str | None = Field(None, description="Credential/profession for this role exactly as stated (e.g. 'RN', 'LPN', 'CRT'). Do NOT expand the abbreviation.")
-    profession_id: str | None = Field(None, description="Matched platform profession id for `profession` (e.g. RN→'1'). Set by the system from the catalog — never fill this yourself; null when unmatched.")
-    profession_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that profession_id is correct (1.0 on an exact catalog match, 0.0 when unmatched). Set by the system.")
-    # ── Facility mapping (populated once the client's facility directory is wired) ─
-    facility_id: str | None = Field(None, description="Platform facility id for the employer/facility. Reserved — populated only when the client's facilities dataset is available; null until then. Set by the system.")
-    facility_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0–1.0 that facility_id is correct. Set by the system; 0.0 until facility mapping is enabled.")
+    profession_id: str | None = Field(None, description="Matched platform profession id for `profession` (e.g. RN->'1'). Set by the system from the catalog - never fill this yourself; null when unmatched.")
+    profession_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that profession_id is correct (1.0 on an exact catalog match, 0.0 when unmatched). Set by the system.")
+    # -- Facility mapping (populated once the client's facility directory is wired) -
+    facility_id: str | None = Field(None, description="Platform facility id for the employer/facility. Reserved - populated only when the client's facilities dataset is available; null until then. Set by the system.")
+    facility_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that facility_id is correct. Set by the system; 0.0 until facility mapping is enabled.")
     specialties:   list[SpecialtyMatch] = Field(default_factory=list, description="Clinical specialties/units for this role, one object per specialty. Fill ONLY the `name` field of each (e.g. {\"name\": \"Med Surg/Tele\"}, {\"name\": \"ICU\"}); the system fills the id/confidence/group.")
-    # ── Facility attributes (Additional Details — only if stated) ─────────────
+    # -- Facility attributes (Additional Details - only if stated) -------------
     service_type:           str | None = Field(None, description="Service type, if stated")
     nurse_to_patient_ratio: str | None = Field(None, description="Nurse-to-patient ratio, if stated (e.g. '1:5')")
     facility_beds:          str | None = Field(None, description="Total facility bed count, if stated")
     beds_in_unit:           str | None = Field(None, description="Bed count for the unit, if stated")
-    teaching_facility:      str | None = Field(None, description="'Yes', 'No', or 'N/A' — only if stated, else null")
-    magnet_facility:        str | None = Field(None, description="'Yes', 'No', or 'N/A' — only if stated, else null")
-    trauma_facility:        str | None = Field(None, description="'Yes', 'No', or 'N/A' — only if stated, else null")
+    teaching_facility:      str | None = Field(None, description="'Yes', 'No', or 'N/A' - only if stated, else null")
+    magnet_facility:        str | None = Field(None, description="'Yes', 'No', or 'N/A' - only if stated, else null")
+    trauma_facility:        str | None = Field(None, description="'Yes', 'No', or 'N/A' - only if stated, else null")
     trauma_level:           str | None = Field(None, description="Trauma level (e.g. 'Level I'), if stated")
     additional_info:        str | None = Field(None, description="Any other facility detail stated for this role")
-    # ── Position details (Work History form) ──────────────────────────────────
+    # -- Position details (Work History form) ----------------------------------
     position_held:          str | None = Field(None, description="Position/title held, if distinct from the credential (e.g. 'Staff Nurse', 'Charge Nurse')")
     agency_name:            str | None = Field(None, description="Staffing/travel agency name, if this was an agency assignment")
     charge_experience:      str | None = Field(None, description="Charge experience, if stated")
     charting_system:        str | None = Field(None, description="EHR/charting system used (e.g. 'Epic', 'Cerner', 'Meditech'), if stated")
     shift:                  str | None = Field(None, description="Shift worked (e.g. 'Days', 'Nights', 'Rotating', 'Weekends'), if stated")
     employment_type:        str | None = Field(None, description="Employment type if stated: 'Full-time', 'Part-time', or 'PRN' (per diem). Null if not stated.")
-    patient_load:           str | None = Field(None, description="Patient load for this role if stated as a count (e.g. 'managed 6 patients' → '6'). Ratios go in nurse_to_patient_ratio. Null if not stated.")
+    patient_load:           str | None = Field(None, description="Patient load for this role if stated as a count (e.g. 'managed 6 patients' -> '6'). Ratios go in nurse_to_patient_ratio. Null if not stated.")
     reason_for_leaving:     str | None = Field(None, description="Reason for leaving, if stated")
     gap_warning:            bool          = Field(False, description="Set by the system: True when there is an employment gap of more than 90 days before this role. Never fill this yourself.")
-    description:   list[str]     = Field(default_factory=list, description="Role responsibilities as an array of short strings — one item per responsibility/bullet, never a single paragraph")
+    description:   list[str]     = Field(default_factory=list, description="Role responsibilities as an array of short strings - one item per responsibility/bullet, never a single paragraph")
     achievements:  list[str]     = Field(default_factory=list, description="Notable accomplishments in this role")
 
     @field_validator("company", "role", mode="before")
@@ -307,7 +307,7 @@ class ExperienceItem(BaseModel):
     @classmethod
     def coerce_catalog_id(cls, v: object) -> str | None:
         # System-set catalog ids: accept an int/str (e.g. a DynamoDB reload), store
-        # as a trimmed string. Blank/None → None.
+        # as a trimmed string. Blank/None -> None.
         if v is None or isinstance(v, bool):
             return None
         if isinstance(v, int | float):
@@ -342,7 +342,7 @@ class ExperienceItem(BaseModel):
     def coerce_specialties(cls, v: object) -> list[dict]:
         # Accept a bare string (LLM shorthand / legacy callers), a dict (the model's
         # structured object, or a DynamoDB reload), or a SpecialtyMatch. Each becomes
-        # SpecialtyMatch input carrying just the name — the id/confidence/group are
+        # SpecialtyMatch input carrying just the name - the id/confidence/group are
         # filled later by the specialty matcher, never here.
         out: list[dict] = []
         for i in _coerce_list(v):
@@ -360,13 +360,13 @@ class ExperienceItem(BaseModel):
     @field_validator("description", mode="before")
     @classmethod
     def coerce_description(cls, v: object) -> list[str]:
-        # Always a list of strings — one item per bullet/line. When the model
+        # Always a list of strings - one item per bullet/line. When the model
         # emits the whole block as a single string, split on line breaks and
-        # bullet glyphs only — NOT on sentence boundaries — so a multi-sentence
+        # bullet glyphs only - NOT on sentence boundaries - so a multi-sentence
         # bullet ("Works in the CCU. Also worked in the SICU.") stays one item.
         if isinstance(v, str):
-            # Split on line breaks and true bullet glyphs only. The middle dot '·'
-            # is excluded — it is commonly an inline separator ("Charge nurse · ICU").
+            # Split on line breaks and true bullet glyphs only. The middle dot '-'
+            # is excluded - it is commonly an inline separator ("Charge nurse - ICU").
             parts = re.split(r"[\r\n]+|\s*[•▪◦‣]\s*", v.strip())
             cleaned = (re.sub(r"^[-*]\s+", "", p) for p in parts)
         else:
@@ -408,8 +408,8 @@ class EducationItem(BaseModel):
     degree:           str | None = Field(None, description="Degree earned (e.g. 'Bachelor of Science in Nursing')")
     field_of_study:   str | None = Field(None, description="Major or field of study")
     location:         str | None = Field(None, description="School location as written (e.g. 'Schenectady, NY 12304' or 'Albany, NY'). Null when not stated.")
-    start_year:       int | None = Field(None, description="Year started (1900–2035)", ge=1900, le=2035)
-    graduation_year:  int | None = Field(None, description="Graduation year (1900–2035)", ge=1900, le=2035)
+    start_year:       int | None = Field(None, description="Year started (1900-2035)", ge=1900, le=2035)
+    graduation_year:  int | None = Field(None, description="Graduation year (1900-2035)", ge=1900, le=2035)
     gpa:              str | None = Field(None, description="GPA if stated")
     tier:             str | None = Field(None, description="Set by the system for nursing degrees: 'ADN', 'Diploma_in_Nursing', or 'BSN'. Null for non-nursing or higher degrees. Never fill this yourself.")
 
@@ -451,9 +451,9 @@ class CertificationItem(BaseModel):
 
     name:           str           = Field(..., description="Certification name (e.g. 'ACLS', 'BLS', 'CCRN')")
     issuer:         str | None = Field(None, description="Issuing organisation")
-    issued_date:    str | None = Field(None, description="Issue/award date — ONLY when the résumé labels it as issued/awarded/completed. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
-    expiry_date:    str | None = Field(None, description="Expiry/renewal date — ONLY when the résumé labels it as expires/valid through/renewal. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
-    date:           str | None = Field(None, description="A certification date when the résumé does NOT say whether it is the issue or the expiry date (e.g. 'BLS: 12/2024'). Do NOT assume expiry — put unlabeled dates here. Same MM/DD/YYYY / MM/YYYY / YYYY format.")
+    issued_date:    str | None = Field(None, description="Issue/award date - ONLY when the resume labels it as issued/awarded/completed. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
+    expiry_date:    str | None = Field(None, description="Expiry/renewal date - ONLY when the resume labels it as expires/valid through/renewal. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
+    date:           str | None = Field(None, description="A certification date when the resume does NOT say whether it is the issue or the expiry date (e.g. 'BLS: 12/2024'). Do NOT assume expiry - put unlabeled dates here. Same MM/DD/YYYY / MM/YYYY / YYYY format.")
     credential_id:  str | None = Field(None, description="Credential ID or certificate number")
 
     @field_validator("name", mode="before")
@@ -476,11 +476,11 @@ class CertificationItem(BaseModel):
 
 class LicenseItem(BaseModel):
     """
-    A professional license — distinct from a certification.
+    A professional license - distinct from a certification.
 
     State nursing/allied-health licenses ("Active FL RN License #RN9411204",
     "New York State Registered Nurse License", compact/multistate licenses) are a
-    licence, not a certification (BLS/ACLS/CCRN…). They are captured here so a
+    licence, not a certification (BLS/ACLS/CCRN...). They are captured here so a
     state licence number is never lost or mislabeled as a cert.
     """
 
@@ -501,11 +501,11 @@ class LicenseItem(BaseModel):
 
     name:           str           = Field(..., description="License name as written (e.g. 'Registered Nurse License', 'Radiologic Technologist License')")
     license_type:   str | None = Field(None, description="Credential/profession the licence is for, as written (e.g. 'RN', 'LPN', 'RT'); do NOT expand")
-    state:          str | None = Field(None, description="Issuing US state/territory, as written (keep 'NY' — do NOT expand to 'New York'). Null if not stated.")
+    state:          str | None = Field(None, description="Issuing US state/territory, as written (keep 'NY' - do NOT expand to 'New York'). Null if not stated.")
     license_number: str | None = Field(None, description="License/permit number exactly as written, including any letter prefix (e.g. 'RN9411204'). Null if not stated.")
-    issued_date:    str | None = Field(None, description="Issue date — only if stated. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
-    expiry_date:    str | None = Field(None, description="Expiry/renewal date — only if stated. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
-    is_compact:     bool          = Field(False, description="True only if the résumé explicitly calls it a compact/multistate/eNLC licence")
+    issued_date:    str | None = Field(None, description="Issue date - only if stated. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
+    expiry_date:    str | None = Field(None, description="Expiry/renewal date - only if stated. MM/DD/YYYY, or MM/YYYY / YYYY. Never invent parts.")
+    is_compact:     bool          = Field(False, description="True only if the resume explicitly calls it a compact/multistate/eNLC licence")
     status:         str | None = Field(None, description="Licence status if stated (e.g. 'Active', 'Inactive', 'In progress')")
 
     @field_validator("name", mode="before")
@@ -594,10 +594,10 @@ class ReferenceItem(BaseModel):
 
 
 class ExtractionNote(BaseModel):
-    """One explainable extraction decision — why a value was assigned or, more
+    """One explainable extraction decision - why a value was assigned or, more
     often, why it was deliberately left null.
 
-    The point is transparency for the reviewer: healthcare résumés state facts
+    The point is transparency for the reviewer: healthcare resumes state facts
     ambiguously (e.g. "63-bed unit" in the summary while the person worked at
     three hospitals), and we do NOT guess which role such a fact belongs to. When
     we cannot attribute a fact with confidence we leave the field null and record
@@ -607,7 +607,7 @@ class ExtractionNote(BaseModel):
 
     field:      str          = Field(..., description="Dotted path of the affected field (e.g. 'experience[1].facility_beds', 'experience[0].profession')")
     value:      str | None   = Field(None, description="The value that was assigned, or null when the fact could not be attributed")
-    confidence: float        = Field(0.5, ge=0.0, le=1.0, description="Confidence in THIS DECISION on a 0-1 scale (not in the value). A confident decision to leave a field null — because the evidence clearly says it can't be attributed — is HIGH (~0.9), NOT 0. Use a low value only for a genuine judgment call.")
+    confidence: float        = Field(0.5, ge=0.0, le=1.0, description="Confidence in THIS DECISION on a 0-1 scale (not in the value). A confident decision to leave a field null - because the evidence clearly says it can't be attributed - is HIGH (~0.9), NOT 0. Use a low value only for a genuine judgment call.")
     reason:     str          = Field(..., description="Plain-language explanation of the decision and the evidence behind it")
 
     @field_validator("reason", mode="before")
@@ -619,8 +619,8 @@ class ExtractionNote(BaseModel):
     @classmethod
     def _coerce_value(cls, v: object) -> str | None:
         # The model fills this freely and Pydantic v2 will NOT coerce int/float/bool
-        # → str, so a numeric note value (e.g. "value": 30) would raise and — via
-        # the generic except in ai_parser — discard the whole parse into a partial.
+        # -> str, so a numeric note value (e.g. "value": 30) would raise and - via
+        # the generic except in ai_parser - discard the whole parse into a partial.
         # Sanitize like every other free-text field instead of crashing.
         if v is None:
             return None
@@ -631,7 +631,7 @@ class ExtractionNote(BaseModel):
     def _clamp_confidence(cls, v: object) -> float:
         # Structured output does NOT enforce numeric minimum/maximum, so a model
         # that misreads the 0-1 scale (e.g. "confidence": 5) must be clamped here
-        # rather than raise past the Field ge/le bounds. Uninterpretable → neutral.
+        # rather than raise past the Field ge/le bounds. Uninterpretable -> neutral.
         if isinstance(v, bool) or not isinstance(v, int | float | str):
             return 0.5
         try:
@@ -642,7 +642,7 @@ class ExtractionNote(BaseModel):
 
 
 class ClinicalRotation(BaseModel):
-    """A student clinical rotation / practicum / preceptorship — NOT paid work.
+    """A student clinical rotation / practicum / preceptorship - NOT paid work.
 
     Kept separate from `experience` so it is excluded from years-of-experience
     totals. Populated when a section reads as a rotation ("Clinical Rotation",
@@ -669,14 +669,14 @@ class ClinicalRotation(BaseModel):
 
 
 class ComplianceInfo(BaseModel):
-    """Healthcare compliance disclosures scanned from the résumé, plus a rollup
+    """Healthcare compliance disclosures scanned from the resume, plus a rollup
     risk flag. Booleans are True only when the document explicitly mentions the
     item; null means not found (never assumed cleared)."""
 
     covid_vaccination: bool | None = Field(None, description="True if a COVID-19 vaccination is mentioned; null if not found.")
     tb_test:           bool | None = Field(None, description="True if a TB test / PPD is mentioned; null if not found.")
     annual_physical:   bool | None = Field(None, description="True if an annual physical is mentioned; null if not found.")
-    compliance_risk:   bool        = Field(False, description="Set by the system: True when the résumé lacks an active BLS/ACLS certification OR a cleared TB test.")
+    compliance_risk:   bool        = Field(False, description="Set by the system: True when the resume lacks an active BLS/ACLS certification OR a cleared TB test.")
 
 
 class ParsedResumeAI(BaseModel):
@@ -750,7 +750,7 @@ class ParsedResumeAI(BaseModel):
     experience:      list[ExperienceItem]  = Field(default_factory=list, description="Work experience entries, most recent first")
     education:       list[EducationItem]   = Field(default_factory=list, description="Education history")
     skills:          list[str]             = Field(default_factory=list, description="Clinical specialties, credentials, and skills (e.g. ICU, NICU, BLS, ACLS)")
-    certifications:  list[CertificationItem] = Field(default_factory=list, description="Professional certifications (BLS, ACLS, CCRN, NRP…) — NOT state licenses")
+    certifications:  list[CertificationItem] = Field(default_factory=list, description="Professional certifications (BLS, ACLS, CCRN, NRP...) - NOT state licenses")
     licenses:        list[LicenseItem]     = Field(default_factory=list, description="State/professional licenses (e.g. state RN/LPN/RT license with its number), kept separate from certifications")
     projects:        list[ProjectItem]     = Field(default_factory=list, description="Notable projects")
     languages:       list[str]             = Field(default_factory=list, description="Spoken/written languages")
@@ -758,9 +758,9 @@ class ParsedResumeAI(BaseModel):
     awards:          list[str]             = Field(default_factory=list, description="Awards, honors, and recognitions (e.g. 'DAISY Award 2023', 'Summa Cum Laude', 'Employee of the Year')")
     publications:    list[str]             = Field(default_factory=list, description="Publications, posters, or research contributions, each as a single citation string")
     professional_associations: list[str]   = Field(default_factory=list, description="Professional associations, society memberships, committees, and collaboratives, each verbatim (e.g. 'Sigma Theta Tau International Honor Society of Nursing Member', 'Sepsis Clinical Services Committee', 'SJHS Sepsis Process Owner')")
-    clinical_rotations: list[ClinicalRotation] = Field(default_factory=list, description="Student clinical rotations / practicums / preceptorships — kept SEPARATE from experience so they are excluded from years-of-experience totals.")
+    clinical_rotations: list[ClinicalRotation] = Field(default_factory=list, description="Student clinical rotations / practicums / preceptorships - kept SEPARATE from experience so they are excluded from years-of-experience totals.")
     compliance:       ComplianceInfo | None  = Field(None, description="Healthcare compliance disclosures (COVID-19 vaccination, TB test, annual physical) and a compliance_risk rollup. Set by the system.")
-    extraction_notes: list[ExtractionNote] = Field(default_factory=list, description="Explainable decisions — why an ambiguous fact (bed count, profession, etc.) was assigned to a specific role or deliberately left null. Empty when nothing was ambiguous.")
+    extraction_notes: list[ExtractionNote] = Field(default_factory=list, description="Explainable decisions - why an ambiguous fact (bed count, profession, etc.) was assigned to a specific role or deliberately left null. Empty when nothing was ambiguous.")
 
     @field_validator("experience", "education", "certifications", "licenses", "projects", "references", "clinical_rotations", "extraction_notes", mode="before")
     @classmethod
@@ -771,7 +771,7 @@ class ParsedResumeAI(BaseModel):
     @classmethod
     def coerce_string_lists(cls, v: object) -> list[str]:
         items = _coerce_list(v)
-        # Only scalar items are real strings — drop any dict/list the model nested
+        # Only scalar items are real strings - drop any dict/list the model nested
         # here (e.g. a lone object _coerce_list wrapped) instead of stringifying it
         # into a "{'name': ...}" pseudo-skill.
         return [
