@@ -198,8 +198,16 @@ capped at ~350 KB. Records are retained 90 days then auto-deleted.
 
 ### Batch — `POST /api/v1/resume/batch`
 `multipart/form-data` with multiple `files`. Up to **200** files. Returns `202` with a
-`batch_id` and per-file `job_ids`; invalid files are listed in `skipped_files`. All
-files process asynchronously — track via per-file `parse.completed` webhooks and the
+`batch_id` and `jobs` — each accepted file paired with its `job_id`, so a result can be
+matched back to the file it came from:
+
+```json
+"jobs": [{ "job_id": "01J3K5M2...", "filename": "jane_smith_rn.pdf" }]
+```
+
+(`job_ids` is the same IDs without the filenames, kept for existing integrations.)
+Invalid files are listed in `skipped_files` and do not count toward `total`. All files
+process asynchronously — track via per-file `parse.completed` webhooks and the
 `batch.completed` webhook, or poll:
 
 ### Batch status — `GET /api/v1/resume/batch/{batch_id}`

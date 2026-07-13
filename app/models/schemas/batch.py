@@ -10,6 +10,11 @@ class BatchSkipped(BaseModel):
     reason:    str = Field(..., description="Why this file was rejected")
 
 
+class BatchJob(BaseModel):
+    job_id:    str = Field(..., description="Poll this at /api/v1/resume/job/{job_id}")
+    filename:  str = Field(..., description="The file this job was created for")
+
+
 class BatchSubmitResponse(BaseModel):
     """Response for POST /api/v1/resume/batch"""
 
@@ -22,6 +27,7 @@ class BatchSubmitResponse(BaseModel):
                 "skipped_files": [
                     {"filename": "notes.txt", "reason": "Unsupported file extension '.txt'"},
                 ],
+                "jobs": [{"job_id": "01J3K5M2...", "filename": "jane_smith_rn.pdf"}],
                 "job_ids": ["01J3K5M2...", "01J3K5M3..."],
                 "status": "processing",
                 "poll_url": "/api/v1/resume/batch/01J3K5M2N4P6Q8R0S2T4U6V8W0",
@@ -33,6 +39,11 @@ class BatchSubmitResponse(BaseModel):
     total:          int               = Field(..., description="Number of files accepted for processing")
     skipped:        int               = Field(..., description="Number of files rejected at upload time")
     skipped_files:  list[BatchSkipped] = Field(default_factory=list, description="Details of rejected files")
+    jobs:           list[BatchJob]    = Field(
+        default_factory=list,
+        description="Accepted files paired with their job ID, so each result can be "
+                    "matched back to the file it came from",
+    )
     job_ids:        list[str]         = Field(..., description="Job IDs for accepted files, in submission order")
     status:         str               = Field(..., description="Always 'processing' — results arrive via webhook or polling")
     poll_url:       str               = Field(..., description="URL to poll for overall batch status")

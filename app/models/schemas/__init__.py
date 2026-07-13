@@ -20,6 +20,7 @@ from app.models.schemas.api import (
     WebhookResponse,
 )
 from app.models.schemas.batch import (
+    BatchJob,
     BatchSkipped,
     BatchStatusResponse,
     BatchSubmitResponse,
@@ -81,6 +82,7 @@ __all__ = [
     "FeedbackRequest",
     "FeedbackResponse",
     # batch
+    "BatchJob",
     "BatchSkipped",
     "BatchSubmitResponse",
     "BatchStatusResponse",
