@@ -513,9 +513,18 @@ async function parseResume(file /* Blob/File */) {
 - **Resume files are never stored.** They are processed in memory / a temp location and
   deleted immediately after parsing.
 - **Parsed results** for async jobs are kept for **1 hour** then auto-deleted; sync results
-  are returned in the response and never stored.
-- We retain only **content-free audit metadata** (job id, file type/size, status, timings).
+  are returned in the response and not retained.
+- **Audit metadata** (job id, file type/size, status, timings) is retained for 90 days and is
+  content-free.
 - Resume text is sent to OpenAI for parsing. No copy is retained by us.
+
+> **One exception — the feedback endpoint.** If you call
+> `POST /resume/{job_id}/feedback`, the original **and** corrected parsed JSON you submit are
+> **stored for 90 days** (`feedback_retention_days`) so corrections can be used to improve the
+> parser. That JSON contains candidate PII — name, email, phone, address, work history,
+> licences. This is the only path on which parsed résumé content is retained. If your data
+> policy does not permit it, simply do not call the feedback endpoint; nothing else in the
+> integration depends on it.
 
 ---
 

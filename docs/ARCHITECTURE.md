@@ -17,7 +17,7 @@ non-negotiable principles:
 
 | Principle | What it means |
 |---|---|
-| **Privacy first** | Resume content is **never stored**. Files are deleted immediately after processing; only content-free audit metadata is retained. |
+| **Privacy first** | Resume *files* are **never stored** — deleted immediately after processing. Audit metadata is content-free. **One exception:** the opt-in feedback endpoint persists submitted original + corrected JSON (candidate PII) for 90 days. See [Data retention](#data-retention). |
 | **Cost-aware accuracy** | OCR and AI are invoked only when needed; cheap deterministic paths run first. |
 | **Operational simplicity** | No servers, queues, or brokers to manage — managed AWS services scale to zero and back automatically. |
 
@@ -234,8 +234,9 @@ Point-in-time recovery is enabled on the durable tables (`api_keys`, `jobs`, `we
 |---|---|---|
 | Raw resume file | S3 `temp/{job_id}/{filename}`, SSE-AES256 | Deleted in `finally` block immediately after processing |
 | Parsed result (async only) | DynamoDB `jobs` | 1 hour (TTL), then auto-deleted |
-| Parsed result (sync) | Returned in response only | Never stored |
+| Parsed result (sync) | Returned in response only | Not retained |
 | Audit log | DynamoDB `audit_logs` | 90 days — **metadata only** (`job_id`, `company_id`, `file_type`, `file_size_bytes`, `status`, `duration_ms`, `ocr_used`, `ai_tokens_used`, `error_code`). **No content, no PII.** |
+| **Feedback (original + corrected parse)** | DynamoDB `feedback` | **90 days (`feedback_retention_days`) — CONTAINS CANDIDATE PII.** Written only when a caller submits corrections to `POST /resume/{job_id}/feedback`. This is the only store of parsed résumé content in the system. |
 
 > **Third-party note:** resume text is transmitted to the OpenAI API for parsing. The OpenAI data
 > processing terms govern that transit; no copy is retained by this service.
