@@ -1,4 +1,4 @@
-.PHONY: install dev test test-unit test-integration lint typecheck build build-lambda push-lambda deploy-lambda
+.PHONY: install dev test test-unit test-integration lint typecheck build build-lambda
 
 # ─── Local development ────────────────────────────────────────────────────────
 
@@ -53,36 +53,27 @@ build:
 	docker build -t resume-parser:latest .
 
 # ─── Lambda container ────────────────────────────────────────────────────────
-# Usage:
-#   make build-lambda AWS_ACCOUNT=123456789012 AWS_REGION=us-east-1
-#   make push-lambda  AWS_ACCOUNT=123456789012 AWS_REGION=us-east-1
+# CI OWNS DEPLOYS. There is deliberately no `deploy-lambda` target here.
+#
+# The old push-lambda/deploy-lambda targets called update-function-code on
+# `resume-parser-api` and `resume-parser-worker` — neither function has ever
+# existed (the real one is `resume-parser-production-api`, and there is no
+# separate worker; the API self-invokes). They also defaulted to us-east-1 while
+# the stack lives in us-east-2. Running them did nothing good and could touch the
+# wrong account, so they are gone rather than repaired.
+#
+#   Deploy:   push to main   → .github/workflows/deploy.yml
+#   Rollback: workflow_dispatch → .github/workflows/rollback.yml
+#
+# build-lambda stays: it is local-only and useful for checking the image builds
+# before you open a PR.
 
-AWS_ACCOUNT ?= $(shell aws sts get-caller-identity --query Account --output text)
-AWS_REGION  ?= us-east-1
-ECR_REPO    ?= resume-parser-lambda
-IMAGE_TAG   ?= latest
-ECR_URI      = $(AWS_ACCOUNT).dkr.ecr.$(AWS_REGION).amazonaws.com/$(ECR_REPO)
+AWS_REGION ?= us-east-2
+ECR_REPO   ?= resume-parser-production-lambda
+IMAGE_TAG  ?= local
 
 build-lambda:
 	docker build -f Dockerfile.lambda -t $(ECR_REPO):$(IMAGE_TAG) .
-
-push-lambda: build-lambda
-	aws ecr get-login-password --region $(AWS_REGION) | \
-	  docker login --username AWS --password-stdin $(ECR_URI)
-	docker tag $(ECR_REPO):$(IMAGE_TAG) $(ECR_URI):$(IMAGE_TAG)
-	docker push $(ECR_URI):$(IMAGE_TAG)
-
-# Update both Lambda functions to use the new image
-deploy-lambda: push-lambda
-	aws lambda update-function-code \
-	  --function-name resume-parser-api \
-	  --image-uri $(ECR_URI):$(IMAGE_TAG) \
-	  --region $(AWS_REGION)
-	aws lambda update-function-code \
-	  --function-name resume-parser-worker \
-	  --image-uri $(ECR_URI):$(IMAGE_TAG) \
-	  --region $(AWS_REGION)
-	@echo "Deployed $(ECR_URI):$(IMAGE_TAG) to resume-parser-api and resume-parser-worker"
 
 # ─── Terraform ───────────────────────────────────────────────────────────────
 

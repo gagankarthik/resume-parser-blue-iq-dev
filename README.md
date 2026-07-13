@@ -30,7 +30,7 @@ specialties to a controlled vocabulary the placement platform can match on.
 | **Resilience** | Three-tier graceful degradation — never returns "nothing" on a hard résumé |
 | **Confidence** | Per-section 0–1 confidence scores to route low-quality records to human review |
 | **Integration** | Synchronous parse, async (OCR) jobs, batch, webhooks, and a correction-feedback loop |
-| **Security** | API-key + session auth, magic-byte validation, SSRF-guarded webhooks, zero content storage |
+| **Security** | API-key + session auth, magic-byte validation, SSRF-guarded webhooks, no file storage |
 | **Observability** | Structured request logs, content-free audit trail, and per-company token/usage accounting |
 
 ---
@@ -222,7 +222,7 @@ partial · warnings     degradation flag + reviewer notes
 
 | Control | Implementation |
 |---|---|
-| **Privacy by design** | Résumé content is never stored. S3 holds bytes only transiently and deletes them in a guaranteed cleanup step after processing. |
+| **Privacy by design** | Résumé *files* are never stored — S3 holds bytes only transiently and deletes them in a guaranteed cleanup step after processing. Parsed content is not retained on the parse path. **Exception:** the opt-in feedback endpoint stores the submitted original + corrected JSON (candidate PII) for 90 days. See [Data retention](#data-retention). |
 | **Authentication** | Per-company API keys (`X-API-Key`, SHA-256 hashed at rest), self-serve session tokens (Bearer), and a separate admin token for management endpoints. |
 | **File validation** | Magic-byte signature checks reject type-spoofed or corrupted uploads before any processing; size caps enforced on every entry path. |
 | **SSRF protection** | Webhook URLs are validated against private/loopback/metadata ranges at registration **and** re-checked at delivery to defeat DNS rebinding. |
@@ -230,6 +230,22 @@ partial · warnings     degradation flag + reviewer notes
 | **Tenant isolation** | Every job, webhook, and feedback record is scoped to a `company_id`; cross-tenant access is rejected. |
 | **Encryption** | Server-side encryption on S3; encryption at rest on DynamoDB. |
 | **Surface reduction** | Interactive API docs are disabled in production. |
+
+### Data retention
+
+| Data | Where | Retained |
+|---|---|---|
+| Résumé file (bytes) | S3 `temp/{job_id}/` | Deleted in a `finally` block immediately after processing. An S3 lifecycle rule expires anything that leaks after 1 day. |
+| Parsed result — sync | Response body only | Not retained |
+| Parsed result — async | DynamoDB `jobs` | 1 hour (TTL) |
+| Audit log | DynamoDB `audit-logs` | 90 days — **metadata only**, no content, no PII |
+| **Feedback — original + corrected JSON** | DynamoDB `feedback` | **90 days — contains candidate PII** |
+
+**The feedback table is the one place parsed résumé content is stored.** It is populated only
+when a caller explicitly submits corrections to `POST /resume/{job_id}/feedback`, which exists so
+corrections can be used to improve the parser. The submitted JSON includes name, email, phone,
+address, work history, and licences. Retention is `feedback_retention_days` (default 90).
+Callers whose data policy forbids this should not call the endpoint — nothing else depends on it.
 
 ---
 

@@ -4,6 +4,10 @@ version = "1.0.0"
 description = "Enterprise Resume Parsing API"
 authors = ["BlueIQ <oceanbluesolutions@gmail.com>"]
 readme = "README.md"
+# The distribution name ("resume-parser") does not match the import package
+# ("app"), so Poetry cannot infer it. Without this, `poetry install` fails on
+# the root project under Poetry 2.x — CI only survives because it pins 1.8.4.
+packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
