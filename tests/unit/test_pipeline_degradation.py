@@ -365,6 +365,46 @@ async def test_sync_skips_an_ai_call_it_cannot_afford(monkeypatch):
     assert any("human review" in w for w in result.warnings)
 
 
+# ── A lost work history must never be reported as a clean parse ───────────────
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_losing_work_history_falls_back_to_single_shot(monkeypatch):
+    """Production bug: the orchestrator's work stage failed, every other section
+    succeeded, and the résumé came back status="completed", partial=false with
+    experience=[] — a nurse silently recorded as having never worked.
+
+    The orchestrator now fails in that case, so the async path falls back to the
+    single-shot parser, which reads the whole résumé in one call and recovers the
+    roles. The caller gets a complete record, not a jobless one."""
+    from app.models.schemas import ExperienceItem, ParsedResumeAI, PersonalInfo
+
+    async def _orch_loses_work(_text, _anchors, budget=None):
+        raise AIParsingError("Work-history extraction failed and recovered no roles")
+
+    async def _single_shot(_sections, _anchors):
+        return (
+            ParsedResumeAI(
+                personal_info=PersonalInfo(full_name="Jane Smith"),
+                experience=[ExperienceItem(company="Mercy Hospital", role="RN - NICU")],
+            ),
+            500,
+        )
+
+    monkeypatch.setattr(pipeline.orchestrator, "parse", _orch_loses_work)
+    monkeypatch.setattr(pipeline.ai_parser, "parse", _single_shot)
+    _stub_extraction(monkeypatch)
+
+    result = await pipeline.run(
+        pipeline.PipelineInput(job_id="w1", filename="r.docx", content=b"x", company_id="c1")
+    )
+
+    # The work history is back...
+    assert [e.company for e in result.parsed.experience] == ["Mercy Hospital"]
+    # ...and it's a genuinely clean parse, not a partial.
+    assert result.partial is False
+
+
 # ── Surname/email mismatch review flag ───────────────────────────────────────
 
 def _parsed_with(name, email):

@@ -106,6 +106,65 @@ async def test_orchestrator_raises_when_everything_empty(monkeypatch):
         await orchestrator.parse("text", RuleExtracted())
 
 
+# ── A broken work stage must never pass as a complete record ──────────────────
+#
+# Reported from production: a NICU nurse's résumé came back status="completed",
+# partial=false, experience=[] — with only a warning ("WorkExperienceAgent failed")
+# to say the entire work history had been lost. A consumer told to branch on
+# `status` would have ingested that candidate as having never worked.
+#
+# A per-role failure is already survivable (the agent stubs it from the structure
+# map), so an EMPTY result from a BROKEN work stage means the section is simply gone.
+
+
+async def test_broken_work_stage_does_not_pass_as_a_complete_record(monkeypatch):
+    """The production bug. The work stage fails outright and recovers nothing, while
+    every other section succeeds — so the record looks healthy and is not empty. It
+    must fail, so the pipeline falls back to the single-shot parser, rather than
+    return a résumé with no jobs in it."""
+    def boom(system, user):
+        raise AIParsingError("Could not parse response content as the length limit was reached")
+
+    monkeypatch.setattr(BaseAgent, "_structured_call", _canned({
+        # No role map, so the agent takes the whole-document path — and that call dies.
+        "ResumeStructure": lambda s, u: ResumeStructure(roles=[]),
+        "WorkResult": boom,
+    }))
+
+    with pytest.raises(AIParsingError):
+        await orchestrator.parse("text", RuleExtracted())
+
+
+async def test_resume_with_genuinely_no_work_history_is_left_alone(monkeypatch):
+    """The other side of that guard: a candidate who really has no work history (a new
+    grad) also yields experience == [] — but nothing failed. That must still parse
+    cleanly, or every new-grad résumé would be forced down the fallback path."""
+    monkeypatch.setattr(BaseAgent, "_structured_call", _canned({
+        "ResumeStructure": lambda s, u: ResumeStructure(roles=[]),
+        "WorkResult": lambda s, u: WorkResult(work_experience=[]),
+    }))
+
+    parsed, _tokens, warnings = await orchestrator.parse("new grad résumé", RuleExtracted())
+
+    assert parsed.experience == []
+    assert parsed.skills == ["ICU"]  # the rest of the record is intact
+    assert not any("WorkExperienceAgent" in w for w in warnings)
+
+
+async def test_work_stage_that_recovers_some_roles_still_succeeds(monkeypatch):
+    """The guard keys on the stage BREAKING with nothing to show, not on any failure.
+    A per-role call that dies is stubbed from the structure map, so the employer
+    survives and the parse is still good."""
+    def boom(system, user):
+        raise AIParsingError("this one role's call died")
+
+    monkeypatch.setattr(BaseAgent, "_structured_call", _canned({"ExperienceItem": boom}))
+
+    parsed, _tokens, _warnings = await orchestrator.parse("text", RuleExtracted())
+
+    assert [e.company for e in parsed.experience] == ["Mercy Hospital"]
+
+
 async def test_orchestrator_carries_professional_associations(monkeypatch):
     def with_assocs(s, u):
         return CredentialsResult(

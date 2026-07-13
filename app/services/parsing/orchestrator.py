@@ -186,6 +186,9 @@ async def parse(
             "The professional summary appears unrelated to the candidate's healthcare "
             "background — it may be boilerplate copied from an unrelated résumé. Review before use."
         )
+    # Did the work stage BREAK, or did it genuinely find no roles? Both leave `work`
+    # empty, and the two must not be confused — see the guard below.
+    work_failed = isinstance(raw[1], Exception)
     work: list[ExperienceItem]  = _unwrap(raw[1], [], "WorkExperienceAgent", warnings)
     education: list[EducationItem] = _unwrap(raw[2], [], "EducationAgent", warnings)
     creds: CredentialsResult    = _unwrap(raw[3], CredentialsResult(), "CredentialsAgent", warnings)
@@ -218,6 +221,20 @@ async def parse(
         publications=supp.publications,
         professional_associations=creds.professional_associations,
     )
+
+    # Losing the ENTIRE work history is not a partial success — for a staffing record
+    # it is the section that matters most, and a résumé that comes back with zero
+    # roles is indistinguishable from a candidate who has never worked. A per-role
+    # failure is already survivable (the agent stubs it from the structure map), so
+    # reaching here with a BROKEN work stage and nothing to show for it means the
+    # section is simply gone. Fail, so the pipeline falls back to the single-shot
+    # parser — which reads the whole résumé in one call and usually recovers the
+    # roles — instead of returning a record that looks complete but has no jobs in it.
+    #
+    # Note this fires only when the stage actually failed. A résumé that genuinely
+    # lists no work history returns cleanly with work == [] and is left alone.
+    if work_failed and not work:
+        raise AIParsingError("Work-history extraction failed and recovered no roles")
 
     # If literally nothing came back, signal failure so the pipeline can fall back
     # to the single-shot parser rather than returning an empty husk.
