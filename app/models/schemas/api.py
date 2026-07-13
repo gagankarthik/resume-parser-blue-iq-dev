@@ -112,6 +112,15 @@ class ParseUploadedRequest(BaseModel):
                     "file needs (scanned PDF/image, or a digital PDF with a broken "
                     "text layer). Higher accuracy on hard scans, higher cost.",
     )
+    async_only: bool = Field(
+        False,
+        description="Never parse synchronously: return a `job_id` + `poll_url` "
+                    "immediately and run the full parse on the async worker. Use this "
+                    "when your own gateway cannot hold a request open long enough for "
+                    "a complete parse (a proxy or serverless host with a short request "
+                    "timeout) — blocking there would cost you a 504 with no data. "
+                    "Costs one poll round-trip; never returns a partial.",
+    )
 
     @field_validator("job_id")
     @classmethod

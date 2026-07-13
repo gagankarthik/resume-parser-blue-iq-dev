@@ -63,10 +63,12 @@ resource "aws_cloudfront_distribution" "api" {
       http_port              = 80
       https_port             = 443
       origin_ssl_protocols   = ["TLSv1.2"]
-      # Dense resumes parse synchronously in 39–55s. The CloudFront default origin
-      # response timeout (30s) would sever those before the Lambda responds, so
-      # raise it to the max allowed without a quota increase. Requests that need
-      # longer should use the async (upload → poll) path.
+      # Headroom above the API's own synchronous ceiling, NOT the binding limit.
+      # A sync parse is budgeted at _SYNC_WALL_BUDGET (~20s of pipeline + handoff,
+      # see app/services/pipeline.py) because the console reaches this API through a
+      # Next.js route handler on Amplify Hosting, whose SSR compute has a hard 30s
+      # request timeout we cannot raise. Anything that can't finish in that window is
+      # promoted to the async (poll) path, so nothing should ever approach 60s here.
       origin_read_timeout      = 60
       origin_keepalive_timeout = 60
     }

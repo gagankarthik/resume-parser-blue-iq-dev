@@ -9,7 +9,7 @@ always receives structured JSON to review.
 
 import pytest
 
-from app.core.exceptions import AIParsingError
+from app.core.exceptions import AIParsingError, ExtractionError
 from app.services import pipeline
 from app.services.parsing.rule_parser import RuleExtracted
 
@@ -210,6 +210,158 @@ async def test_sync_enrich_backfills_experience_on_timeout(monkeypatch):
     assert result.parsed.experience[0].company == "Hospital A"
     # ...and certifications backfilled too when the enrich CredentialsAgent yields none.
     assert [c.name for c in result.parsed.certifications] == ["BLS"]
+    assert any("human review" in w for w in result.warnings)
+
+
+# ── Sync path must fit the gateway ceiling (504 regression) ───────────────────
+#
+# A synchronous parse that outlives the caller's gateway is severed into a bodyless
+# 504 — no data, no job id, nothing to poll. For a DIRECT API caller that gateway is
+# our own CloudFront (60s origin read timeout), which is what _SYNC_WALL_BUDGET is
+# sized against. Callers behind a tighter gateway (the console, on Amplify's hard
+# 30s) cannot be saved by any budget value and must send `async_only` instead.
+
+_CLOUDFRONT_ORIGIN_CEILING = 60
+
+
+def test_sync_budget_fits_under_the_direct_caller_ceiling():
+    """The sync wall budget bounds the whole pipeline run. It must leave room under
+    CloudFront's 60s origin read timeout for the request/response transfer AND the S3
+    upload + worker dispatch of the promote-to-async handoff that follows a probe."""
+    _HANDOFF_AND_TRANSFER_HEADROOM = 8
+    assert pipeline._SYNC_WALL_BUDGET <= _CLOUDFRONT_ORIGIN_CEILING - _HANDOFF_AND_TRANSFER_HEADROOM
+
+    # The reserves are carved OUT of that budget, so each must fit inside it and still
+    # leave a usable AI window — otherwise every sync parse degrades on arrival.
+    assert pipeline._SYNC_EXTRACT_RESERVE < pipeline._SYNC_WALL_BUDGET
+    assert pipeline._SYNC_ENRICH_RESERVE < pipeline._SYNC_WALL_BUDGET
+    assert pipeline._SYNC_WALL_BUDGET - pipeline._SYNC_ENRICH_RESERVE >= pipeline._MIN_SYNC_AI_TIMEOUT
+
+
+@pytest.mark.asyncio
+async def test_sync_extraction_is_cut_off_by_the_wall_budget(monkeypatch):
+    """Extraction used to run OUTSIDE the sync budget, on its own 60s/90s caps — so a
+    slow step could burn the whole gateway ceiling before the AI parse even began.
+    It must now be clamped to the time the budget can actually afford."""
+    import time as _time
+
+    def _slow_extract(_content):
+        _time.sleep(5)  # far longer than the clamped budget below allows
+        return _LONG_TEXT
+
+    _stub_extraction(monkeypatch)
+    monkeypatch.setattr(pipeline.docx_extractor, "extract", _slow_extract)
+    # Shrink the budget so the clamp bites immediately instead of after ~8 real seconds.
+    monkeypatch.setattr(pipeline, "_SYNC_WALL_BUDGET", 1)
+    monkeypatch.setattr(pipeline, "_SYNC_EXTRACT_RESERVE", 0)
+    monkeypatch.setattr(pipeline, "_MIN_EXTRACT_TIMEOUT", 0.2)
+
+    started = _time.monotonic()
+    with pytest.raises(ExtractionError):
+        await pipeline.run(
+            pipeline.PipelineInput(
+                job_id="s5", filename="r.docx", content=b"x", company_id="c1",
+                sync=True, sync_probe=True,
+            )
+        )
+    # Cut off by the budget, not by the extractor's own 60s cap.
+    assert _time.monotonic() - started < 3
+
+
+@pytest.mark.asyncio
+async def test_sync_does_not_run_ocr_inline_and_degrades_for_promotion(monkeypatch):
+    """A digital PDF with an undecodable text layer must NOT trigger an inline OCR
+    pass on the sync path — OCR is budgeted at 90s, three times the entire gateway
+    ceiling, so starting it guarantees a 504. It must degrade to a flagged partial,
+    which the endpoints promote to the async worker."""
+    monkeypatch.setattr(
+        pipeline.classifier, "classify",
+        lambda filename, content: (pipeline.ExtractionStrategy.PDF, False),
+    )
+    # A text layer that looks like broken CID-encoded fonts.
+    monkeypatch.setattr(
+        pipeline.pdf_extractor, "extract",
+        lambda content: "(cid:12)(cid:9)(cid:44)(cid:7)(cid:31)(cid:88)" * 40,
+    )
+
+    def _ocr_must_not_run(*_a, **_k):
+        raise AssertionError("OCR must not run inline on the sync path")
+
+    monkeypatch.setattr(pipeline.ocr_extractor, "extract", _ocr_must_not_run)
+
+    async def _ai_must_not_run(_sections, _anchors):
+        raise AssertionError("the AI parse must not run on an undecodable text layer")
+
+    monkeypatch.setattr(pipeline.ai_parser, "parse", _ai_must_not_run)
+
+    result = await pipeline.run(
+        pipeline.PipelineInput(
+            job_id="s3", filename="scan.pdf", content=b"x", company_id="c1",
+            sync=True, sync_probe=True,
+        )
+    )
+
+    # partial=True is the signal the endpoints use to promote to the async worker.
+    assert result.partial is True
+    assert result.ocr_used is False
+    assert any("OCR" in w for w in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_async_still_runs_ocr_inline_for_a_broken_text_layer(monkeypatch):
+    """The async worker has no gateway ceiling, so it must still recover a broken
+    text layer with a real OCR pass — that path is unchanged."""
+    from app.models.schemas import ParsedResumeAI, PersonalInfo
+
+    monkeypatch.setattr(
+        pipeline.classifier, "classify",
+        lambda filename, content: (pipeline.ExtractionStrategy.PDF, False),
+    )
+    monkeypatch.setattr(
+        pipeline.pdf_extractor, "extract",
+        lambda content: "(cid:12)(cid:9)(cid:44)(cid:7)(cid:31)(cid:88)" * 40,
+    )
+    monkeypatch.setattr(
+        pipeline.ocr_extractor, "extract",
+        lambda content, filename, force: ("Jane Smith\njane@example.com\nRegistered Nurse", True),
+    )
+
+    async def _single_shot(_sections, _anchors):
+        return ParsedResumeAI(personal_info=PersonalInfo(full_name="Jane Smith")), 5
+
+    monkeypatch.setattr(pipeline.ai_parser, "parse", _single_shot)
+    monkeypatch.setattr(pipeline.orchestrator, "parse", _single_shot)  # short text → single-shot anyway
+
+    result = await pipeline.run(
+        pipeline.PipelineInput(job_id="a1", filename="scan.pdf", content=b"x", company_id="c1")
+    )
+
+    assert result.ocr_used is True
+    assert result.partial is False
+    assert result.parsed.personal_info.full_name == "Jane Smith"
+
+
+@pytest.mark.asyncio
+async def test_sync_skips_an_ai_call_it_cannot_afford(monkeypatch):
+    """When extraction has eaten the budget, the sync path must not open an AI call
+    that cannot land inside the ceiling — it degrades immediately so the caller can
+    still promote to async while there is time to dispatch."""
+    async def _ai_must_not_run(_sections, _anchors):
+        raise AssertionError("must not start an AI call the budget cannot afford")
+
+    monkeypatch.setattr(pipeline.ai_parser, "parse", _ai_must_not_run)
+    _stub_extraction(monkeypatch)
+    # Pretend the wall budget is already spent by the time extraction finishes.
+    monkeypatch.setattr(pipeline, "_SYNC_WALL_BUDGET", 0)
+
+    result = await pipeline.run(
+        pipeline.PipelineInput(
+            job_id="s4", filename="r.docx", content=b"x", company_id="c1",
+            sync=True, sync_probe=True,
+        )
+    )
+
+    assert result.partial is True
     assert any("human review" in w for w in result.warnings)
 
 

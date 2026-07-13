@@ -63,21 +63,39 @@ _TOTAL_BUDGET     = 200
 # large enough for a full _TIMEOUT_AI_PARSE fallback attempt after a degrade.
 _FALLBACK_RESERVE = 100
 
-# Wall-clock budget for a SYNCHRONOUS request. A synchronous parse must return
-# through the CloudFront/proxy origin ceiling (~60s), so it cannot use the full
-# _TOTAL_BUDGET — if the AI parse runs long, we must degrade to the deterministic
-# floor and respond with 200 + a rich partial BEFORE the gateway severs the
-# connection and the caller gets a bare 504 with no data. The async (upload →
-# poll) path has no per-request gateway ceiling and uses the full budget.
+# Wall-clock budget for a SYNCHRONOUS request. Sized for the ceiling of the gateway
+# a DIRECT API caller sits behind: our CloudFront origin read timeout, 60s (see
+# infrastructure/terraform/cloudfront_api.tf). The parse must degrade and answer
+# before that, or the caller gets a bare 504 with no data at all.
+#
+# This budget CANNOT protect a caller behind a tighter gateway. The UAT console, for
+# one, reaches this API through a Next.js route handler on AWS Amplify Hosting,
+# whose SSR compute has a HARD 30s request timeout — not configurable, no quota to
+# raise, and Next's `maxDuration` is not honored there. A measured single-shot parse
+# of even a *typical* two-role résumé takes ~20s, so a complete synchronous parse
+# does not fit 30s once extraction, normalization and transfer are counted: there is
+# no budget value that makes it work. Such callers must not block on a parse at all
+# — they pass `async_only` and poll instead (see app/api/v1/endpoints/resume.py).
 _SYNC_WALL_BUDGET = 50
+# Smallest AI-parse window worth opening on the sync path. If less than this is
+# left after extraction, don't start a call we know cannot land — degrade straight
+# to the floor so the caller promotes to async while it still has budget to do so.
+_MIN_SYNC_AI_TIMEOUT = 8
 # Time held back from the SYNC single-shot parse for the section-only "enrich"
 # pass that runs when it times out. The single-shot is capped this many seconds
 # BELOW the wall budget so a résumé that would run long is cut early, leaving room
 # to recover the semantic sections (headline, secondary phone, education
 # locations, skills, certs) with fast section agents instead of dropping to the
-# contact-only floor. Sized so the fast ~70% of résumés (which finish well inside
-# the cap) are untouched, while the dense ones still get a rich recovery.
+# contact-only floor. Only used by a sync caller that RETURNS the partial; probe
+# callers promote instead and hand this time to the single-shot (see sync_probe).
 _SYNC_ENRICH_RESERVE = 14
+# Time the sync path holds back from EXTRACTION for the AI parse + scoring that
+# must follow it. Extraction used to run entirely outside the sync budget, on its
+# own 60s/90s caps, so one slow step could blow the gateway ceiling before the AI
+# parse even began — an independent source of 504s that this budget never saw.
+_SYNC_EXTRACT_RESERVE = 20
+# Never hand an extraction step less than this; below it the step is pointless.
+_MIN_EXTRACT_TIMEOUT = 5
 
 
 @dataclass
@@ -130,17 +148,41 @@ async def run(inp: PipelineInput) -> PipelineResult:
         filename_len=len(inp.filename),
     )
 
+    # Wall-clock budget for the whole run. Declared HERE, above extraction, so that
+    # every stage below is bounded by it — extraction included. (It used to be
+    # declared just before the AI parse, which left extraction's 60s/90s per-step
+    # caps free to overrun the sync gateway ceiling on their own.)
+    budget = _SYNC_WALL_BUDGET if inp.sync else _TOTAL_BUDGET
+
+    def _remaining() -> float:
+        return budget - (time.monotonic() - start)
+
+    def _extract_timeout(cap: float) -> float:
+        """Cap one extraction step by the time actually left in the budget.
+
+        The async worker keeps the full per-step cap. A sync request cannot: it must
+        leave room for the AI parse that follows and still answer inside the gateway
+        ceiling, so the step is clamped to what the budget can really afford.
+        """
+        if not inp.sync:
+            return cap
+        return max(_MIN_EXTRACT_TIMEOUT, min(cap, _remaining() - _SYNC_EXTRACT_RESERVE))
+
     # ── 1. Classify ───────────────────────────────────────────────────────────
     strategy, _ = classifier.classify(inp.filename, inp.content)
     file_type   = strategy.value
     ocr_used    = False
+    # Set when a sync run discovers the file can only be read by OCR, which cannot
+    # fit the sync budget. The AI parse is then skipped and the run degrades to a
+    # flagged partial, which the endpoints promote to the async worker.
+    sync_needs_ocr = False
 
     # ── 2. Extract (sync extractors → executor, async-safe) ───────────────────
     try:
         if strategy == ExtractionStrategy.PDF:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, pdf_extractor.extract, inp.content),
-                timeout=_TIMEOUT_EXTRACTION,
+                timeout=_extract_timeout(_TIMEOUT_EXTRACTION),
             )
             # The classifier picked the digital path on text *length* alone, but a
             # PDF can carry a broken/garbled text layer (e.g. CID-encoded fonts with
@@ -148,27 +190,39 @@ async def run(inp: PipelineInput) -> PipelineResult:
             # extracted text looks low-quality, fall back to the OCR/Textract path so
             # the resume is still read instead of feeding the AI garbage.
             if _is_low_quality_pdf_text(raw_text):
-                log.info(
-                    "pdf_text_low_quality_ocr_fallback",
-                    job_id=inp.job_id, chars=len(raw_text.strip()),
-                )
-                raw_text, ocr_used = await asyncio.wait_for(
-                    loop.run_in_executor(
-                        None, ocr_extractor.extract,
-                        inp.content, inp.filename, inp.force_textract,
-                    ),
-                    timeout=_TIMEOUT_OCR,
-                )
-                file_type = ExtractionStrategy.OCR.value
+                if inp.sync:
+                    # An OCR pass alone is budgeted at _TIMEOUT_OCR — several times the
+                    # whole sync wall budget. Starting it behind a gateway that severs
+                    # the connection at 30s just guarantees a bodyless 504. Bail out to
+                    # a partial instead: the caller promotes the file to the async
+                    # worker, which OCRs and parses it on the full budget.
+                    log.info(
+                        "pdf_text_low_quality_needs_async",
+                        job_id=inp.job_id, chars=len(raw_text.strip()),
+                    )
+                    sync_needs_ocr = True
+                else:
+                    log.info(
+                        "pdf_text_low_quality_ocr_fallback",
+                        job_id=inp.job_id, chars=len(raw_text.strip()),
+                    )
+                    raw_text, ocr_used = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None, ocr_extractor.extract,
+                            inp.content, inp.filename, inp.force_textract,
+                        ),
+                        timeout=_TIMEOUT_OCR,
+                    )
+                    file_type = ExtractionStrategy.OCR.value
         elif strategy == ExtractionStrategy.DOCX:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, docx_extractor.extract, inp.content),
-                timeout=_TIMEOUT_EXTRACTION,
+                timeout=_extract_timeout(_TIMEOUT_EXTRACTION),
             )
         elif strategy == ExtractionStrategy.RTF:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, rtf_extractor.extract, inp.content),
-                timeout=_TIMEOUT_EXTRACTION,
+                timeout=_extract_timeout(_TIMEOUT_EXTRACTION),
             )
         else:
             result = await asyncio.wait_for(
@@ -176,7 +230,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
                     None, ocr_extractor.extract,
                     inp.content, inp.filename, inp.force_textract,
                 ),
-                timeout=_TIMEOUT_OCR,
+                timeout=_extract_timeout(_TIMEOUT_OCR),
             )
             raw_text, ocr_used = result
 
@@ -200,11 +254,12 @@ async def run(inp: PipelineInput) -> PipelineResult:
     # different budgets:
     #   ASYNC (worker, full budget): multi-agent orchestrator (structure → per-role
     #     → validate) → single-shot fallback → deterministic floor.
-    #   SYNC (gateway ceiling ~60s): single-shot PRIMARY — fast AND complete for the
-    #     ~70% of résumés it parses inside its cap. The cap sits below the wall
-    #     budget so a résumé that would run long is cut early, leaving room for a
-    #     section-only "enrich" pass (semantic sections, no slow per-role work
+    #   SYNC (gateway ceiling — see _SYNC_WALL_BUDGET): single-shot PRIMARY — fast
+    #     AND complete for the résumés it parses inside its cap. The cap sits below
+    #     the wall budget so a résumé that would run long is cut early, leaving room
+    #     for a section-only "enrich" pass (semantic sections, no slow per-role work
     #     stage) plus deterministic work history — far richer than the bare floor.
+    #     Probe callers skip the enrich and promote to async instead.
     #     (The full orchestrator was tried on sync and dropped the per-role work
     #     stage — cancelled on the tight budget — silently losing all experience.)
     settings  = get_settings()
@@ -213,12 +268,19 @@ async def run(inp: PipelineInput) -> PipelineResult:
     tokens    = 0
     parsed_ai = None
 
-    budget = _SYNC_WALL_BUDGET if inp.sync else _TOTAL_BUDGET
-
-    def _remaining() -> float:
-        return budget - (time.monotonic() - start)
-
-    if not inp.sync:
+    if sync_needs_ocr:
+        # Unreadable text layer on the sync path (see extraction). There is nothing
+        # worth feeding the AI, and OCR does not fit the budget — degrade to the
+        # deterministic floor and flag it. `partial` is the signal the endpoints use
+        # to promote the file to the async worker, which reads it properly via OCR.
+        parsed_ai = heuristic_parser.parse(cleaned, anchors)
+        partial   = True
+        warnings.append(
+            "This PDF's text layer could not be decoded, so the résumé needs OCR — "
+            "which does not fit the synchronous budget. Re-run it on the asynchronous "
+            "path (the API does this for you) to get a complete record."
+        )
+    elif not inp.sync:
         # ── ASYNC: orchestrator primary → single-shot → floor ─────────────────
         use_orchestrator = (
             settings.use_multi_agent
@@ -269,14 +331,24 @@ async def run(inp: PipelineInput) -> PipelineResult:
         # more résumés finish synchronously). Otherwise (a caller that returns the
         # partial directly) keep the enrich reserve.
         enrich_reserve = 3.0 if inp.sync_probe else _SYNC_ENRICH_RESERVE
-        ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining() - enrich_reserve))
+        # Clamp to what is genuinely left. The old `max(15.0, …)` floor here meant a
+        # slow extraction could still hand the AI a 15s window the budget could not
+        # afford, overshooting the gateway ceiling — the very 504 this budget exists
+        # to prevent. If the window is too small to be worth opening, degrade now and
+        # let the caller promote to async while there is still time to dispatch.
+        ai_timeout = min(_TIMEOUT_AI_PARSE, _remaining() - enrich_reserve)
         try:
+            if ai_timeout < _MIN_SYNC_AI_TIMEOUT:
+                raise TimeoutError(
+                    f"only {max(0.0, ai_timeout):.0f}s of the {_SYNC_WALL_BUDGET}s "
+                    "synchronous budget was left for the AI parse"
+                )
             parsed_ai, tokens = await asyncio.wait_for(
                 ai_parser.parse(sections, anchors), timeout=ai_timeout,
             )
         except (AIParsingError, TimeoutError) as exc:
             reason = (
-                f"AI parsing timed out after {ai_timeout:.0f}s"
+                f"AI parsing did not fit the {_SYNC_WALL_BUDGET}s synchronous budget"
                 if isinstance(exc, TimeoutError) else f"AI parsing failed: {exc}"
             )
             log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
