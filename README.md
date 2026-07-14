@@ -116,25 +116,37 @@ python -m scripts.refresh_geography_catalog
 All four catalogs are **optional by design**: a missing file yields a null ID and a logged
 warning. A bad catalog never breaks a parse.
 
-### City IDs require a key on the Lambda
+### Debugging `city_id: null`
 
-City is the only mapping that calls the partner API *during a parse*. It needs
-`GIG_SPECIALTIES_API_KEY` set **on the deployed function** - and **CI deploys only update the
-function's code, never its environment.**
+City is the only mapping that calls the partner API *during a parse*, so it is the only one that
+can fail at runtime. **Read the logs before theorising** - every failure mode now emits a
+distinct line, and they tell you which one you are in:
 
-If every role comes back with `city_id: null` while `country_id`/`state_id` resolve fine, the
-key is missing. The logs say which case you are in:
+| Log line | Meaning | Fix |
+|---|---|---|
+| `city_api_disabled` | `ENABLE_CITY_API_MATCH` is false | It defaults to **true**; something set it off |
+| `city_api_no_key` | No API key resolved from the environment | Set it on the function (below) |
+| `city_api_lookup_failed kind=auth\|forbidden` | Key present but rejected | Wrong key, or no permission on the endpoint |
+| `city_api_lookup_failed kind=rate_limited` | Partner quota (per-second or monthly) | Backs off and retries; persistent = quota exhausted |
+| `city_api_below_threshold` | Matched, but under `CITY_ACCEPT_MIN` (0.9) | Working as designed - see below |
+| `city_api_tier lookups=N matched=N` | **Working** | - |
 
-```
-city_api_no_key        GIG_SPECIALTIES_API_KEY is not configured
-city_api_lookup_failed kind=auth|forbidden|rate_limited  <- bad key / no permission / quota
-```
+None of this existed before 2026-07-14: every one of these failures used to be swallowed into an
+empty result with **no log line at all**, so a bad key, an exhausted quota and "this city genuinely
+has no match" were indistinguishable. That silence - not any one of the failures - was the real
+defect, and it is why an earlier `city_id: null` report was misdiagnosed as a missing key when the
+key was in fact present.
 
-**Set it on the function directly** - Lambda console -> Configuration -> Environment variables,
-or `aws lambda update-function-configuration`. **Do not reach for `terraform apply`**: see the
-warning under [Deployment](#deployment). Terraform does not currently manage this
-infrastructure, so an apply would try to *create* a second copy of everything rather than
-update the running function.
+**Two traps worth knowing:**
+
+- **The key's name is misspelled on purpose.** The platform calls it
+  `GIG_SPECIAILITIES_API_KEY`, and `config.py` accepts that spelling via `AliasChoices` alongside
+  the correct `GIG_SPECIALTIES_API_KEY`. Seeing only the misspelled one in the Lambda's
+  environment does **not** mean the key is missing. (It also authenticates facilities,
+  geographies and cities - not just specialties.)
+- **A missing key is set on the function itself,** not in this repo and not via Terraform - CI
+  deploys only update the function's code, never its environment, and Terraform does not manage
+  this infrastructure at all (see [Deployment](#deployment)).
 
 ---
 
