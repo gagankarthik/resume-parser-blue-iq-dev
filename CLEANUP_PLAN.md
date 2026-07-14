@@ -200,6 +200,47 @@ it.** Extract every shared rule into `CORE_RULES`.
 
 ---
 
+## E. Production is not under Terraform's control - ⚠️ NEW, discovered 2026-07-14
+
+**Nothing in `infrastructure/terraform/` has ever been applied.**
+
+The S3 backend it declares - `resume-parser-tfstate` - **does not exist** (`NoSuchBucket`), and
+`main.tf:14` still carries its own unfinished instruction: `# create this bucket manually first`.
+There is a `make tf-bootstrap` target to create the bucket + lock table; it has evidently never
+been run.
+
+So the running Lambda, all 7 DynamoDB tables, the S3 bucket, the Function URL and both IAM roles
+were created **outside Terraform**, and Terraform holds **no state for any of them**.
+
+**Why this matters more than it looks.** The config *reads* as the source of truth, so anyone
+debugging live config will trust it and be wrong. That is not hypothetical - it is exactly what
+happened while diagnosing the `city_id: null` bug: `lambda.tf:29` wires
+`GIG_SPECIALTIES_API_KEY` from a variable that `terraform.tfvars` supplies with a real key, which
+reads as "the key is configured". It is not on the function, because **the file that would put it
+there has never run.** The README shipped `make tf-apply` as the fix; that advice was wrong and is
+now corrected.
+
+**`terraform apply` is currently DANGEROUS, not just useless.** With empty state it does not
+reconcile the 19 existing resources - it tries to **create** them. Every one already exists.
+
+**The fix is adoption, not application:**
+
+1. `make tf-bootstrap` - create the state bucket + lock table (the target already exists).
+2. `terraform import` each of the 19 resources, one at a time.
+3. `terraform plan` until it reports **no changes**. That empty plan is the whole goal: it is the
+   proof that the config finally describes reality.
+4. Only then is `terraform apply` a safe way to change anything - and only then is
+   "Terraform owns Lambda env" a true statement rather than an aspiration.
+
+Until step 3 passes, treat `infrastructure/terraform/` as documentation and change live config on
+the resource itself.
+
+**Do not skip step 3 by importing and applying in one go.** A plan that is not empty after import
+means the config and reality disagree, and an apply would resolve that disagreement in favor of
+the config - on live infrastructure, silently.
+
+---
+
 ## Sequencing
 
 ```
