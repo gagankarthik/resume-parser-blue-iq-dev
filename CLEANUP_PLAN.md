@@ -213,12 +213,22 @@ So the running Lambda, all 7 DynamoDB tables, the S3 bucket, the Function URL an
 were created **outside Terraform**, and Terraform holds **no state for any of them**.
 
 **Why this matters more than it looks.** The config *reads* as the source of truth, so anyone
-debugging live config will trust it and be wrong. That is not hypothetical - it is exactly what
-happened while diagnosing the `city_id: null` bug: `lambda.tf:29` wires
-`GIG_SPECIALTIES_API_KEY` from a variable that `terraform.tfvars` supplies with a real key, which
-reads as "the key is configured". It is not on the function, because **the file that would put it
-there has never run.** The README shipped `make tf-apply` as the fix; that advice was wrong and is
-now corrected.
+debugging live config will trust it and be wrong.
+
+That is not hypothetical - it is what happened here, and the failure is worth recording precisely
+because the wrong conclusion was so easy to reach. `lambda.tf:29` wires `GIG_SPECIALTIES_API_KEY`
+from a variable that `terraform.tfvars` supplies with a real 64-character key. Reading only the
+repo, the state of the deployed function looks fully determined. It is not determined at all - the
+file has never run - so **the config told us nothing about production either way.** The conclusion
+drawn from it ("the key must be missing, apply Terraform to fix it") was wrong on both halves: the
+key was already on the function, set by hand under the platform's misspelling
+(`GIG_SPECIAILITIES_API_KEY`, which `config.py` accepts via `AliasChoices`), and `terraform apply`
+would not have fixed it but tried to recreate the stack. The README shipped that advice; it has
+been corrected.
+
+The lesson is not "read Terraform more carefully". It is that **an unapplied Terraform config is
+evidence about nothing**, and reasoning from it is worse than having no config at all, because it
+produces confident wrong answers instead of an "I don't know" that would have sent us to the logs.
 
 **`terraform apply` is currently DANGEROUS, not just useless.** With empty state it does not
 reconcile the 19 existing resources - it tries to **create** them. Every one already exists.
