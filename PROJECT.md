@@ -215,16 +215,25 @@ Recorded here because stale docs cost more than no docs.
 - **7 DynamoDB tables**, not 6. Default model is `gpt-4.1-mini`, not GPT-4o.
 - **Region is `us-east-2`.** The `Makefile` says `us-east-1` and targets Lambda function names
   that do not exist. Do not trust it.
+- **Terraform does not manage production.** `infrastructure/terraform/` has **never been
+  applied** - its state bucket does not exist. Every live resource was created outside it, and
+  Terraform holds no state for any of them. The config *describes* the stack; it does not
+  *control* it, and `terraform apply` would try to create a second copy of all 19 resources
+  rather than update the running ones. This document said "Terraform owns env/sizing" until
+  2026-07-14; that was aspiration read as fact, and it sent a `city_id` investigation down the
+  wrong path. Adoption plan: `CLEANUP_PLAN.md` §E.
 
 ---
 
 ## 9. Operational facts
 
 - **Deploy:** push to `main` -> GitHub Actions builds `Dockerfile.lambda`, pushes to ECR,
-  `update-function-code`, then a retrying health smoke test. CI owns the image; Terraform
-  ignores `image_uri` drift and owns env/sizing.
+  `update-function-code`, then a retrying health smoke test. **CI owns the image, and only the
+  image** - it never touches env vars or sizing.
+- **Env vars and sizing are set on the function itself,** by hand. Nothing manages them: see the
+  Terraform note in §8. A redeploy will not pick up a new secret, and neither will an apply.
 - **Rollback:** `rollback.yml` (`workflow_dispatch`) -> verify tag in ECR -> update -> smoke test.
   Shares a concurrency group with deploy so the two cannot race.
-- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **478 passing, 78%**.
+- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **537 passing, 78%**.
 - **Local:** `docker-compose up` (LocalStack: S3 + DynamoDB). Note `Dockerfile` is dev-only -
   `Dockerfile.lambda` is what ships.

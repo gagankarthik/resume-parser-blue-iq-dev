@@ -119,18 +119,22 @@ warning. A bad catalog never breaks a parse.
 ### City IDs require a key on the Lambda
 
 City is the only mapping that calls the partner API *during a parse*. It needs
-`GIG_SPECIALTIES_API_KEY` set **on the deployed function**, which comes from Terraform -
-**CI deploys only update the function's code, never its environment.**
+`GIG_SPECIALTIES_API_KEY` set **on the deployed function** - and **CI deploys only update the
+function's code, never its environment.**
 
 If every role comes back with `city_id: null` while `country_id`/`state_id` resolve fine, the
-key is almost certainly missing. Check the logs:
+key is missing. The logs say which case you are in:
 
 ```
 city_api_no_key        GIG_SPECIALTIES_API_KEY is not configured
 city_api_lookup_failed kind=auth|forbidden|rate_limited  <- bad key / no permission / quota
 ```
 
-Fix with `make tf-apply` (Terraform owns Lambda env), not a redeploy.
+**Set it on the function directly** - Lambda console -> Configuration -> Environment variables,
+or `aws lambda update-function-configuration`. **Do not reach for `terraform apply`**: see the
+warning under [Deployment](#deployment). Terraform does not currently manage this
+infrastructure, so an apply would try to *create* a second copy of everything rather than
+update the running function.
 
 ---
 
@@ -218,10 +222,25 @@ Source, docs and everything the API emits are **ASCII**. Three things are delibe
 
 - **Deploy:** push to `main` -> GitHub Actions builds `Dockerfile.lambda`, pushes to ECR,
   updates the function, then runs a retrying health smoke test. **CI owns the image.**
-- **Environment:** **Terraform owns Lambda env vars and sizing.** CI never touches them. If you
-  add a secret, `make tf-apply` - a redeploy will not pick it up.
+- **Environment:** CI never touches Lambda env vars or sizing. A redeploy will **not** pick up
+  a new secret - it must be set on the function itself.
 - **Rollback:** `rollback.yml` (`workflow_dispatch`) - verifies the tag in ECR, updates, smoke
   tests. Shares a concurrency group with deploy so the two cannot race.
+
+> ### Terraform does not manage this infrastructure
+>
+> `infrastructure/terraform/` **describes** the stack, but it has never been applied: the state
+> bucket it points at (`resume-parser-tfstate`) does not exist, and `main.tf` still carries the
+> "create this bucket manually first" note. The running Lambda, the 7 DynamoDB tables, the S3
+> bucket and the IAM roles were all created **outside** Terraform.
+>
+> **So `terraform apply` is not a safe way to change anything here.** With empty state it would
+> not update the running resources - it would try to *create* all 19 of them, every one of which
+> already exists. Until the stack is adopted (`terraform import`, one resource at a time - **not**
+> an apply), treat these files as a description, not as the source of truth. Change live config on
+> the resource itself.
+>
+> Tracked in [`CLEANUP_PLAN.md`](CLEANUP_PLAN.md) §E.
 
 ## Limits
 
