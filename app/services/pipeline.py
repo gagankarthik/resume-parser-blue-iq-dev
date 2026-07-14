@@ -18,13 +18,13 @@ Nothing is stored - raw content is never written to disk or database.
 
 import asyncio
 import re
-import time
 from dataclasses import dataclass, field
 
 from app.core.config import get_settings
 from app.core.exceptions import AIParsingError, ExtractionError
 from app.core.logging import get_logger
 from app.models.schemas import ConfidenceScores, ParsedResumeAI, PersonalInfo
+from app.services.budget import TIMEOUT_EXTRACTION, TIMEOUT_OCR, ParseBudget
 from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor, rtf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
 from app.services.normalization import city_resolver, specialty_matcher
@@ -38,65 +38,6 @@ from app.services.scoring.confidence_scorer import score
 
 log = get_logger(__name__)
 
-# Per-step timeouts (seconds)
-_TIMEOUT_EXTRACTION = 60
-_TIMEOUT_OCR        = 90    # Textract on multi-page scans — bounded so OCR alone
-                            # can't eat the whole per-resume budget
-# The orchestrator self-bounds each stage (see orchestrator._STAGE2_TIMEOUT et al.)
-# and returns a partial result rather than being cancelled, so this is only a hard
-# safety net set just above its internal budget. The single-shot fallback is one
-# LLM call, so it gets a tighter cap - together they bound the worst case instead
-# of stacking two full 2-minute timeouts when the orchestrator degrades.
-_TIMEOUT_ORCHESTRATOR = 130
-# Single-shot cap. Measured single-shot parse time for a dense multi-role resume
-# is 39-55s (e.g. a 12-role radiology resume: 39.1s -> 12 roles fully extracted),
-# so a 45s cap sat right on the cliff and normal OpenAI latency variance tipped
-# it into a contact-only "partial". Give it real headroom - the Lambda function
-# timeout is 300s, so the binding constraint is the total budget below, not this.
-_TIMEOUT_AI_PARSE     = 90
-
-# Overall soft budget for one resume. Every AI step is capped by the time left
-# under this budget. Sized to let a slow orchestrator degrade AND still leave a
-# full single-shot fallback, comfortably inside the 300s Lambda timeout.
-_TOTAL_BUDGET     = 200
-# Time held back from the orchestrator for the single-shot fallback + scoring -
-# large enough for a full _TIMEOUT_AI_PARSE fallback attempt after a degrade.
-_FALLBACK_RESERVE = 100
-
-# Wall-clock budget for a SYNCHRONOUS request. Sized for the ceiling of the gateway
-# a DIRECT API caller sits behind: our CloudFront origin read timeout, 60s (see
-# infrastructure/terraform/cloudfront_api.tf). The parse must degrade and answer
-# before that, or the caller gets a bare 504 with no data at all.
-#
-# This budget CANNOT protect a caller behind a tighter gateway. The UAT console, for
-# one, reaches this API through a Next.js route handler on AWS Amplify Hosting,
-# whose SSR compute has a HARD 30s request timeout - not configurable, no quota to
-# raise, and Next's `maxDuration` is not honored there. A measured single-shot parse
-# of even a *typical* two-role resume takes ~20s, so a complete synchronous parse
-# does not fit 30s once extraction, normalization and transfer are counted: there is
-# no budget value that makes it work. Such callers must not block on a parse at all
-# - they pass `async_only` and poll instead (see app/api/v1/endpoints/resume.py).
-_SYNC_WALL_BUDGET = 50
-# Smallest AI-parse window worth opening on the sync path. If less than this is
-# left after extraction, don't start a call we know cannot land - degrade straight
-# to the floor so the caller promotes to async while it still has budget to do so.
-_MIN_SYNC_AI_TIMEOUT = 8
-# Time held back from the SYNC single-shot parse for the section-only "enrich"
-# pass that runs when it times out. The single-shot is capped this many seconds
-# BELOW the wall budget so a resume that would run long is cut early, leaving room
-# to recover the semantic sections (headline, secondary phone, education
-# locations, skills, certs) with fast section agents instead of dropping to the
-# contact-only floor. Only used by a sync caller that RETURNS the partial; probe
-# callers promote instead and hand this time to the single-shot (see sync_probe).
-_SYNC_ENRICH_RESERVE = 14
-# Time the sync path holds back from EXTRACTION for the AI parse + scoring that
-# must follow it. Extraction used to run entirely outside the sync budget, on its
-# own 60s/90s caps, so one slow step could blow the gateway ceiling before the AI
-# parse even began - an independent source of 504s that this budget never saw.
-_SYNC_EXTRACT_RESERVE = 20
-# Never hand an extraction step less than this; below it the step is pointless.
-_MIN_EXTRACT_TIMEOUT = 5
-
 
 @dataclass
 class PipelineInput:
@@ -109,9 +50,9 @@ class PipelineInput:
     # global settings.force_textract default.
     force_textract: bool = False
     # True when the caller is waiting synchronously on the HTTP response, so the
-    # pipeline must finish within the gateway ceiling (_SYNC_WALL_BUDGET) and
+    # pipeline must finish within the gateway ceiling (budget.SYNC_WALL_BUDGET) and
     # degrade gracefully rather than run to the full budget and 504. The async
-    # worker leaves this False to use the full _TOTAL_BUDGET.
+    # worker leaves this False to use the full budget.TOTAL_BUDGET.
     sync: bool = False
     # True when this sync run is only a fast PROBE: if the single-shot can't finish
     # in the budget, the caller will re-dispatch the file to the async worker (full
@@ -137,8 +78,7 @@ class PipelineResult:
 
 
 async def run(inp: PipelineInput) -> PipelineResult:
-    start = time.monotonic()
-    loop  = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
     # Don't log the raw filename - resume filenames routinely embed the candidate's
     # name ("jane_smith_rn.pdf"), i.e. PII in CloudWatch. Extension + length suffice.
@@ -148,25 +88,12 @@ async def run(inp: PipelineInput) -> PipelineResult:
         filename_len=len(inp.filename),
     )
 
-    # Wall-clock budget for the whole run. Declared HERE, above extraction, so that
-    # every stage below is bounded by it - extraction included. (It used to be
-    # declared just before the AI parse, which left extraction's 60s/90s per-step
-    # caps free to overrun the sync gateway ceiling on their own.)
-    budget = _SYNC_WALL_BUDGET if inp.sync else _TOTAL_BUDGET
-
-    def _remaining() -> float:
-        return budget - (time.monotonic() - start)
-
-    def _extract_timeout(cap: float) -> float:
-        """Cap one extraction step by the time actually left in the budget.
-
-        The async worker keeps the full per-step cap. A sync request cannot: it must
-        leave room for the AI parse that follows and still answer inside the gateway
-        ceiling, so the step is clamped to what the budget can really afford.
-        """
-        if not inp.sync:
-            return cap
-        return max(_MIN_EXTRACT_TIMEOUT, min(cap, _remaining() - _SYNC_EXTRACT_RESERVE))
+    # Every deadline decision in this function belongs to the budget - see
+    # app/services/budget.py. It starts its clock HERE, above extraction, so that
+    # every stage below is bounded by it, extraction included. (The clock used to
+    # start just before the AI parse, which left extraction's 60s/90s per-step caps
+    # free to overrun the sync gateway ceiling on their own.)
+    budget = ParseBudget.for_sync(probe=inp.sync_probe) if inp.sync else ParseBudget.for_async()
 
     # -- 1. Classify -----------------------------------------------------------
     strategy, _ = classifier.classify(inp.filename, inp.content)
@@ -182,7 +109,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
         if strategy == ExtractionStrategy.PDF:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, pdf_extractor.extract, inp.content),
-                timeout=_extract_timeout(_TIMEOUT_EXTRACTION),
+                timeout=budget.for_extraction(TIMEOUT_EXTRACTION),
             )
             # The classifier picked the digital path on text *length* alone, but a
             # PDF can carry a broken/garbled text layer (e.g. CID-encoded fonts with
@@ -191,7 +118,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
             # the resume is still read instead of feeding the AI garbage.
             if _is_low_quality_pdf_text(raw_text):
                 if inp.sync:
-                    # An OCR pass alone is budgeted at _TIMEOUT_OCR - several times the
+                    # An OCR pass alone is budgeted at TIMEOUT_OCR - several times the
                     # whole sync wall budget. Starting it behind a gateway that severs
                     # the connection at 30s just guarantees a bodyless 504. Bail out to
                     # a partial instead: the caller promotes the file to the async
@@ -211,18 +138,18 @@ async def run(inp: PipelineInput) -> PipelineResult:
                             None, ocr_extractor.extract,
                             inp.content, inp.filename, inp.force_textract,
                         ),
-                        timeout=_TIMEOUT_OCR,
+                        timeout=budget.for_extraction(TIMEOUT_OCR),
                     )
                     file_type = ExtractionStrategy.OCR.value
         elif strategy == ExtractionStrategy.DOCX:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, docx_extractor.extract, inp.content),
-                timeout=_extract_timeout(_TIMEOUT_EXTRACTION),
+                timeout=budget.for_extraction(TIMEOUT_EXTRACTION),
             )
         elif strategy == ExtractionStrategy.RTF:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, rtf_extractor.extract, inp.content),
-                timeout=_extract_timeout(_TIMEOUT_EXTRACTION),
+                timeout=budget.for_extraction(TIMEOUT_EXTRACTION),
             )
         else:
             result = await asyncio.wait_for(
@@ -230,12 +157,12 @@ async def run(inp: PipelineInput) -> PipelineResult:
                     None, ocr_extractor.extract,
                     inp.content, inp.filename, inp.force_textract,
                 ),
-                timeout=_extract_timeout(_TIMEOUT_OCR),
+                timeout=budget.for_extraction(TIMEOUT_OCR),
             )
             raw_text, ocr_used = result
 
     except TimeoutError as exc:
-        timeout = _TIMEOUT_OCR if strategy == ExtractionStrategy.OCR else _TIMEOUT_EXTRACTION
+        timeout = TIMEOUT_OCR if strategy == ExtractionStrategy.OCR else TIMEOUT_EXTRACTION
         raise ExtractionError(
             f"Text extraction timed out after {timeout}s"
         ) from exc
@@ -254,14 +181,15 @@ async def run(inp: PipelineInput) -> PipelineResult:
     # different budgets:
     #   ASYNC (worker, full budget): multi-agent orchestrator (structure -> per-role
     #     -> validate) -> single-shot fallback -> deterministic floor.
-    #   SYNC (gateway ceiling - see _SYNC_WALL_BUDGET): single-shot PRIMARY - fast
-    #     AND complete for the resumes it parses inside its cap. The cap sits below
-    #     the wall budget so a resume that would run long is cut early, leaving room
-    #     for a section-only "enrich" pass (semantic sections, no slow per-role work
-    #     stage) plus deterministic work history - far richer than the bare floor.
-    #     Probe callers skip the enrich and promote to async instead.
+    #   SYNC (gateway ceiling): single-shot PRIMARY - fast AND complete for the
+    #     resumes it parses inside its cap. The cap sits below the wall budget so a
+    #     resume that would run long is cut early, leaving room for a section-only
+    #     "enrich" pass (semantic sections, no slow per-role work stage) plus
+    #     deterministic work history - far richer than the bare floor. Probe callers
+    #     skip the enrich and promote to async instead.
     #     (The full orchestrator was tried on sync and dropped the per-role work
     #     stage - cancelled on the tight budget - silently losing all experience.)
+    # The arithmetic behind both lives in ParseBudget; this reads as a ladder.
     settings  = get_settings()
     warnings: list[str] = []
     partial   = False
@@ -285,23 +213,21 @@ async def run(inp: PipelineInput) -> PipelineResult:
         use_orchestrator = (
             settings.use_multi_agent
             and len(cleaned) >= settings.multi_agent_min_chars
-            # If extraction (e.g. a slow OCR pass) already ate most of the budget,
-            # go straight to the cheaper single-shot parser.
-            and _remaining() > _FALLBACK_RESERVE + 15
+            and budget.can_afford_orchestrator()
         )
         if use_orchestrator:
-            orch_budget = min(_TIMEOUT_ORCHESTRATOR, _remaining() - _FALLBACK_RESERVE)
+            orch = budget.for_orchestrator()
             try:
                 parsed_ai, tokens, warnings = await asyncio.wait_for(
-                    orchestrator.parse(cleaned, anchors, budget=orch_budget),
-                    timeout=orch_budget + 10,  # hard net above the self-bounded stages
+                    orchestrator.parse(cleaned, anchors, budget=orch.budget),
+                    timeout=orch.timeout,  # hard net above the self-bounded stages
                 )
             except (AIParsingError, TimeoutError) as exc:
                 log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))
                 warnings = []  # discard partial orchestrator warnings; the fallback is authoritative
 
         if parsed_ai is None:
-            ai_timeout = min(_TIMEOUT_AI_PARSE, max(15.0, _remaining()))
+            ai_timeout = budget.for_async_ai_parse()
             try:
                 parsed_ai, tokens = await asyncio.wait_for(
                     ai_parser.parse(sections, anchors), timeout=ai_timeout,
@@ -325,22 +251,11 @@ async def run(inp: PipelineInput) -> PipelineResult:
                 )
     else:
         # -- SYNC: single-shot primary -----------------------------------------
-        # In PROBE mode the caller promotes any partial to the async worker (full
-        # budget, complete parse), so the section-only enrich would be thrown away
-        # - skip it and hand the single-shot the reserve time instead (bigger cap ->
-        # more resumes finish synchronously). Otherwise (a caller that returns the
-        # partial directly) keep the enrich reserve.
-        enrich_reserve = 3.0 if inp.sync_probe else _SYNC_ENRICH_RESERVE
-        # Clamp to what is genuinely left. The old `max(15.0, ...)` floor here meant a
-        # slow extraction could still hand the AI a 15s window the budget could not
-        # afford, overshooting the gateway ceiling - the very 504 this budget exists
-        # to prevent. If the window is too small to be worth opening, degrade now and
-        # let the caller promote to async while there is still time to dispatch.
-        ai_timeout = min(_TIMEOUT_AI_PARSE, _remaining() - enrich_reserve)
+        ai_timeout = budget.for_sync_ai_parse()
         try:
-            if ai_timeout < _MIN_SYNC_AI_TIMEOUT:
+            if not ParseBudget.is_viable_sync_window(ai_timeout):
                 raise TimeoutError(
-                    f"only {max(0.0, ai_timeout):.0f}s of the {_SYNC_WALL_BUDGET}s "
+                    f"only {max(0.0, ai_timeout):.0f}s of the {budget.total:.0f}s "
                     "synchronous budget was left for the AI parse"
                 )
             parsed_ai, tokens = await asyncio.wait_for(
@@ -348,7 +263,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
             )
         except (AIParsingError, TimeoutError) as exc:
             reason = (
-                f"AI parsing did not fit the {_SYNC_WALL_BUDGET}s synchronous budget"
+                f"AI parsing did not fit the {budget.total:.0f}s synchronous budget"
                 if isinstance(exc, TimeoutError) else f"AI parsing failed: {exc}"
             )
             log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
@@ -361,11 +276,12 @@ async def run(inp: PipelineInput) -> PipelineResult:
             # section-only agents - omitting the slow per-role work stage - and keep
             # the deterministic work history. Skipped in probe mode (the partial is
             # not returned to the caller - it triggers an async re-parse instead).
-            if not inp.sync_probe and settings.use_multi_agent and _remaining() > 9:
+            if settings.use_multi_agent and budget.can_afford_enrich():
+                enrich = budget.for_enrich()
                 try:
                     light, ltok, lwarn = await asyncio.wait_for(
-                        orchestrator.parse_light(cleaned, anchors, budget=_remaining() - 3),
-                        timeout=_remaining() - 1,
+                        orchestrator.parse_light(cleaned, anchors, budget=enrich.budget),
+                        timeout=enrich.timeout,
                     )
                     tokens += ltok
                     parsed_ai = _backfill_from_floor(light, floor)
@@ -394,7 +310,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
     # the deterministic tiers missed to a catalog id (no-op without a catalog or
     # when nothing is unmatched). Best-effort and time-bounded - a failure leaves
     # the deterministic matches intact and never fails the parse.
-    spec_budget = _remaining() - 5  # keep a little headroom for scoring
+    spec_budget = budget.for_specialty_ai()
     if spec_budget > 0:
         try:
             tokens += await asyncio.wait_for(
@@ -407,10 +323,10 @@ async def run(inp: PipelineInput) -> PipelineResult:
     # City id enrichment: opt-in, live fuzzy match against the cities endpoint using
     # the offline-resolved country_id/state_id. No-op unless enabled + keyed. Best-
     # effort and time-bounded - a failure leaves the deterministic result intact.
-    if get_settings().enable_city_api_match and _remaining() > 3:
+    if settings.enable_city_api_match and budget.can_afford_city():
         try:
             await asyncio.wait_for(
-                city_resolver.resolve_cities(normalized), timeout=_remaining() - 1,
+                city_resolver.resolve_cities(normalized), timeout=budget.for_city(),
             )
         except Exception as exc:  # noqa: BLE001 — city enrichment is optional, never fatal
             log.warning("city_api_tier_skipped", job_id=inp.job_id, error=str(exc))
@@ -430,7 +346,7 @@ async def run(inp: PipelineInput) -> PipelineResult:
             "email may be unreadable in the source image - please verify manually."
         )
 
-    duration_ms = int((time.monotonic() - start) * 1000)
+    duration_ms = budget.elapsed_ms()
 
     log.info(
         "pipeline_complete",

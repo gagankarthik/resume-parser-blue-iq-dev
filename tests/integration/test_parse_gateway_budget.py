@@ -34,7 +34,7 @@ import app.api.v1.endpoints.resume as resume
 import app.services.application.resume_service as resume_service
 from app.main import app
 from app.models.schemas import ParsedResumeAI, PersonalInfo
-from app.services import pipeline
+from app.services import budget, pipeline
 
 client = TestClient(app)
 
@@ -106,9 +106,9 @@ def test_slow_resume_is_promoted_to_async_instead_of_hanging(monkeypatch):
 
     # Squeeze the budget so the test doesn't have to burn the real ~17s AI window.
     # The mechanism under test is unchanged; only the clock is scaled.
-    monkeypatch.setattr(pipeline, "_SYNC_WALL_BUDGET", 3)
-    monkeypatch.setattr(pipeline, "_MIN_SYNC_AI_TIMEOUT", 1)
-    monkeypatch.setattr(pipeline, "_SYNC_EXTRACT_RESERVE", 1)
+    monkeypatch.setattr(budget, "SYNC_WALL_BUDGET", 3)
+    monkeypatch.setattr(budget, "MIN_SYNC_AI_TIMEOUT", 1)
+    monkeypatch.setattr(budget, "SYNC_EXTRACT_RESERVE", 1)
 
     async def _slow_ai(_sections, _anchors):
         # Never finishes inside the budget - the dense-resume case.
@@ -222,4 +222,4 @@ def test_sync_budget_still_fits_a_direct_caller(monkeypatch):
     synchronous parse genuinely works - that fast path must survive the console's fix.
     Guard the budget against drifting over CloudFront's origin read timeout."""
     CLOUDFRONT_ORIGIN_CEILING_S = 60
-    assert pipeline._SYNC_WALL_BUDGET <= CLOUDFRONT_ORIGIN_CEILING_S - 8
+    assert budget.SYNC_WALL_BUDGET <= CLOUDFRONT_ORIGIN_CEILING_S - 8
