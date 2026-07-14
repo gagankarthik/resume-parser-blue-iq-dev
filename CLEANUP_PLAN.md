@@ -92,9 +92,28 @@ resume-parser`); CI only passes because it pins 1.8.4. Add
 
 ## B. The rot vector - the actual fix for "every PR makes it worse"
 
-### B1. Extract the time budget out of `pipeline.py`
+### B1. Extract the time budget out of `pipeline.py` - ✅ DONE
 
-**This is the single highest-value change in the codebase.**
+**This was the single highest-value change in the codebase.**
+
+Shipped as `app/services/budget.py`: `ParseBudget` owns every deadline decision, and
+`pipeline.py` reads as a pipeline again (584 -> 453 lines). The rules are unit-tested
+in isolation for the first time - `tests/unit/test_budget.py`, 34 tests, `budget.py` at
+100% coverage. Same constants, same numbers, same behavior: the whole pre-existing
+degradation suite passed unchanged.
+
+Two things the extraction surfaced, which is the point of having a seam at all:
+
+- **`TIMEOUT_ORCHESTRATOR` (130) is inert.** The orchestrator window is
+  `min(130, remaining - FALLBACK_RESERVE)` = `min(130, 100)` = 100, so its own cap can
+  never bind at the current numbers. Anyone "giving the orchestrator more time" by
+  raising it would change nothing. Left as-is (a dormant ceiling, correct if the totals
+  move) but now pinned by a test that says so.
+- **The enrich window read the clock twice** - once for the agents' budget, once for the
+  asyncio net above them - so the gap between them was silently smaller than the
+  constants implied. `Window` now computes the pair from one reading.
+
+The original diagnosis, kept for the record:
 
 `pipeline.py` carries **eleven** tuned constants - `_TOTAL_BUDGET`, `_SYNC_WALL_BUDGET`,
 `_FALLBACK_RESERVE`, `_SYNC_ENRICH_RESERVE`, `_SYNC_EXTRACT_RESERVE`, `_MIN_SYNC_AI_TIMEOUT`,

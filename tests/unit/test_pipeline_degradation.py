@@ -10,7 +10,7 @@ always receives structured JSON to review.
 import pytest
 
 from app.core.exceptions import AIParsingError, ExtractionError
-from app.services import pipeline
+from app.services import budget, pipeline
 from app.services.parsing.rule_parser import RuleExtracted
 
 
@@ -217,7 +217,7 @@ async def test_sync_enrich_backfills_experience_on_timeout(monkeypatch):
 #
 # A synchronous parse that outlives the caller's gateway is severed into a bodyless
 # 504 - no data, no job id, nothing to poll. For a DIRECT API caller that gateway is
-# our own CloudFront (60s origin read timeout), which is what _SYNC_WALL_BUDGET is
+# our own CloudFront (60s origin read timeout), which is what SYNC_WALL_BUDGET is
 # sized against. Callers behind a tighter gateway (the console, on Amplify's hard
 # 30s) cannot be saved by any budget value and must send `async_only` instead.
 
@@ -229,13 +229,13 @@ def test_sync_budget_fits_under_the_direct_caller_ceiling():
     CloudFront's 60s origin read timeout for the request/response transfer AND the S3
     upload + worker dispatch of the promote-to-async handoff that follows a probe."""
     _HANDOFF_AND_TRANSFER_HEADROOM = 8
-    assert pipeline._SYNC_WALL_BUDGET <= _CLOUDFRONT_ORIGIN_CEILING - _HANDOFF_AND_TRANSFER_HEADROOM
+    assert budget.SYNC_WALL_BUDGET <= _CLOUDFRONT_ORIGIN_CEILING - _HANDOFF_AND_TRANSFER_HEADROOM
 
     # The reserves are carved OUT of that budget, so each must fit inside it and still
     # leave a usable AI window - otherwise every sync parse degrades on arrival.
-    assert pipeline._SYNC_EXTRACT_RESERVE < pipeline._SYNC_WALL_BUDGET
-    assert pipeline._SYNC_ENRICH_RESERVE < pipeline._SYNC_WALL_BUDGET
-    assert pipeline._SYNC_WALL_BUDGET - pipeline._SYNC_ENRICH_RESERVE >= pipeline._MIN_SYNC_AI_TIMEOUT
+    assert budget.SYNC_EXTRACT_RESERVE < budget.SYNC_WALL_BUDGET
+    assert budget.SYNC_ENRICH_RESERVE < budget.SYNC_WALL_BUDGET
+    assert budget.SYNC_WALL_BUDGET - budget.SYNC_ENRICH_RESERVE >= budget.MIN_SYNC_AI_TIMEOUT
 
 
 @pytest.mark.asyncio
@@ -252,9 +252,9 @@ async def test_sync_extraction_is_cut_off_by_the_wall_budget(monkeypatch):
     _stub_extraction(monkeypatch)
     monkeypatch.setattr(pipeline.docx_extractor, "extract", _slow_extract)
     # Shrink the budget so the clamp bites immediately instead of after ~8 real seconds.
-    monkeypatch.setattr(pipeline, "_SYNC_WALL_BUDGET", 1)
-    monkeypatch.setattr(pipeline, "_SYNC_EXTRACT_RESERVE", 0)
-    monkeypatch.setattr(pipeline, "_MIN_EXTRACT_TIMEOUT", 0.2)
+    monkeypatch.setattr(budget, "SYNC_WALL_BUDGET", 1)
+    monkeypatch.setattr(budget, "SYNC_EXTRACT_RESERVE", 0)
+    monkeypatch.setattr(budget, "MIN_EXTRACT_TIMEOUT", 0.2)
 
     started = _time.monotonic()
     with pytest.raises(ExtractionError):
@@ -352,7 +352,7 @@ async def test_sync_skips_an_ai_call_it_cannot_afford(monkeypatch):
     monkeypatch.setattr(pipeline.ai_parser, "parse", _ai_must_not_run)
     _stub_extraction(monkeypatch)
     # Pretend the wall budget is already spent by the time extraction finishes.
-    monkeypatch.setattr(pipeline, "_SYNC_WALL_BUDGET", 0)
+    monkeypatch.setattr(budget, "SYNC_WALL_BUDGET", 0)
 
     result = await pipeline.run(
         pipeline.PipelineInput(
