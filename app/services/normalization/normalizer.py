@@ -18,6 +18,7 @@ from app.models.schemas import (
     ComplianceInfo,
     EducationItem,
     ExperienceItem,
+    ExtractionNote,
     LicenseItem,
     ParsedResumeAI,
     PersonalInfo,
@@ -118,6 +119,7 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
     for edu in parsed.education:
         edu.tier = _education_tier(edu.degree)
     _flag_employment_gaps(parsed)              # gap_warning on real jobs only
+    _flag_impossible_date_ranges(parsed)       # note a role whose end precedes its start
     _clean_credential_buckets(parsed)
     for lic in parsed.licenses:
         lic.name = _fix_credential_case(lic.name)
@@ -281,6 +283,32 @@ def _flag_employment_gaps(parsed: ParsedResumeAI) -> None:
         gap_months = (cur_start[0] * 12 + cur_start[1]) - (prev_end[0] * 12 + prev_end[1])
         if gap_months > 3:
             dated[i][0].gap_warning = True
+
+
+def _flag_impossible_date_ranges(parsed: ParsedResumeAI) -> None:
+    """Note any role whose end date precedes its start date.
+
+    Résumés do carry transposed date ranges ("July 2022 to January 2022"); the parser
+    transcribes them faithfully rather than silently 'fixing' a date it cannot verify,
+    but a reviewer should know. Compared at month precision on the same (year, month)
+    parse the gap logic uses; a "Present"/ongoing end never trips this.
+    """
+    for i, exp in enumerate(parsed.experience):
+        start = _year_month(exp.start_date)
+        end = _year_month(exp.end_date)
+        if start is None or end is None:
+            continue
+        if (end[0], end[1]) < (start[0], start[1]):
+            parsed.extraction_notes.append(ExtractionNote(
+                field=f"experience[{i}].end_date",
+                value=exp.end_date,
+                confidence=0.9,
+                reason=(
+                    f"End date ({exp.end_date}) precedes start date ({exp.start_date}) "
+                    "as written on the résumé — the dates may be transposed. Left "
+                    "as-is; please verify."
+                ),
+            ))
 
 
 def _normalize_extraction_notes(parsed: ParsedResumeAI) -> None:
@@ -548,9 +576,24 @@ def _repair_education(items: list[EducationItem]) -> list[EducationItem]:
     return kept
 
 
+# Markers that a degree is not yet completed. "candidate" here means the academic
+# sense ("BSN Candidate", "Candidate May 2026"); the résumé's own word for a degree
+# still being earned. Deterministic backstop for the agent's `in_progress` flag - and
+# it catches the case where the marker word was stripped off the degree by extraction.
+_IN_PROGRESS_RE = re.compile(
+    r"\b(in[\s-]?progress|current(?:ly)?\s+(?:student|enrolled)|"
+    r"candidate|pursuing|expected|anticipated|ongoing|to be completed)\b",
+    re.IGNORECASE,
+)
+
+
 def _normalize_education(edu: EducationItem) -> None:
     if edu.degree:
         edu.degree = _DEGREE_MAP.get(edu.degree.lower().strip(), edu.degree)
+    if not edu.in_progress:
+        hay = " ".join(s for s in (edu.degree, edu.field_of_study, edu.location) if s)
+        if _IN_PROGRESS_RE.search(hay):
+            edu.in_progress = True
 
 
 def _infer_country(exp: ExperienceItem) -> None:

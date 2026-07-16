@@ -412,6 +412,7 @@ class EducationItem(BaseModel):
     graduation_year:  int | None = Field(None, description="Graduation year (1900-2035)", ge=1900, le=2035)
     gpa:              str | None = Field(None, description="GPA if stated")
     tier:             str | None = Field(None, description="Set by the system for nursing degrees: 'ADN', 'Diploma_in_Nursing', or 'BSN'. Null for non-nursing or higher degrees. Never fill this yourself.")
+    in_progress:      bool         = Field(False, description="True when the degree is stated as not yet completed - 'Candidate', 'current student', 'in progress', 'pursuing', 'expected'/'anticipated' graduation. The degree is still captured; this only marks it unfinished. Never a guess.")
 
     @field_validator("institution", mode="before")
     @classmethod
