@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import structlog.testing
 
-from app.models.schemas import ExperienceItem, ParsedResumeAI
+from app.models.schemas import ExperienceItem, ParsedResumeAI, PersonalInfo
 from app.services.normalization import city_api, city_resolver, gig_api
 
 
@@ -201,3 +201,74 @@ async def test_cache_spares_quota_across_resumes(monkeypatch):
         assert parsed.experience[0].city_id == "3512"   # resolved every time
 
     assert len(calls) == 1, f"city was looked up {len(calls)}x; the cache should spend quota once"
+
+
+# -- State inference for a role that names a city but no state ------------------
+
+
+async def test_infers_home_state_for_city_only_role(monkeypatch):
+    """A role naming a city with no state (the state lived only in the candidate's
+    header) is scoped to the home state and resolves, backfilling state/country from
+    the authoritative match instead of staying city_id: null."""
+    city_resolver._reset_cache()
+    settings = _FakeSettings()
+    _patch(monkeypatch, settings, lambda c, s, name: [_city("32611", "Niagara Falls", 1.0)])
+    parsed = ParsedResumeAI(
+        personal_info=PersonalInfo(full_name="Ally", location="254 East Ave\nBatavia, NY 14020"),
+        experience=[_exp(city="Niagara Falls")],   # no state / country on the role
+    )
+    n = await city_resolver.resolve_cities(parsed)
+    assert n == 1
+    exp = parsed.experience[0]
+    assert exp.city_id == "32611"
+    # State/country backfilled FROM THE MATCH (never fabricated from the guess).
+    assert exp.state_id == "35" and exp.state == "New York"
+    assert exp.country_id == "1"
+
+
+async def test_inferred_weak_match_never_fabricates_state(monkeypatch):
+    """THE INVARIANT. A guessed state that yields only a sub-threshold match must
+    leave the role exactly as it was - null city_id AND still no state - so a wrong
+    guess can never smuggle a fabricated state onto the role."""
+    city_resolver._reset_cache()
+    settings = _FakeSettings()
+    _patch(monkeypatch, settings, lambda c, s, name: [_city("9", "Somewhere", 0.4)])
+    parsed = ParsedResumeAI(
+        personal_info=PersonalInfo(full_name="Ally", location="Batavia, NY 14020"),
+        experience=[_exp(city="Nowheresville")],
+    )
+    await city_resolver.resolve_cities(parsed)
+    exp = parsed.experience[0]
+    assert exp.city_id is None
+    assert exp.state_id is None and exp.state is None and exp.country_id is None
+
+
+async def test_infers_from_single_dominant_role_state(monkeypatch):
+    """With no home address, a city-only role borrows the state when EVERY resolved
+    role shares one - an unambiguous signal."""
+    city_resolver._reset_cache()
+    settings = _FakeSettings()
+    _patch(monkeypatch, settings, lambda c, s, name: [_city("111", name.title(), 1.0)])
+    parsed = ParsedResumeAI(experience=[
+        _exp(city="Buffalo", country_id="1", state_id="35"),   # anchors the state
+        _exp(city="Rochester"),                                # city only -> inferred NY
+    ])
+    await city_resolver.resolve_cities(parsed)
+    assert parsed.experience[1].city_id == "111"
+    assert parsed.experience[1].state_id == "35"
+
+
+async def test_no_inference_when_role_states_are_ambiguous(monkeypatch):
+    """When resolved roles span more than one state and there is no home address, a
+    city-only role must NOT be resolved - we will not guess which state it was in."""
+    city_resolver._reset_cache()
+    settings = _FakeSettings()
+    _patch(monkeypatch, settings, lambda c, s, name: [_city("111", "X", 1.0)])
+    parsed = ParsedResumeAI(experience=[
+        _exp(city="Buffalo", country_id="1", state_id="35"),   # NY
+        _exp(city="Austin", country_id="1", state_id="44"),    # TX
+        _exp(city="Somewhere"),                                # ambiguous -> skipped
+    ])
+    await city_resolver.resolve_cities(parsed)
+    assert parsed.experience[2].city_id is None
+    assert parsed.experience[2].state_id is None
