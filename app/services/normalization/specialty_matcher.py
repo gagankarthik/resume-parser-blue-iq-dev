@@ -88,6 +88,18 @@ _PLAUSIBILITY_STOPWORDS = frozenset({
 })
 
 
+# Generic leadership/role words that head a job TITLE ("Director of Respiratory
+# Therapy", "Manager of Nursing") but are not, alone, a clinical specialty. Excluded
+# from the last-resort single-word leading-token probe so a title never resolves to a
+# same-named generic catalog row (e.g. the CNA "Director" specialty, id 737) on the
+# strength of its first word. Whole-phrase / paren / slash matches are unaffected.
+_GENERIC_LEAD_WORDS = frozenset({
+    "director", "manager", "supervisor", "coordinator", "administrator",
+    "chief", "head", "lead", "assistant", "president", "officer",
+    "consultant", "owner", "founder",
+})
+
+
 def _candidate_keys(text: str, canonical: str | None) -> list[str]:
     """Ordered, de-duplicated match keys to try for one resume specialty phrase.
 
@@ -119,11 +131,16 @@ def _candidate_keys(text: str, canonical: str | None) -> list[str]:
     # Leading-token prefixes catch a specialty that opens a longer descriptor
     # ("NICU Level III and IV" -> "NICU", "ICU Stepdown" -> "ICU"). Tried LAST so an
     # exact whole/paren/slash match always wins first (e.g. "ICU Float" resolves to
-    # itself, not to "ICU").
+    # itself, not to "ICU"). A single generic leadership word ("Director of Respiratory
+    # Therapy" -> "Director") is NOT probed: it heads a job title, not a specialty, and
+    # would otherwise resolve to a same-named generic catalog row.
     words = stripped.split()
     for n in (2, 1):
         if len(words) > n:
-            add(" ".join(words[:n]))
+            prefix = " ".join(words[:n])
+            if n == 1 and _match_key(prefix) in _GENERIC_LEAD_WORDS:
+                continue
+            add(prefix)
     return keys
 
 
