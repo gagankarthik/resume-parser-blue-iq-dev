@@ -53,14 +53,24 @@ def extract(text: str) -> RuleExtracted:
         ))
 
     raw_phones = _PHONE.findall(text)
-    # Normalize: strip non-digit chars, keep only plausible lengths, and drop bare
-    # year ranges that the digit-count gate would otherwise accept as phones.
+    # Normalize: strip non-digit chars, keep only plausible lengths, and drop two
+    # classes of phone-shaped noise the digit gate would otherwise hand the model as
+    # an authoritative contact number:
+    #   * a bare year range ("2015 - 2019") — 8 digits — via _YEAR_RANGE;
+    #   * a short 7-9 digit token with no country code, e.g. an equipment model/part
+    #     range ("LTV 950-1200" -> "950-1200") mined from a skills line. A real contact
+    #     number carries an area code (>=10 digits) or an explicit international "+".
+    #     This is deliberately US-centric (the product's resume corpus): a bare
+    #     sub-10-digit local number is uncallable and, in practice, always noise.
     seen: set[str] = set()
     for p in raw_phones:
         if _YEAR_RANGE.match(p):
             continue
         digits = re.sub(r"\D", "", p)
-        if 7 <= len(digits) <= 15 and digits not in seen:
+        has_country_code = p.lstrip().startswith("+")
+        if not (10 <= len(digits) <= 15 or (has_country_code and 7 <= len(digits) <= 15)):
+            continue
+        if digits not in seen:
             seen.add(digits)
             result.phones.append(p.strip())
 
