@@ -660,3 +660,56 @@ def test_profession_id_null_when_unknown(tmp_path):
         assert parsed.experience[0].profession_confidence == 0.0
     finally:
         specialty_catalog.reload("")
+
+
+# -- Impossible date range flagged (not silently 'fixed') ---------------------
+def test_end_before_start_is_flagged_as_extraction_note():
+    p = ParsedResumeAI.model_validate({"experience": [
+        {"company": "SIH", "role": "Travel RT",
+         "start_date": "07/2022", "end_date": "01/2022"},   # transposed on the résumé
+    ]})
+    normalize(p)
+    notes = [n for n in p.extraction_notes if n.field == "experience[0].end_date"]
+    assert notes, "an end-before-start range must be surfaced for review"
+    assert "precedes start" in notes[0].reason
+    # The dates themselves are left exactly as written - never silently swapped.
+    assert p.experience[0].start_date == "07/2022"
+    assert p.experience[0].end_date == "01/2022"
+
+
+def test_normal_and_present_ranges_are_not_flagged():
+    p = ParsedResumeAI.model_validate({"experience": [
+        {"company": "A", "role": "RN", "start_date": "01/2022", "end_date": "06/2024"},
+        {"company": "B", "role": "RN", "start_date": "04/2025", "end_date": "Present", "is_current": True},
+    ]})
+    normalize(p)
+    assert not any("precedes start" in n.reason for n in p.extraction_notes)
+
+
+# -- In-progress ("Candidate" / "current student") degrees marked -------------
+def test_in_progress_degree_detected_from_marker_text():
+    p = ParsedResumeAI.model_validate({"education": [
+        {"institution": "Delta College", "degree": "Licensed Practical Nurse",
+         "field_of_study": "Candidate June 2023"},
+    ]})
+    normalize(p)
+    assert p.education[0].in_progress is True
+
+
+def test_completed_degree_is_not_in_progress():
+    p = ParsedResumeAI.model_validate({"education": [
+        {"institution": "ECPI University", "degree": "Bachelor of Science in Nursing",
+         "graduation_year": 2019},
+    ]})
+    normalize(p)
+    assert p.education[0].in_progress is False
+
+
+def test_agent_supplied_in_progress_is_preserved():
+    # When the extractor already flagged it (marker word stripped from the fields),
+    # normalization must not clear it.
+    p = ParsedResumeAI.model_validate({"education": [
+        {"institution": "NSU", "degree": "Bachelor of General Studies", "in_progress": True},
+    ]})
+    normalize(p)
+    assert p.education[0].in_progress is True
