@@ -365,3 +365,35 @@ async def test_tier4_drops_hallucinated_id(catalog, monkeypatch):
     out = parsed.experience[0].specialties[0]
     assert out.specialty_id is None       # off-shortlist id rejected
     assert out.matched is False
+
+
+@pytest.fixture
+def catalog_with_director(tmp_path):
+    path = tmp_path / "dir.json"
+    path.write_text(json.dumps([
+        {"id": "737", "specialty": "Director", "full_name": None,
+         "keywords": [], "profession": "CNA"},
+        {"id": "82", "specialty": "NICU", "full_name": "Neonatal ICU",
+         "keywords": [], "profession": "RN"},
+    ]), encoding="utf-8")
+    return specialty_catalog.reload(str(path))
+
+
+def test_generic_lead_word_not_probed_as_specialty(catalog_with_director):
+    # "Director of Respiratory Therapy" is a job title; its first word must NOT
+    # resolve to the generic catalog "Director" row via the leading-token probe.
+    m = specialty_matcher.match("Director of Respiratory Therapy")
+    assert m.specialty_id is None and m.matched is False
+
+
+def test_bare_director_still_matches_as_whole_phrase(catalog_with_director):
+    # A résumé that literally lists "Director" as a specialty still resolves - only
+    # the single-word LEADING-TOKEN shortcut of a longer title is suppressed.
+    m = specialty_matcher.match("Director")
+    assert m.specialty_id == "737"
+
+
+def test_non_generic_leading_token_still_resolves(catalog_with_director):
+    # The leading-token probe still fires for a real specialty opening a descriptor.
+    m = specialty_matcher.match("NICU Level III and IV")
+    assert m.specialty_id == "82"
