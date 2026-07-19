@@ -226,6 +226,19 @@ async def test_infers_home_state_for_city_only_role(monkeypatch):
     assert exp.country_id == "1"
 
 
+def test_home_geo_parses_comma_before_zip():
+    """The home line "City, ST, ZIP" (comma before the ZIP) must resolve, not just
+    the "City, ST ZIP" (space) form - a real resume address ("Middleport, NY, 14105")
+    was silently unparsed, so its city-only roles never inferred a state."""
+    assert city_resolver._home_geo("9716 Rochester Road\nMiddleport, NY, 14105") == ("1", "35")
+    # The space-before-ZIP and no-ZIP forms must still work.
+    assert city_resolver._home_geo("Houston, Texas 77095") == ("1", "44")
+    assert city_resolver._home_geo("Williamstown, VT 05679") == ("1", "47")
+    assert city_resolver._home_geo("Bronx, NY") == ("1", "35")
+    # No state token -> None (never a false positive).
+    assert city_resolver._home_geo("just a street, 14105") is None
+
+
 async def test_inferred_weak_match_never_fabricates_state(monkeypatch):
     """THE INVARIANT. A guessed state that yields only a sub-threshold match must
     leave the role exactly as it was - null city_id AND still no state - so a wrong

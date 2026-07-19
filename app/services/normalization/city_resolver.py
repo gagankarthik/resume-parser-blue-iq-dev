@@ -237,8 +237,9 @@ async def resolve_cities(parsed: ParsedResumeAI) -> int:
 # -- State inference for city-only roles ---------------------------------------
 
 # The state/zip tail of an address line: "..., NY 14075", "..., Texas 77095",
-# "..., MI". Captures the state token(s) after the last comma, minus a trailing ZIP.
-_STATE_TAIL = re.compile(r",\s*([A-Za-z][A-Za-z. ]{0,24}?)\s*(?:\d{5}(?:-\d{4})?)?\s*$")
+# "..., MI", and the comma-before-ZIP form "..., NY, 14105". Captures the state
+# token(s) after the comma, minus a trailing ZIP (which may itself follow a comma).
+_STATE_TAIL = re.compile(r",\s*([A-Za-z][A-Za-z. ]{0,24}?)\s*(?:,\s*)?(?:\d{5}(?:-\d{4})?)?\s*$")
 
 
 def _infer_geo(parsed: ParsedResumeAI) -> tuple[str, str] | None:
