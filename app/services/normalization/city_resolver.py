@@ -121,7 +121,7 @@ async def resolve_cities(parsed: ParsedResumeAI) -> int:
     if not api_key:
         log.warning(
             "city_api_no_key",
-            reason="GIG_SPECIALTIES_API_KEY is not configured — city_id will be null on "
+            reason="GIG_SPECIALTIES_API_KEY is not configured; city_id will be null on "
                    "every role. Country/state ids still resolve offline.",
         )
         return 0
