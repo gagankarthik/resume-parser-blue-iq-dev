@@ -10,6 +10,12 @@ Two modes for producing the *actual* parser output:
   --api URL --key K  call a live parser for every resume in --resumes-dir,
                      saving each payload into --actual-dir first, then score.
 
+  --local            parse every resume in --resumes-dir through the in-process
+                     pipeline (app.services.pipeline.run) using local settings/keys,
+                     saving each payload first, then score. No network endpoint or
+                     API key needed - this is the fast inner loop for developing a
+                     fix and re-scoring against the labelled set.
+
 Expected labels live in benchmark/data/expected/<name>.json and are matched to an
 actual payload by the file stem. Everything under benchmark/data/ is gitignored
 (candidate PII); this script and the scorer carry none.
@@ -78,7 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--expected-dir", default=str(DATA / "expected"))
     ap.add_argument("--api", help="live parse endpoint; when set, each resume is parsed and saved before scoring")
     ap.add_argument("--key", help="X-API-Key for --api")
-    ap.add_argument("--resumes-dir", help="folder of resume files to parse when --api is set")
+    ap.add_argument("--local", action="store_true",
+                    help="parse --resumes-dir through the in-process pipeline (no endpoint/key needed)")
+    ap.add_argument("--resumes-dir", help="folder of resume files to parse when --api/--local is set")
+    ap.add_argument("--only", help="substring filter: only parse/score resumes whose stem contains this")
     ap.add_argument("--misses", action="store_true", help="list every individual miss")
     args = ap.parse_args(argv)
 
@@ -88,8 +97,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.api:
         _parse_all(args.api, args.key, Path(args.resumes_dir), actual_dir)
+    elif args.local:
+        _parse_all_local(Path(args.resumes_dir), actual_dir, args.only)
 
     expected_files = sorted(expected_dir.glob("*.json"))
+    if args.only:
+        expected_files = [f for f in expected_files if args.only.lower() in f.stem.lower()]
     if not expected_files:
         print(f"No expected labels in {expected_dir}. See benchmark/README.md.", file=sys.stderr)
         return 2
@@ -110,6 +123,51 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         print(f"\n(no actual payload for: {', '.join(missing)})", file=sys.stderr)
     return 0
+
+
+def _parse_all_local(resumes_dir: Path, actual_dir: Path, only: str | None = None) -> None:
+    """Parse every resume in `resumes_dir` through the in-process pipeline.
+
+    Uses the same code path as the async worker (sync=False -> full budget,
+    orchestrator-first), so scores reflect exactly what production would return.
+    Imported lazily so the pure scoring path stays dependency-free.
+    """
+    import asyncio
+    import uuid
+
+    from app.services.pipeline import PipelineInput, run
+
+    files = [f for f in sorted(resumes_dir.iterdir())
+             if f.is_file() and (not only or only.lower() in f.stem.lower())]
+
+    async def _one(f: Path) -> None:
+        inp = PipelineInput(
+            job_id=uuid.uuid4().hex, filename=f.name,
+            content=f.read_bytes(), company_id="benchmark", sync=False,
+        )
+        try:
+            res = await run(inp)
+            payload = {
+                "job_id": inp.job_id, "status": "completed",
+                "data": res.parsed.model_dump(mode="json"),
+                "confidence": res.confidence.model_dump(mode="json"),
+                "partial": res.partial, "warnings": res.warnings,
+            }
+            n_exp = len(res.parsed.experience)
+            print(f"parsed {f.name} -> {n_exp} roles, conf {res.confidence.overall:.2f}, "
+                  f"{res.duration_ms/1000:.0f}s, warnings={len(res.warnings)}")
+        except Exception as exc:  # noqa: BLE001 — record the failure, keep going
+            payload = {"job_id": inp.job_id, "status": "failed", "error": str(exc)}
+            print(f"parsed {f.name} -> FAILED: {exc}")
+        (actual_dir / f"{f.stem}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    async def _all() -> None:
+        # Serialise files (each parse already fans out internally under its own
+        # semaphore); parallelising whole resumes would multiply burst TPM.
+        for f in files:
+            await _one(f)
+
+    asyncio.run(_all())
 
 
 def _parse_all(api: str, key: str, resumes_dir: Path, actual_dir: Path) -> None:
