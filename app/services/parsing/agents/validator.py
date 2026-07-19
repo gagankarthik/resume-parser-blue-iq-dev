@@ -75,7 +75,7 @@ class ValidatorAgent(BaseAgent):
             if _bullets(work[idx]) != expected:
                 warnings.append(
                     f"Role '{work[idx].company}': extracted {_bullets(work[idx])} "
-                    f"of {expected} expected duty bullets — review."
+                    f"of {expected} expected duty bullets - review."
                 )
         return work, warnings
 

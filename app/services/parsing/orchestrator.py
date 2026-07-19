@@ -129,7 +129,7 @@ async def parse(
     if len(text) > _MAX_AGENT_CHARS:
         log.warning("agent_text_truncated", original_chars=len(text), cap=_MAX_AGENT_CHARS)
         warnings.append(
-            f"Résumé exceeded {_MAX_AGENT_CHARS} characters and was truncated; "
+            f"Resume exceeded {_MAX_AGENT_CHARS} characters and was truncated; "
             "content beyond that was not parsed."
         )
         text = text[:_MAX_AGENT_CHARS]
@@ -184,9 +184,24 @@ async def parse(
     if pres.summary_off_topic and personal.summary:
         warnings.append(
             "The professional summary appears unrelated to the candidate's healthcare "
-            "background — it may be boilerplate copied from an unrelated résumé. Review before use."
+            "background - it may be boilerplate copied from an unrelated resume. Review before use."
         )
     work: list[ExperienceItem]  = _unwrap(raw[1], [], "WorkExperienceAgent", warnings)
+    # Safety net: the work stage raised or was cancelled (e.g. a per-role call
+    # looped to the token ceiling, or a dense CV overran the stage deadline) before
+    # run() could return its stubs, yet the structure map DID find real roles.
+    # Returning zero experience for a résumé that plainly lists jobs is the worst
+    # outcome - it reads as "no work history". Recover deterministically from the
+    # structure map instead: every employer with its identity and dates (no duty
+    # bullets), which is far better than dropping them and costs no extra LLM call.
+    if not work and roles and isinstance(raw[1], Exception):
+        work = [WorkExperienceAgent._stub_from_role(r) for r in roles]
+        warnings[:] = [w for w in warnings if "WorkExperienceAgent failed" not in w]
+        warnings.append(
+            "Work history could not be fully extracted; recovered employers and dates "
+            "from the resume structure without duty details. Please verify."
+        )
+        log.warning("work_recovered_from_structure", roles=len(roles))
     education: list[EducationItem] = _unwrap(raw[2], [], "EducationAgent", warnings)
     creds: CredentialsResult    = _unwrap(raw[3], CredentialsResult(), "CredentialsAgent", warnings)
     supp: SupplementalResult    = _unwrap(raw[4], SupplementalResult(), "SupplementalAgent", warnings)

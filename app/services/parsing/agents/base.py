@@ -23,7 +23,7 @@ import random
 from dataclasses import dataclass, field
 from typing import TypeVar
 
-from openai import AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI, LengthFinishReasonError, RateLimitError
 from pydantic import BaseModel
 
 from app.core.config import get_settings
@@ -37,6 +37,12 @@ _MODEL = TypeVar("_MODEL", bound=BaseModel)
 _MAX_RETRIES   = 3
 _BACKOFF_BASE  = 5     # seconds
 _JITTER_FACTOR = 0.2
+
+# Escalating frequency_penalty used ONLY to break a degenerate repetition loop
+# (a strict-schema call that runs to the token ceiling - see the LengthFinishReasonError
+# handler in `_structured_call`). Default calls stay at 0.0 so verbatim extraction is
+# never biased away from words a résumé legitimately repeats.
+_LOOP_BREAK_PENALTIES = (0.3, 0.6)
 
 # Shared across all agents running on the SAME event loop. Rebuilt when the
 # running loop changes (see module docstring - warm Lambda worker reuse).
@@ -109,6 +115,7 @@ class BaseAgent:
         client   = _get_client()
         sem      = _get_semaphore()
         last_exc: Exception | None = None
+        penalty  = 0.0  # bumped only after a repetition-loop (length) failure
 
         for attempt in range(_MAX_RETRIES):
             try:
@@ -118,6 +125,7 @@ class BaseAgent:
                         max_tokens=max_tokens or settings.openai_max_tokens,
                         temperature=0.0,
                         seed=settings.openai_seed,
+                        frequency_penalty=penalty,
                         messages=[
                             {"role": "system", "content": system},
                             {"role": "user", "content": user},
@@ -130,6 +138,25 @@ class BaseAgent:
                 if parsed is None:
                     raise AIParsingError(f"[{self.name}] empty structured output")
                 return parsed
+
+            except LengthFinishReasonError as exc:
+                # The model ran to the token ceiling. With a large strict schema, small
+                # models sometimes fall into a degenerate repetition loop (e.g. emitting
+                # "Radiologic Tech / Radiologic Technologist / ..." until max_tokens) and
+                # never close the JSON. Retrying with identical params just reproduces it
+                # deterministically (temperature 0 + fixed seed) and burns a full
+                # max_tokens of latency each time - which is what silently cancelled the
+                # whole WorkExperienceAgent stage and dropped every role. Break the loop
+                # with an escalating frequency_penalty; fail fast once it's spent so the
+                # caller (WorkExperienceAgent.run) can stub the role inside its deadline.
+                last_exc = exc
+                if penalty < _LOOP_BREAK_PENALTIES[-1]:
+                    penalty = next(p for p in _LOOP_BREAK_PENALTIES if p > penalty)
+                    log.warning("agent_length_loop", agent=self.name, next_penalty=penalty)
+                    continue
+                raise AIParsingError(
+                    f"[{self.name}] hit the token ceiling (repetition loop) even with penalty {penalty}"
+                ) from exc
 
             except RateLimitError as exc:
                 last_exc = exc

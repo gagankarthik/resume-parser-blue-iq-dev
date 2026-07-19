@@ -305,7 +305,7 @@ def _flag_impossible_date_ranges(parsed: ParsedResumeAI) -> None:
                 confidence=0.9,
                 reason=(
                     f"End date ({exp.end_date}) precedes start date ({exp.start_date}) "
-                    "as written on the résumé — the dates may be transposed. Left "
+                    "as written on the resume - the dates may be transposed. Left "
                     "as-is; please verify."
                 ),
             ))
