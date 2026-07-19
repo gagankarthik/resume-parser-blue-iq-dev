@@ -113,7 +113,11 @@ class Settings(BaseSettings):
     # agents + per-role WorkAgent calls) so long resumes don't trip the TPM ceiling.
     # Sized so a long travel-nurse CV (structure + ~12 per-role calls + sections)
     # drains in 2-3 concurrency rounds instead of serialising into a timeout.
-    multi_agent_max_concurrency: int = 8
+    # Measured on a 6-role radiology CV: 8 -> 63.4s, 12 -> 55.7s (~12% faster);
+    # 10 keeps most of that gain with less account-level TPM pressure once several
+    # jobs run at once (the semaphore is per-process, so per-job concurrency
+    # multiplies burst TPM across concurrent Lambda invocations).
+    multi_agent_max_concurrency: int = 10
     # Complexity gate: resumes with at least this many cleaned characters use the
     # multi-agent orchestrator; shorter/simpler ones use the fast single-shot
     # parser. Kept LOW because resume density (roles x bullets) - not input length -
