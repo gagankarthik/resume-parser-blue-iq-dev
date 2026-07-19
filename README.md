@@ -38,6 +38,57 @@ free-text specialties to a controlled vocabulary the placement platform can matc
 
 ---
 
+## Quick start
+
+Send a resume, get a structured candidate record back in one authenticated call:
+
+```bash
+curl -X POST https://<your-api-host>/api/v1/resume/parse \
+  -H "X-API-Key: rp_live_..." \
+  -F "file=@nurse_resume.pdf"
+```
+
+**Every section is always present** (empty when the resume doesn't mention it), each role and
+credential resolved to the placement platform's own IDs, with a per-section confidence score you
+can use to route weak records to human review:
+
+```jsonc
+{
+  "job_id": "01K...",
+  "status": "completed",
+  "data": {
+    "personal_info": { "full_name": "Jane Smith", "email": "jane@example.com",
+                       "phone": "865-541-1111", "credentials": ["RN", "BSN"], "location": "..." },
+    "experience": [
+      { "company": "Fort Sanders Regional Medical Center", "role": "RN - Med Surg/Tele",
+        "start_date": "01/2022", "end_date": "Present", "city": "Knoxville", "state": "TN",
+        "state_id": "42", "city_id": "1234", "profession": "RN", "profession_id": "1",
+        "specialties": [{ "name": "Med Surg/Tele", "specialty_id": "88", "confidence": 1.0 }],
+        "description": ["Charge nurse on a 30-bed telemetry unit", "..."] }
+    ],
+    "education":      [{ "institution": "University of Tennessee", "degree": "BSN", "graduation_year": 2021 }],
+    "skills":         ["Telemetry", "ACLS", "IV Placement"],
+    "certifications": [{ "name": "BLS", "issued_date": "01/2024", "expiry_date": "01/2026" }],
+    "licenses":       [{ "license_type": "RN", "state": "TN", "is_compact": true }],
+    "languages": [], "references": [], "awards": [], "publications": [],
+    "projects": [], "professional_associations": [], "clinical_rotations": [],
+    "compliance": { "compliance_risk": false },
+    "extraction_notes": []
+  },
+  "confidence": { "overall": 0.9, "personal_info": 1.0, "experience": 1.0,
+                  "education": 1.0, "skills": 1.0, "catalog_mapping": 0.8 },
+  "skills_validation": { "total": 12, "recognized_count": 9, "recognized_ratio": 0.75 },
+  "partial": false,
+  "warnings": []
+}
+```
+
+A hard resume (a scan, or an unusually dense CV) may instead return `status: "processing"` with a
+`job_id` to **poll** at `GET /api/v1/resume/job/{job_id}`. A degraded parse comes back with
+`partial: true` and human-readable `warnings[]` - **never an empty record, never a silent partial.**
+
+---
+
 ## Architecture
 
 **One AWS Lambda** (container image, `us-east-2`) serves the HTTP API *and*, by self-invoking
@@ -216,7 +267,7 @@ make lint               # ruff
 make typecheck          # mypy
 ```
 
-**Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Currently **503 tests, 78%**.
+**Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Currently **560 tests, 78%**.
 
 Note `Dockerfile` is **dev-only**; `Dockerfile.lambda` is what ships.
 

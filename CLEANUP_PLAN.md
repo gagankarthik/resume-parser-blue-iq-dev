@@ -1,8 +1,8 @@
 # Cleanup Plan
 
-**Verdict: do not rewrite.** Baseline is 478 tests passing at 78% coverage, above the 70% CI
+**Verdict: do not rewrite.** Baseline is 560 tests passing at 78% coverage, above the 70% CI
 gate. The package boundaries are sound. The domain modeling is good. A greenfield rebuild would
-discard the catalogs, the tuned prompts, and 478 tests' worth of hard-won resume edge cases, and
+discard the catalogs, the tuned prompts, and 560 tests' worth of hard-won resume edge cases, and
 would re-derive the same eleven timeout constants the hard way - in front of the client.
 
 The "every PR makes it worse" feeling is real, but it has **one** structural cause (§B1), not a
@@ -176,9 +176,9 @@ it.** Extract every shared rule into `CORE_RULES`.
 
 ## D. Hygiene
 
-- **D1. Delete `pipeline._fallback_from_anchors()`** (`pipeline.py:509-523`). Zero production
-  callers - superseded by `heuristic_parser.parse()`. Its only references are in
-  `test_pipeline_degradation.py:17,23,35`: **tests keeping dead code alive.** Delete both.
+- **D1. Delete `pipeline._fallback_from_anchors()`** - ✅ DONE. Was dead (zero production
+  callers, superseded by `heuristic_parser.parse()`); removed along with the two
+  `test_pipeline_degradation.py` tests that only existed to exercise it.
 - **D2. Make the invisible regex visible** (`pipeline.py:576`). The character class contains
   *literal* `U+E000` and `U+F8FF` codepoints, so it renders everywhere as `[\ud800-\udfff-]` and
   reads like a bug. **It is not a bug** - verified: hyphens in `X-Ray` / `Med-Surg` /

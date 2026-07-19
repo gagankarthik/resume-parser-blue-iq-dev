@@ -194,7 +194,7 @@ as one more special case, and the code gets worse with every PR.*
    you are changing behavior, the test that proves the old behavior must fail *first*.
 4. **Never simplify away a comment that names an incident.** `pipeline.py:262-264` explains why
    sync and async use different ladders. That comment is load-bearing.
-5. **A rewrite is not a refactor.** The catalogs, the prompts, and the 478 tests are the
+5. **A rewrite is not a refactor.** The catalogs, the prompts, and the 560 tests are the
    product. The code shape around them is replaceable - freely, incrementally, behind the suite.
 
 ---
@@ -234,6 +234,6 @@ Recorded here because stale docs cost more than no docs.
   Terraform note in §8. A redeploy will not pick up a new secret, and neither will an apply.
 - **Rollback:** `rollback.yml` (`workflow_dispatch`) -> verify tag in ECR -> update -> smoke test.
   Shares a concurrency group with deploy so the two cannot race.
-- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **537 passing, 78%**.
+- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **560 passing, 78%**.
 - **Local:** `docker-compose up` (LocalStack: S3 + DynamoDB). Note `Dockerfile` is dev-only -
   `Dockerfile.lambda` is what ships.
