@@ -16,7 +16,7 @@ import asyncio
 import json
 import random
 
-from openai import AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI, LengthFinishReasonError, RateLimitError
 
 from app.core.config import get_settings
 from app.core.exceptions import AIParsingError
@@ -35,6 +35,17 @@ JITTER_FACTOR     = 0.2    # ±20 % of backoff delay
 # before the model sees them. ~60K chars ≈ 15K tokens, comfortably inside context.
 MAX_SECTION_CHARS = 20_000  # per section
 MAX_TOTAL_CHARS   = 60_000  # total résumé text
+
+# This single call emits the WHOLE resume (every role + education + skills), so its
+# completion is far larger than any one per-role agent call. A dense CV (e.g. 12
+# roles) genuinely needs well over the 4096-token operator default, which otherwise
+# truncates mid-output and raises a length error. Floor the ceiling here so the
+# whole-document fallback can actually fit, without lowering a higher operator value.
+MIN_SINGLE_SHOT_MAX_TOKENS = 8192
+# Escalating frequency_penalty to break a degenerate repetition loop (a strict-schema
+# call that runs to the token ceiling repeating a field). Mirrors the multi-agent
+# BaseAgent fix; default calls stay at 0.0 so verbatim extraction is unbiased.
+LOOP_BREAK_PENALTIES = (0.3, 0.6)
 
 # One client per event loop - connection-pool reuse across parses, rebuilt when the
 # running loop changes (same pattern/rationale as the multi-agent BaseAgent). The
@@ -186,14 +197,17 @@ async def parse(
     client   = _get_client()
     prompt   = _build_prompt(sections, anchors)
     last_exc: Exception | None = None
+    penalty  = 0.0  # bumped only after a repetition-loop (length) failure
+    max_tokens = max(settings.openai_max_tokens, MIN_SINGLE_SHOT_MAX_TOKENS)
 
     for attempt in range(MAX_RETRIES):
         try:
             response = await client.beta.chat.completions.parse(
                 model=settings.openai_model,
-                max_tokens=settings.openai_max_tokens,
+                max_tokens=max_tokens,
                 temperature=0.0,
                 seed=settings.openai_seed,
+                frequency_penalty=penalty,
                 messages=[
                     {
                         "role": "system",
@@ -216,6 +230,21 @@ async def parse(
 
             log.info("ai_parse_success", attempt=attempt + 1, tokens=tokens)
             return parsed, tokens
+
+        except LengthFinishReasonError as exc:
+            # Output hit the token ceiling. Either the resume genuinely needs more
+            # room (now floored at MIN_SINGLE_SHOT_MAX_TOKENS) or the model fell into
+            # a degenerate repetition loop. Retrying with identical params reproduces
+            # it deterministically (temperature 0 + fixed seed), so break the loop with
+            # an escalating frequency_penalty rather than burning another full ceiling.
+            last_exc = exc
+            if penalty < LOOP_BREAK_PENALTIES[-1]:
+                penalty = next(p for p in LOOP_BREAK_PENALTIES if p > penalty)
+                log.warning("ai_length_loop", attempt=attempt + 1, next_penalty=penalty)
+                continue
+            raise AIParsingError(
+                f"AI parsing hit the token ceiling (repetition loop) even with penalty {penalty}"
+            ) from exc
 
         except RateLimitError as exc:
             last_exc = exc
