@@ -129,7 +129,7 @@ async def parse(
     if len(text) > _MAX_AGENT_CHARS:
         log.warning("agent_text_truncated", original_chars=len(text), cap=_MAX_AGENT_CHARS)
         warnings.append(
-            f"Résumé exceeded {_MAX_AGENT_CHARS} characters and was truncated; "
+            f"Resume exceeded {_MAX_AGENT_CHARS} characters and was truncated; "
             "content beyond that was not parsed."
         )
         text = text[:_MAX_AGENT_CHARS]
@@ -184,7 +184,7 @@ async def parse(
     if pres.summary_off_topic and personal.summary:
         warnings.append(
             "The professional summary appears unrelated to the candidate's healthcare "
-            "background — it may be boilerplate copied from an unrelated résumé. Review before use."
+            "background - it may be boilerplate copied from an unrelated resume. Review before use."
         )
     work: list[ExperienceItem]  = _unwrap(raw[1], [], "WorkExperienceAgent", warnings)
     education: list[EducationItem] = _unwrap(raw[2], [], "EducationAgent", warnings)
