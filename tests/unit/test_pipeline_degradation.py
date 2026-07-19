@@ -11,31 +11,6 @@ import pytest
 
 from app.core.exceptions import AIParsingError, ExtractionError
 from app.services import budget, pipeline
-from app.services.parsing.rule_parser import RuleExtracted
-
-
-def test_fallback_from_anchors_populates_contact_only():
-    anchors = RuleExtracted(
-        emails=["jane@example.com"],
-        phones=["(555) 234-5678"],
-        linkedin_urls=["https://linkedin.com/in/jane"],
-    )
-    parsed = pipeline._fallback_from_anchors(anchors)
-
-    assert parsed.personal_info.email == "jane@example.com"
-    assert parsed.personal_info.phone == "(555) 234-5678"
-    assert parsed.personal_info.linkedin_url == "https://linkedin.com/in/jane"
-    # Nothing is invented for the sections the AI would have filled.
-    assert parsed.experience == []
-    assert parsed.education == []
-    assert parsed.skills == []
-
-
-def test_fallback_from_empty_anchors_is_valid_empty_record():
-    parsed = pipeline._fallback_from_anchors(RuleExtracted())
-    assert parsed.personal_info.email is None
-    assert parsed.experience == []
-
 
 # Long enough to clear the multi_agent_min_chars gate so the orchestrator path runs.
 _LONG_TEXT = "Katherine Driscoll\njane@example.com\n(555) 234-5678\n" + ("Experience bullet line. " * 200)

@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from app.core.config import get_settings
 from app.core.exceptions import AIParsingError, ExtractionError
 from app.core.logging import get_logger
-from app.models.schemas import ConfidenceScores, ParsedResumeAI, PersonalInfo
+from app.models.schemas import ConfidenceScores, ParsedResumeAI
 from app.services.budget import TIMEOUT_EXTRACTION, TIMEOUT_OCR, ParseBudget
 from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor, rtf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
@@ -420,23 +420,6 @@ def _backfill_from_floor(primary: ParsedResumeAI, floor: ParsedResumeAI) -> Pars
     if not primary.licenses:
         primary.licenses = floor.licenses
     return primary
-
-
-def _fallback_from_anchors(anchors: rule_parser.RuleExtracted) -> ParsedResumeAI:
-    """Build a minimal ParsedResumeAI from rule-extracted contact anchors.
-
-    Used when the AI parser fails so the caller still receives a structured,
-    if sparse, record instead of nothing. Only high-confidence regex anchors are
-    populated - never invented data.
-    """
-    personal = PersonalInfo(
-        email=anchors.emails[0] if anchors.emails else None,
-        phone=anchors.phones[0] if anchors.phones else None,
-        linkedin_url=anchors.linkedin_urls[0] if anchors.linkedin_urls else None,
-        github_url=anchors.github_urls[0] if anchors.github_urls else None,
-        portfolio_url=anchors.portfolio_urls[0] if anchors.portfolio_urls else None,
-    )
-    return ParsedResumeAI(personal_info=personal)
 
 
 # A digital PDF must clear this many usable characters before we trust its text
