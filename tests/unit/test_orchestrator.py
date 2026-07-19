@@ -106,6 +106,28 @@ async def test_orchestrator_raises_when_everything_empty(monkeypatch):
         await orchestrator.parse("text", RuleExtracted())
 
 
+async def test_orchestrator_recovers_experience_when_work_stage_fails(monkeypatch):
+    """If the whole work stage is cancelled/raises (e.g. a per-role call looped to the
+    token ceiling, or a dense CV overran the deadline) but the structure map found
+    roles, experience must be recovered as employer stubs - never dropped to empty
+    with a bare warning (the "no experience at all" regression)."""
+    monkeypatch.setattr(BaseAgent, "_structured_call", _canned())
+
+    async def work_dies(self, text, roles, meter):
+        raise TimeoutError("work stage cancelled")
+
+    monkeypatch.setattr(WorkExperienceAgent, "run", work_dies)
+    # No budget/deadline is passed, so the validator's re-extraction pass can run and
+    # is harmless here; the key assertion is that experience is not empty.
+    parsed, _tokens, warnings = await orchestrator.parse("text with jobs", RuleExtracted())
+
+    assert len(parsed.experience) == 1                      # recovered, not dropped
+    assert parsed.experience[0].company == "Mercy Hospital"  # identity kept from structure map
+    assert parsed.experience[0].role == "RN - ICU"
+    assert not any("WorkExperienceAgent failed" in w for w in warnings)  # failure warning replaced
+    assert any("could not be fully extracted" in w for w in warnings)
+
+
 async def test_orchestrator_carries_professional_associations(monkeypatch):
     def with_assocs(s, u):
         return CredentialsResult(
