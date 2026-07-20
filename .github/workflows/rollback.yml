@@ -20,9 +20,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION:    us-east-2
-  ECR_REPO_NAME: resume-parser-production-lambda
-  FUNCTION_NAME: resume-parser-production-api
+  AWS_REGION:           us-east-2
+  ECR_REPO_NAME:        resume-parser-production-lambda
+  FUNCTION_NAME:        resume-parser-production-api
+  WORKER_FUNCTION_NAME: resume-parser-production-worker
 
 permissions:
   contents: read
@@ -66,18 +67,24 @@ jobs:
           echo "Rolling back FROM: $CURRENT"
           echo "Rolling back TO:   ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ inputs.image_tag }}"
 
-      - name: Update Lambda image
+      # Both functions share the image, so roll back both to the same tag - else
+      # the API and Worker would drift onto different code versions.
+      - name: Update Lambda image (API + Worker)
         run: |
-          aws lambda update-function-code \
-            --function-name "${{ env.FUNCTION_NAME }}" \
-            --image-uri "${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ inputs.image_tag }}" \
-            --region "${{ env.AWS_REGION }}"
+          for FN in "${{ env.FUNCTION_NAME }}" "${{ env.WORKER_FUNCTION_NAME }}"; do
+            aws lambda update-function-code \
+              --function-name "$FN" \
+              --image-uri "${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ inputs.image_tag }}" \
+              --region "${{ env.AWS_REGION }}"
+          done
 
-      - name: Wait for Lambda update
+      - name: Wait for Lambda update (API + Worker)
         run: |
-          aws lambda wait function-updated \
-            --function-name "${{ env.FUNCTION_NAME }}" \
-            --region "${{ env.AWS_REGION }}"
+          for FN in "${{ env.FUNCTION_NAME }}" "${{ env.WORKER_FUNCTION_NAME }}"; do
+            aws lambda wait function-updated \
+              --function-name "$FN" \
+              --region "${{ env.AWS_REGION }}"
+          done
 
       - name: Smoke test - health check
         id: get-url

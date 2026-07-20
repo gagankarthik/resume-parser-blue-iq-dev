@@ -1,34 +1,28 @@
 """
-OpenAI (gpt-4.1-mini) structured-output parser.
+Single-shot OpenAI structured-output parser (the middle rung of the parse ladder).
 
-Retry strategy:
-  * MAX_RETRIES=3 total attempts
-  * RateLimitError -> exponential backoff with ±20% jitter (prevents thundering herd)
-    Delays before the two retries: ~5s, ~10s (before jitter); the 3rd attempt raises
-  * Other errors -> 1s pause then retry; raise AIParsingError after exhaustion
+The provider call + resilience (retry/backoff on 429/5xx/timeout, circuit breaker,
+Azure same-model fallback) lives in `app.services.llm.client.structured_parse`;
+this module owns the whole-document prompt and input caps. `parse` raises
+AIParsingError once the resilience layer is exhausted, so the pipeline degrades to
+the deterministic floor.
 
 Token safety:
   Sections are truncated to MAX_SECTION_CHARS to stay within max_tokens budget.
   Each section gets an equal share of the character budget.
 """
 
-import asyncio
 import json
-import random
-
-from openai import AsyncOpenAI, LengthFinishReasonError, RateLimitError
+from typing import cast
 
 from app.core.config import get_settings
-from app.core.exceptions import AIParsingError
 from app.core.logging import get_logger
 from app.models.schemas import ParsedResumeAI
+from app.services.llm.client import structured_parse
 from app.services.parsing.rule_parser import RuleExtracted
 
 log = get_logger(__name__)
 
-MAX_RETRIES       = 3
-BACKOFF_BASE      = 5      # seconds
-JITTER_FACTOR     = 0.2    # ±20 % of backoff delay
 # Input caps. gpt-4.1-mini has a very large context window, so the constraint is
 # cost/latency, not the model - keep these generous so a long resume's later
 # sections (more work history, education, references) are never truncated away
@@ -42,26 +36,6 @@ MAX_TOTAL_CHARS   = 60_000  # total résumé text
 # truncates mid-output and raises a length error. Floor the ceiling here so the
 # whole-document fallback can actually fit, without lowering a higher operator value.
 MIN_SINGLE_SHOT_MAX_TOKENS = 8192
-# Escalating frequency_penalty to break a degenerate repetition loop (a strict-schema
-# call that runs to the token ceiling repeating a field). Mirrors the multi-agent
-# BaseAgent fix; default calls stay at 0.0 so verbatim extraction is unbiased.
-LOOP_BREAK_PENALTIES = (0.3, 0.6)
-
-# One client per event loop - connection-pool reuse across parses, rebuilt when the
-# running loop changes (same pattern/rationale as the multi-agent BaseAgent). The
-# worker Lambda creates a fresh loop per invocation, so a client cached from a
-# previous (now-closed) loop would fail on warm-container reuse.
-_client: AsyncOpenAI | None = None
-_bound_loop: asyncio.AbstractEventLoop | None = None
-
-
-def _get_client() -> AsyncOpenAI:
-    global _client, _bound_loop
-    loop = asyncio.get_running_loop()
-    if _client is None or _bound_loop is not loop:
-        _client = AsyncOpenAI(api_key=get_settings().openai_api_key)
-        _bound_loop = loop
-    return _client
 
 
 def _truncate_sections(sections: dict[str, str]) -> dict[str, str]:
@@ -189,87 +163,28 @@ async def parse(
     anchors: RuleExtracted,
 ) -> tuple[ParsedResumeAI, int]:
     """
-    Parse resume with GPT-4o structured output.
+    Parse resume with the configured OpenAI model (gpt-4.1-mini) structured output.
     Returns (parsed_resume, total_tokens_used).
     Raises AIParsingError after MAX_RETRIES exhausted.
     """
     settings = get_settings()
-    client   = _get_client()
     prompt   = _build_prompt(sections, anchors)
-    last_exc: Exception | None = None
-    penalty  = 0.0  # bumped only after a repetition-loop (length) failure
     max_tokens = max(settings.openai_max_tokens, MIN_SINGLE_SHOT_MAX_TOKENS)
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = await client.beta.chat.completions.parse(
-                model=settings.openai_model,
-                max_tokens=max_tokens,
-                temperature=0.0,
-                seed=settings.openai_seed,
-                frequency_penalty=penalty,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a precise healthcare resume parser. "
-                            "Output valid JSON exactly matching the requested schema. "
-                            "Every list field must be a JSON array, never null."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                response_format=ParsedResumeAI,
-            )
+    result = await structured_parse(
+        system=(
+            "You are a precise healthcare resume parser. "
+            "Output valid JSON exactly matching the requested schema. "
+            "Every list field must be a JSON array, never null."
+        ),
+        user=prompt,
+        response_format=ParsedResumeAI,
+        model=settings.openai_model,
+        max_tokens=max_tokens,
+        label="single_shot",
+    )
 
-            parsed = response.choices[0].message.parsed
-            tokens = response.usage.total_tokens if response.usage else 0
-
-            if parsed is None:
-                raise AIParsingError("Model returned empty structured output")
-
-            log.info("ai_parse_success", attempt=attempt + 1, tokens=tokens)
-            return parsed, tokens
-
-        except LengthFinishReasonError as exc:
-            # Output hit the token ceiling. Either the resume genuinely needs more
-            # room (now floored at MIN_SINGLE_SHOT_MAX_TOKENS) or the model fell into
-            # a degenerate repetition loop. Retrying with identical params reproduces
-            # it deterministically (temperature 0 + fixed seed), so break the loop with
-            # an escalating frequency_penalty rather than burning another full ceiling.
-            last_exc = exc
-            if penalty < LOOP_BREAK_PENALTIES[-1]:
-                penalty = next(p for p in LOOP_BREAK_PENALTIES if p > penalty)
-                log.warning("ai_length_loop", attempt=attempt + 1, next_penalty=penalty)
-                continue
-            raise AIParsingError(
-                f"AI parsing hit the token ceiling (repetition loop) even with penalty {penalty}"
-            ) from exc
-
-        except RateLimitError as exc:
-            last_exc = exc
-            if attempt < MAX_RETRIES - 1:
-                base  = BACKOFF_BASE * (2 ** attempt)
-                jitter = base * JITTER_FACTOR * (2 * random.random() - 1)
-                wait  = max(base + jitter, 1.0)
-                log.warning("ai_rate_limited", attempt=attempt + 1, retry_in=round(wait, 1))
-                await asyncio.sleep(wait)
-            else:
-                raise AIParsingError(
-                    f"OpenAI rate limit exceeded after {MAX_RETRIES} attempts"
-                ) from exc
-
-        except AIParsingError:
-            raise
-
-        except Exception as exc:
-            last_exc = exc
-            log.warning("ai_attempt_failed", attempt=attempt + 1, error=str(exc))
-            if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(1)
-            else:
-                raise AIParsingError(
-                    f"AI parsing failed after {MAX_RETRIES} attempts: {exc}"
-                ) from exc
-
-    raise AIParsingError(f"AI parsing failed: {last_exc}")
+    parsed = cast(ParsedResumeAI, result.parsed)
+    tokens = result.usage.total_tokens if result.usage else 0
+    log.info("ai_parse_success", tokens=tokens, provider=result.provider)
+    return parsed, tokens

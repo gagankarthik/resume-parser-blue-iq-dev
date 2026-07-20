@@ -11,18 +11,13 @@ from app.services.normalization.skills_validator import _is_clinical_skill
 from app.services.parsing import rule_parser
 from app.services.parsing.agents import base
 
-# -- C1: per-event-loop client/semaphore (warm Lambda worker reuse) -------------
+# -- C1: per-event-loop semaphore (warm Lambda worker reuse) --------------------
 
-def test_client_and_semaphore_rebind_across_event_loops(monkeypatch):
+def test_client_and_semaphore_rebind_across_event_loops():
     """The worker Lambda creates a fresh event loop per invocation. The cached
-    client/semaphore must rebind to the new loop instead of staying bound to the
-    previous (now-closed) one - which would raise on warm-container reuse."""
-    class _DummyClient:
-        def __init__(self, **_kw):
-            pass
-
-    monkeypatch.setattr(base, "AsyncOpenAI", _DummyClient)
-    base._client = None
+    concurrency semaphore must rebind to the new loop instead of staying bound to the
+    previous (now-closed) one - which would raise on warm-container reuse. (The LLM
+    client itself is owned by app.services.llm.client and rebinds the same way.)"""
     base._semaphore = None
     base._bound_loop = None
 

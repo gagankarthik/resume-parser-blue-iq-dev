@@ -10,7 +10,7 @@ The Resume Parsing Service is a production-grade HTTP API that converts **PDF, D
 resumes** into clean, schema-validated JSON suitable for auto-filling candidate forms and
 populating downstream systems.
 
-It combines deterministic rule-based extraction with **OpenAI GPT-4o structured-output parsing**,
+It combines deterministic rule-based extraction with **OpenAI gpt-4.1-mini structured-output parsing**,
 then validates, normalizes, and confidence-scores every result. The platform is built on a
 **fully serverless AWS stack** (Lambda + DynamoDB + S3) and is engineered around three
 non-negotiable principles:
@@ -19,7 +19,7 @@ non-negotiable principles:
 |---|---|
 | **Privacy first** | Resume *files* are **never stored** - deleted immediately after processing. Audit metadata is content-free. **One exception:** the opt-in feedback endpoint persists submitted original + corrected JSON (candidate PII) for 90 days. See [Data retention](#data-retention). |
 | **Cost-aware accuracy** | OCR and AI are invoked only when needed; cheap deterministic paths run first. |
-| **Operational simplicity** | No servers, queues, or brokers to manage - managed AWS services scale to zero and back automatically. |
+| **Operational simplicity** | No servers to manage - fully managed AWS services (Lambda, SQS, DynamoDB, S3) that scale to zero and back automatically. The one queue (SQS + DLQ) is serverless too: no broker to run. |
 
 ---
 
@@ -63,11 +63,11 @@ non-negotiable principles:
             |                                          |
             v                                          v
 +--------------------------+         +------------------------------+
-|   PARSING PIPELINE        |         |  S3 (temp, SSE-AES256)        |
-|   (runs inline in the     |         |  upload -> invoke worker        |
+|   PARSING PIPELINE        |         |  S3 (temp) + SQS worker queue |
+|   (runs inline in the     |         |  upload -> SendMessage          |
 |    API Lambda)            |         +------------------------------+
-|                           |                         |  InvocationType=Event
-|  returns JSON immediately |                         v
+|                           |                         |  SQS event-source mapping
+|  returns JSON immediately |                         v   (DLQ after 3 retries)
 +--------------------------+         +------------------------------+
             |                          |   WORKER LAMBDA               |
             |                          |   (async OCR + full pipeline) |
@@ -80,7 +80,7 @@ non-negotiable principles:
             +------------------+-----------------------+
                                v
         +-----------------------------------------------+
-        |   DynamoDB (state)         OpenAI GPT-4o (AI)   |
+        |   DynamoDB (state)         OpenAI gpt-4.1-mini   |
         |   api_keys - rate_limits   Amazon Textract (OCR)|
         |   jobs - batches                                |
         |   webhooks - audit_logs                         |
@@ -95,19 +95,23 @@ The service runs as **two container-image Lambda functions** sharing one codebas
 
 | Function | Handler | Trigger | Responsibility |
 |---|---|---|---|
-| **API Lambda** | `app.handlers.lambda_handler.handler` (Mangum -> FastAPI) | Lambda **Function URL** (public HTTPS) | All synchronous request handling, auth, rate limiting, sync parsing, async dispatch |
-| **Worker Lambda** | `app.handlers.worker_lambda.handler` | Asynchronous invoke (`InvocationType="Event"`) from the API Lambda | OCR-heavy parsing for scanned PDFs / images; reserved concurrency caps parallel OCR + AI calls |
+| **API Lambda** | `app.handlers.lambda_handler.handler` (Mangum -> FastAPI) | Lambda **Function URL** (public HTTPS) | All synchronous request handling, auth, rate limiting, sync parsing, enqueuing async jobs onto SQS |
+| **Worker Lambda** | `app.handlers.worker_lambda.handler` | SQS **event-source mapping** (drains the worker queue) | OCR-heavy parsing for scanned PDFs / images; reserved concurrency + the mapping's `maximum_concurrency` cap parallel OCR + AI calls |
 
-**Why Lambda (not ECS/Kubernetes):**
+**Why Lambda + SQS (not ECS/Kubernetes):**
 
 - Scales to zero between requests - no idle cost for a single-tenant workload.
-- Worker `reserved_concurrent_executions` provides a natural backpressure valve against OpenAI and
-  Textract rate limits without a message broker.
-- No queue/broker to operate - async fan-out is a native async Lambda invoke.
+- SQS decouples the thin request path from the heavy batch path: the API answers in well under a
+  second while the Worker scales elastically on queue depth.
+- The queue's visibility timeout (above the ~130s orchestrator ceiling) stops a running job being
+  redelivered; transient failures retry for free; queue depth is an alarm-able backpressure metric;
+  and a **DLQ** turns a poison message into a visible event after `maxReceiveCount` (3) deliveries.
+- Worker `reserved_concurrent_executions` and the event-source mapping's `maximum_concurrency`
+  bound parallel OpenAI / Textract calls during a batch burst.
 
-> **Local-dev fallback:** when not running on Lambda (`use_lambda_worker = false`), async work runs
-> via FastAPI `BackgroundTasks` in-process, so the same code path works on a laptop or in Docker
-> Compose with LocalStack.
+> **Local-dev fallback:** when no worker queue is configured (`use_queue_worker = false`), async
+> work runs via FastAPI `BackgroundTasks` in-process, so the same code path works on a laptop or in
+> Docker Compose with LocalStack.
 
 ---
 
@@ -131,7 +135,7 @@ A single orchestrator (`app/services/pipeline.py`) runs every stage with per-ste
  5. Section detect    Header-based segmentation -> cuts AI token usage
         |
         v
- 6. AI parse          OpenAI GPT-4o structured output - temperature 0
+ 6. AI parse          OpenAI gpt-4.1-mini structured output - temperature 0
         |             schema-guaranteed JSON - 1 automatic retry
         v
  7. Validate          Pydantic v2 - type coercion + schema enforcement
@@ -169,7 +173,7 @@ need it.
 A **hybrid rule-based + AI** approach:
 
 - **Deterministic (regex):** contact details - email, phone, social/portfolio URLs.
-- **AI (GPT-4o structured outputs):** semantic content - experience, education, skills, roles,
+- **AI (gpt-4.1-mini structured outputs):** semantic content - experience, education, skills, roles,
   date associations, projects, certifications.
 
 | Technique | Purpose |
@@ -366,7 +370,7 @@ Each field is scored `0.0-1.0` so clients can route low-confidence records to hu
 | API framework | FastAPI + Python 3.12 (Mangum adapter) |
 | Compute | AWS Lambda (container image) - API + Worker |
 | Public ingress | Lambda Function URL (HTTPS) |
-| AI parsing | OpenAI GPT-4o (structured outputs) |
+| AI parsing | OpenAI gpt-4.1-mini (structured outputs), via the shared resilient executor |
 | PDF extraction | PyMuPDF |
 | DOCX extraction | python-docx |
 | OCR | Tesseract -> Amazon Textract (fallback) |

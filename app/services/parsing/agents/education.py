@@ -24,6 +24,7 @@ RULES:
 
 class EducationAgent(BaseAgent):
     name = "EducationAgent"
+    FAST_TIER = True  # simple, well-structured section — safe candidate for a cheaper model
 
     async def run(self, text: str, meter: TokenMeter) -> list[EducationItem]:
         user = f"=== RESUME TEXT ===\n{text}\n=== END ===\n\nReturn the education entries."

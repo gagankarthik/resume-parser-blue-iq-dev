@@ -105,6 +105,33 @@ async def _run_sections_bounded(
     return out
 
 
+async def _await_named_tasks(
+    named_tasks: list[tuple[str, asyncio.Future[object]]], *, timeout: float
+) -> dict[str, object]:
+    """Wait for ALREADY-RUNNING section tasks under a soft deadline.
+
+    Same contract as `_run_sections_bounded` but for tasks the caller has already
+    launched (so some may run before this is even called - see the structure/section
+    overlap in `parse`). Returns {name: result | exception | TimeoutError}; any task
+    still running when `timeout` elapses is cancelled and recorded as a TimeoutError,
+    so a slow section degrades to its default instead of cancelling the whole parse.
+    """
+    tasks = [t for _, t in named_tasks]
+    done, pending = await asyncio.wait(tasks, timeout=timeout, return_when=asyncio.ALL_COMPLETED)
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+    out: dict[str, object] = {}
+    for name, task in named_tasks:
+        if task in done:
+            out[name] = task.exception() or task.result()
+        else:
+            log.warning("agent_section_timeout", agent=name, timeout=timeout)
+            out[name] = TimeoutError(f"{name} timed out after {timeout}s")
+    return out
+
+
 def _stage_timeout(default: float, deadline: float | None, reserve: float) -> float:
     """Cap a stage's default budget by the time left before the overall deadline,
     holding back `reserve` seconds for the stages that follow it. Never below 5s
@@ -149,6 +176,19 @@ async def parse(
     # today's exact behaviour.
     struct_reserve = min(40.0, budget * 0.6) if budget else 40.0
 
+    # The four section agents that DON'T need the role map (personal, education,
+    # credentials, supplemental) are launched NOW, so they run concurrently WITH the
+    # structure call instead of waiting for it. Two wins: their latency overlaps
+    # Stage 1, and - because they typically finish while structure is still running -
+    # they free the shared concurrency slots for the per-role Work fan-out that
+    # follows (the long pole on a dense résumé). Only the Work agent needs the roles.
+    independent: list[tuple[str, asyncio.Future[object]]] = [
+        ("PersonalInfoAgent", asyncio.ensure_future(personal_agent.run(text, anchors, meter))),
+        ("EducationAgent",    asyncio.ensure_future(education_agent.run(text, meter))),
+        ("CredentialsAgent",  asyncio.ensure_future(cred_agent.run(text, meter))),
+        ("SupplementalAgent", asyncio.ensure_future(supp_agent.run(text, meter))),
+    ]
+
     # -- Stage 1: structure ----------------------------------------------------
     try:
         structure = await asyncio.wait_for(
@@ -163,21 +203,24 @@ async def parse(
     roles = structure.roles if structure else []
     log.info("orchestrator_structure", roles=len(roles))
 
-    # -- Stage 2: parallel section extraction (self-bounded) -------------------
-    # Run the sections as explicit tasks under a soft deadline. Any section still
-    # in flight when the deadline hits is cancelled and degrades to its empty
-    # default (with a warning) - so one slow section can't time out the whole
+    # -- Stage 2: work fan-out, joined with the already-running section agents --
+    # The Work agent starts now (it needed the role map); the four independent
+    # agents above are already in flight. All five are awaited under one soft
+    # deadline: any still running when it hits is cancelled and degrades to its
+    # empty default (with a warning), so one slow section can't time out the whole
     # orchestrator and force the pipeline to throw everything away and re-parse.
-    raw = await _run_sections_bounded(
-        [
-            ("PersonalInfoAgent",  personal_agent.run(text, anchors, meter)),
-            ("WorkExperienceAgent", work_agent.run(text, roles, meter)),
-            ("EducationAgent",     education_agent.run(text, meter)),
-            ("CredentialsAgent",   cred_agent.run(text, meter)),
-            ("SupplementalAgent",  supp_agent.run(text, meter)),
-        ],
+    work_future: asyncio.Future[object] = asyncio.ensure_future(work_agent.run(text, roles, meter))
+    by_name = await _await_named_tasks(
+        [("WorkExperienceAgent", work_future), *independent],
         timeout=_stage_timeout(_STAGE2_TIMEOUT, deadline, reserve=5),
     )
+    raw = [
+        by_name["PersonalInfoAgent"],
+        by_name["WorkExperienceAgent"],
+        by_name["EducationAgent"],
+        by_name["CredentialsAgent"],
+        by_name["SupplementalAgent"],
+    ]
 
     pres: PersonalResult        = _unwrap(raw[0], PersonalResult(), "PersonalInfoAgent", warnings)
     personal: PersonalInfo      = pres.personal
@@ -240,6 +283,10 @@ async def parse(
         raise AIParsingError("Multi-agent orchestrator produced no usable data")
 
     log.info("orchestrator_complete", tokens=meter.total, by_agent=meter.by_agent,
+             ms_by_agent={k: round(v) for k, v in meter.ms_by_agent.items()},
+             calls_by_agent=meter.calls_by_agent,
+             prompt_tokens=meter.prompt_total, completion_tokens=meter.completion_total,
+             cached_tokens=meter.cached_total,
              experience=len(parsed.experience), warnings=len(warnings))
     return parsed, meter.total, warnings
 

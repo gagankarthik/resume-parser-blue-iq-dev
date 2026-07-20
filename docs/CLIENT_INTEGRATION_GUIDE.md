@@ -96,6 +96,51 @@ The processing path is chosen automatically from the file:
 > **Integration tip:** branch on `status`. If `completed`, use `data` immediately.
 > If `processing`, poll `poll_url` or wait for the `parse.completed` webhook.
 
+### 3b. Never block a user on the parse — use `async_only`
+
+By default a digital PDF/DOCX is parsed **synchronously**: the HTTP request stays open
+until the parse finishes. A high-accuracy parse of a dense, multi-role resume can take
+**up to ~55 seconds**. That is by design — the parser runs a multi-stage extraction and
+verification pipeline for accuracy — but it means **you must not make an end user wait on
+the response**, and it will **break any caller behind a gateway with a request timeout
+shorter than that** (e.g. AWS Amplify SSR's hard 30 s limit, many API gateways, serverless
+function ceilings).
+
+The fix is to **always run parsing in the background and poll**. Send `async_only=true`
+and the API returns a `job_id` in ~1 second instead of holding the connection open:
+
+```bash
+curl -X POST "https://<your-function-url>/api/v1/resume/parse" \
+  -H "X-API-Key: rp_live_your_key_here" \
+  -F "file=@/path/to/resume.pdf" \
+  -F "async_only=true"
+```
+
+```json
+// immediate response (~1s) — always status: "processing"
+{
+  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
+  "status": "processing",
+  "data": null,
+  "confidence": null,
+  "poll_url": "/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0"
+}
+```
+
+Then poll `poll_url` (Section 4) every 2–3 s, or — better at scale — register a webhook
+(Section 6) and let us POST the result to you. Either way your user is unblocked instantly
+and the accurate parse completes in the background.
+
+| Situation | Recommendation |
+|---|---|
+| Interactive UI (user is waiting on screen) | **`async_only=true` + poll/webhook** |
+| Caller behind a gateway with a < 60 s timeout (Amplify, most API gateways) | **`async_only=true` + poll/webhook** (required) |
+| Server-to-server batch/back-office, no user waiting | Either mode works; `async_only` still recommended |
+
+> `async_only=true` **never** returns a partial and **never** blocks — it always hands back a
+> `job_id` to poll. Digital and scanned files behave identically under it. Treat it as the
+> default for any latency-sensitive or gateway-fronted integration.
+
 ### 3a. Large-file upload (over ~6 MB)
 
 For files larger than the ~6 MB edge cap, upload directly to S3 with a presigned URL and
@@ -461,7 +506,10 @@ HEADERS = {"X-API-Key": "rp_live_your_key_here"}
 
 def parse_resume(path: str) -> dict:
     with open(path, "rb") as f:
-        r = requests.post(f"{BASE}/resume/parse", headers=HEADERS, files={"file": f})
+        # async_only=true -> returns a job_id in ~1s and never blocks. Recommended for
+        # any interactive UI or gateway-fronted caller. Drop it to allow a sync result.
+        r = requests.post(f"{BASE}/resume/parse", headers=HEADERS,
+                          files={"file": f}, data={"async_only": "true"})
     r.raise_for_status()
     res = r.json()
 
@@ -531,6 +579,7 @@ async function parseResume(file /* Blob/File */) {
 ## 12. Integration checklist
 
 - [ ] Store the API key server-side (never in client code)
+- [ ] **For any interactive UI or gateway-fronted caller, send `async_only=true` and poll/webhook — never block a user on the parse (it can take ~55 s)**
 - [ ] Branch on `status` (`completed` vs `processing`)
 - [ ] Handle both sync results and async polling/webhooks
 - [ ] Register a webhook and **verify the HMAC signature** on every delivery

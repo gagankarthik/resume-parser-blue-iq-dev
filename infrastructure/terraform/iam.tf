@@ -17,14 +17,29 @@ resource "aws_iam_role" "lambda_exec" {
   tags               = local.common_tags
 }
 
-# CloudWatch Logs
+# Dedicated execution role for the Worker Lambda - same trust policy, its own
+# identity so the API and worker permission sets stay separated (least-privilege:
+# the API can only PRODUCE to the queue, the worker can only CONSUME).
+resource "aws_iam_role" "worker_exec" {
+  name               = "${local.name_prefix}-worker-exec"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = local.common_tags
+}
+
+# CloudWatch Logs - both functions
 resource "aws_iam_role_policy_attachment" "lambda_logs" {
   role       = aws_iam_role.lambda_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Application permissions - least-privilege
-data "aws_iam_policy_document" "lambda_app" {
+resource "aws_iam_role_policy_attachment" "worker_logs" {
+  role       = aws_iam_role.worker_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# Shared application permissions (DynamoDB + S3 + Textract) - both functions run
+# the same code paths, so both need these. SQS access is layered on per-role below.
+data "aws_iam_policy_document" "lambda_app_common" {
   # DynamoDB - all application tables (and their GSIs)
   statement {
     sid    = "DynamoDB"
@@ -73,24 +88,49 @@ data "aws_iam_policy_document" "lambda_app" {
     actions   = ["textract:DetectDocumentText", "textract:AnalyzeDocument"]
     resources = ["*"]
   }
+}
 
-  # Lambda - the function invokes ITSELF for async OCR work.
-  # ARN is constructed (not a resource reference) to avoid a dependency cycle:
-  # function -> exec-role policy -> function.
+# API role policy = common + PRODUCE to the worker queue.
+data "aws_iam_policy_document" "api_app" {
+  source_policy_documents = [data.aws_iam_policy_document.lambda_app_common.json]
+
   statement {
-    sid     = "InvokeSelf"
-    effect  = "Allow"
-    actions = ["lambda:InvokeFunction"]
-    resources = [
-      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${local.name_prefix}-api",
+    sid    = "SQSProduce"
+    effect = "Allow"
+    actions = [
+      "sqs:SendMessage", "sqs:SendMessageBatch",
+      "sqs:GetQueueUrl", "sqs:GetQueueAttributes",
     ]
+    resources = [aws_sqs_queue.worker.arn]
+  }
+}
+
+# Worker role policy = common + CONSUME from the worker queue (the event-source
+# mapping polls the queue using the function's execution role).
+data "aws_iam_policy_document" "worker_app" {
+  source_policy_documents = [data.aws_iam_policy_document.lambda_app_common.json]
+
+  statement {
+    sid    = "SQSConsume"
+    effect = "Allow"
+    actions = [
+      "sqs:ReceiveMessage", "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes", "sqs:ChangeMessageVisibility",
+    ]
+    resources = [aws_sqs_queue.worker.arn]
   }
 }
 
 resource "aws_iam_role_policy" "lambda_app" {
   name   = "${local.name_prefix}-app-policy"
   role   = aws_iam_role.lambda_exec.id
-  policy = data.aws_iam_policy_document.lambda_app.json
+  policy = data.aws_iam_policy_document.api_app.json
+}
+
+resource "aws_iam_role_policy" "worker_app" {
+  name   = "${local.name_prefix}-worker-app-policy"
+  role   = aws_iam_role.worker_exec.id
+  policy = data.aws_iam_policy_document.worker_app.json
 }
 
 # -- GitHub Actions deployment role --------------------------------------------
@@ -162,6 +202,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     ]
     resources = [
       aws_lambda_function.api.arn,
+      aws_lambda_function.worker.arn,
     ]
   }
 }

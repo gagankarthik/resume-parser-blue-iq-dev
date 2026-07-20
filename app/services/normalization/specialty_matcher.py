@@ -168,6 +168,11 @@ def _in_scope(rec: SpecialtyRecord, prof_set: set[str]) -> bool:
     return not prof_set or bool(set(profession_keys(rec.profession)) & prof_set)
 
 
+def _sorted_tokens(key: str) -> str:
+    """Whitespace-tokenize and sort, so word order can't hurt a similarity ratio."""
+    return " ".join(sorted(key.split()))
+
+
 def _fuzzy_lookup(
     catalog: SpecialtyCatalog, keys: list[str], prof_keys: list[str],
     *, threshold: float = FUZZY_THRESHOLD,
@@ -186,6 +191,10 @@ def _fuzzy_lookup(
     if not cands:
         return None
     prof_set = set(prof_keys)
+    # Opt-in: also try a token-SORTED comparison so a pure word-order difference can
+    # still clear the threshold. Off by default (unchanged behaviour); see config.
+    token_set = get_settings().specialty_fuzzy_token_set
+    sorted_cands = [(c, _sorted_tokens(c)) for c in cands] if token_set else []
 
     best: tuple[float, SpecialtyRecord, str] | None = None
     for rec in catalog.records:
@@ -195,11 +204,17 @@ def _fuzzy_lookup(
         if rec.full_name:
             targets.append((_match_key(rec.full_name), "full_name"))
         for tkey, tier in targets:
+            tkey_sorted = _sorted_tokens(tkey) if token_set else ""
             for cand in cands:
                 sm = difflib.SequenceMatcher(None, cand, tkey)
-                if sm.real_quick_ratio() < threshold or sm.quick_ratio() < threshold:
-                    continue
-                ratio = sm.ratio()
+                ratio = 0.0
+                if sm.real_quick_ratio() >= threshold and sm.quick_ratio() >= threshold:
+                    ratio = sm.ratio()
+                if token_set and ratio < 1.0:
+                    cand_sorted = next(s for c, s in sorted_cands if c == cand)
+                    if cand_sorted and tkey_sorted:
+                        ratio = max(ratio, difflib.SequenceMatcher(
+                            None, cand_sorted, tkey_sorted).ratio())
                 if ratio >= threshold and (best is None or ratio > best[0]):
                     best = (ratio, rec, tier)
     if best is None:

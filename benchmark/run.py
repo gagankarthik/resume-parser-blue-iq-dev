@@ -125,6 +125,41 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _pct(values: list[float], p: float) -> float:
+    """Nearest-rank percentile (p in 0..100). Empty -> 0.0."""
+    if not values:
+        return 0.0
+    s = sorted(values)
+    k = max(0, min(len(s) - 1, round(p / 100.0 * (len(s) - 1))))
+    return s[k]
+
+
+def _perf_report(rows: list[dict]) -> None:
+    """Print a latency + token-cost summary for a --local run.
+
+    The accuracy scorer stays PII-free and timing-free; this is the companion
+    speed/cost view, so a change can be judged on all three axes (accuracy, latency,
+    cost) instead of accuracy alone.
+    """
+    ok = [r for r in rows if r["status"] == "completed"]
+    if not ok:
+        print("\n(no completed parses to summarise for perf)")
+        return
+    lat = [r["duration_ms"] / 1000.0 for r in ok]
+    toks = [r["tokens"] for r in ok]
+    roles = sum(r["roles"] for r in ok) or 1
+    print("\nperformance (completed parses):")
+    print(f"  resumes           {len(ok)}  ({len(rows) - len(ok)} failed)")
+    print(f"  latency  s        p50 {_pct(lat, 50):.1f}   p95 {_pct(lat, 95):.1f}   "
+          f"max {max(lat):.1f}   mean {sum(lat)/len(lat):.1f}")
+    print(f"  tokens / resume   p50 {_pct([float(t) for t in toks], 50):.0f}   "
+          f"mean {sum(toks)/len(toks):.0f}   total {sum(toks)}")
+    print(f"  tokens / role     {sum(toks)/roles:.0f}")
+    partials = sum(1 for r in ok if r["partial"])
+    if partials:
+        print(f"  partial records   {partials}/{len(ok)}")
+
+
 def _parse_all_local(resumes_dir: Path, actual_dir: Path, only: str | None = None) -> None:
     """Parse every resume in `resumes_dir` through the in-process pipeline.
 
@@ -139,6 +174,7 @@ def _parse_all_local(resumes_dir: Path, actual_dir: Path, only: str | None = Non
 
     files = [f for f in sorted(resumes_dir.iterdir())
              if f.is_file() and (not only or only.lower() in f.stem.lower())]
+    perf: list[dict] = []
 
     async def _one(f: Path) -> None:
         inp = PipelineInput(
@@ -147,17 +183,22 @@ def _parse_all_local(resumes_dir: Path, actual_dir: Path, only: str | None = Non
         )
         try:
             res = await run(inp)
+            n_exp = len(res.parsed.experience)
             payload = {
                 "job_id": inp.job_id, "status": "completed",
                 "data": res.parsed.model_dump(mode="json"),
                 "confidence": res.confidence.model_dump(mode="json"),
                 "partial": res.partial, "warnings": res.warnings,
+                # Persisted so a later --actual-dir re-score can still see the cost.
+                "perf": {"duration_ms": res.duration_ms, "ai_tokens_used": res.ai_tokens_used},
             }
-            n_exp = len(res.parsed.experience)
+            perf.append({"status": "completed", "duration_ms": res.duration_ms,
+                         "tokens": res.ai_tokens_used, "roles": n_exp, "partial": res.partial})
             print(f"parsed {f.name} -> {n_exp} roles, conf {res.confidence.overall:.2f}, "
-                  f"{res.duration_ms/1000:.0f}s, warnings={len(res.warnings)}")
+                  f"{res.duration_ms/1000:.0f}s, {res.ai_tokens_used} tok, warnings={len(res.warnings)}")
         except Exception as exc:  # noqa: BLE001 — record the failure, keep going
             payload = {"job_id": inp.job_id, "status": "failed", "error": str(exc)}
+            perf.append({"status": "failed", "duration_ms": 0, "tokens": 0, "roles": 0, "partial": False})
             print(f"parsed {f.name} -> FAILED: {exc}")
         (actual_dir / f"{f.stem}.json").write_text(json.dumps(payload), encoding="utf-8")
 
@@ -168,6 +209,7 @@ def _parse_all_local(resumes_dir: Path, actual_dir: Path, only: str | None = Non
             await _one(f)
 
     asyncio.run(_all())
+    _perf_report(perf)
 
 
 def _parse_all(api: str, key: str, resumes_dir: Path, actual_dir: Path) -> None:
