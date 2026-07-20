@@ -136,6 +136,22 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
+      # Preflight: the API fails closed in production without AUTH_SECRET. Verify it
+      # is set BEFORE shipping a new image, so a misconfiguration fails the deploy
+      # early with an actionable message instead of taking the API down with a 502 at
+      # the health check. The value is read into a variable but never printed.
+      - name: Preflight - AUTH_SECRET is set on the API
+        run: |
+          SECRET=$(aws lambda get-function-configuration \
+            --function-name resume-parser-production-api --region ${{ env.AWS_REGION }} \
+            --query 'Environment.Variables.AUTH_SECRET' --output text 2>/dev/null || echo "")
+          if [ -z "$SECRET" ] || [ "$SECRET" = "None" ] || [ "$SECRET" = "dev-insecure-auth-secret-change-me" ]; then
+            echo "::error::resume-parser-production-api has no AUTH_SECRET - the API fails closed in production and would 502."
+            echo "::error::Set it, then re-run: SECRET_VALUE=\"\$(openssl rand -hex 32)\" ./scripts/set_lambda_secret.sh resume-parser-production-api AUTH_SECRET"
+            exit 1
+          fi
+          echo "AUTH_SECRET is present."
+
       # Both functions run the SAME image (different entry-point commands), so a
       # deploy ships the new image to both. The Worker is skipped (with a warning)
       # until it is provisioned - see scripts/provision_worker.sh - so a deploy is
