@@ -136,21 +136,29 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
-      # Preflight: the API fails closed in production without AUTH_SECRET. Verify it
-      # is set BEFORE shipping a new image, so a misconfiguration fails the deploy
-      # early with an actionable message instead of taking the API down with a 502 at
-      # the health check. The value is read into a variable but never printed.
-      - name: Preflight - AUTH_SECRET is set on the API
+      # The API fails closed in production without AUTH_SECRET. Rather than 502 (or
+      # block the deploy), self-heal: if it is missing/insecure, generate a strong
+      # value ONCE and set it on the function. It is only generated when absent, so
+      # existing sessions are never invalidated by a later deploy. The value is never
+      # printed, and the other env vars are preserved (read -> merge -> write).
+      - name: Ensure AUTH_SECRET is set on the API
         run: |
-          SECRET=$(aws lambda get-function-configuration \
-            --function-name resume-parser-production-api --region ${{ env.AWS_REGION }} \
+          FN=resume-parser-production-api
+          REGION=${{ env.AWS_REGION }}
+          CUR=$(aws lambda get-function-configuration --function-name "$FN" --region "$REGION" \
             --query 'Environment.Variables.AUTH_SECRET' --output text 2>/dev/null || echo "")
-          if [ -z "$SECRET" ] || [ "$SECRET" = "None" ] || [ "$SECRET" = "dev-insecure-auth-secret-change-me" ]; then
-            echo "::error::resume-parser-production-api has no AUTH_SECRET - the API fails closed in production and would 502."
-            echo "::error::Set it, then re-run: SECRET_VALUE=\"\$(openssl rand -hex 32)\" ./scripts/set_lambda_secret.sh resume-parser-production-api AUTH_SECRET"
-            exit 1
+          if [ -z "$CUR" ] || [ "$CUR" = "None" ] || [ "$CUR" = "dev-insecure-auth-secret-change-me" ]; then
+            echo "AUTH_SECRET missing/insecure - generating and setting a strong value (not printed)."
+            MERGED=$(aws lambda get-function-configuration --function-name "$FN" --region "$REGION" \
+              --query 'Environment.Variables' --output json \
+              | NEW="$(openssl rand -hex 32)" python3 -c 'import json,os,sys; v=json.load(sys.stdin); v["AUTH_SECRET"]=os.environ["NEW"]; print(json.dumps({"Variables": v}))')
+            aws lambda wait function-updated --function-name "$FN" --region "$REGION"
+            aws lambda update-function-configuration --function-name "$FN" --region "$REGION" --environment "$MERGED" >/dev/null
+            aws lambda wait function-updated --function-name "$FN" --region "$REGION"
+            echo "AUTH_SECRET set."
+          else
+            echo "AUTH_SECRET already present."
           fi
-          echo "AUTH_SECRET is present."
 
       # Both functions run the SAME image (different entry-point commands), so a
       # deploy ships the new image to both. The Worker is skipped (with a warning)
