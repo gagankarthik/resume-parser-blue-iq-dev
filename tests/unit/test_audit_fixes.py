@@ -66,6 +66,23 @@ def test_development_allows_default_secret():
     Settings(environment="development").assert_production_ready()  # must not raise
 
 
+def test_lambda_handler_fails_closed_in_production_without_auth_secret():
+    """Mangum runs lifespan="off", so the API handler enforces production-readiness
+    at cold start instead. Importing it with ENVIRONMENT=production and an empty
+    AUTH_SECRET must fail loudly rather than boot a forgeable-token service."""
+    import os
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.handlers.lambda_handler"],
+        env={**os.environ, "ENVIRONMENT": "production", "AUTH_SECRET": ""},
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "AUTH_SECRET" in result.stderr
+
+
 # -- C3: ExtractionNote sanitizes instead of crashing the whole parse -----------
 
 def test_extraction_note_confidence_clamped():

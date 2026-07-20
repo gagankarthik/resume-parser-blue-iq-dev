@@ -1,47 +1,52 @@
 # Resume Parser API
 
-**Turn healthcare resumes into placement-ready candidate records — automatically.**
+Enterprise resume parsing for healthcare staffing. The Resume Parser API converts a nurse or
+allied-health resume — PDF, Word, RTF, or a photographed scan — into structured, validated JSON
+that drops straight into a candidate profile and Work History form. Every specialty, facility,
+licence, and location is resolved to the placement platform's own IDs, and every section carries a
+confidence score so your team knows what to trust and what to review.
 
-The Resume Parser API converts a nurse or allied-health resume — PDF, Word, RTF, or a
-photographed scan — into structured, validated JSON that drops straight into a candidate
-profile and Work History form. Every specialty, facility, licence, and location is resolved to
-the placement platform's own IDs, and every section carries a confidence score so your team
-knows what to trust and what to review.
+**Why it exists:** staffing coordinators re-key candidate data from resumes by hand — slow,
+inconsistent, and error-prone. This service automates that step with genuine healthcare
+understanding: it knows a certification is not a state licence, keeps a credential's post-nominals
+intact, decomposes a travel nurse's assignments into the facilities where the work happened, and
+maps free-text specialties to a controlled vocabulary the platform can match on. Built for
+**BlueIQ**, delivered as a managed HTTPS API on the **GigHealth** taxonomy.
 
-Built for **BlueIQ**, delivered as a managed HTTPS API on the **GigHealth** taxonomy.
-
----
-
-## The problem it solves
-
-Staffing coordinators re-key candidate data from resumes into placement systems by hand — slow,
-inconsistent, and error-prone in ways that surface later as a bad placement. This service removes
-that step with genuine healthcare understanding: it knows a certification is not a state licence,
-it keeps a credential's post-nominals intact, it decomposes a travel nurse's assignments into the
-facilities where the work actually happened, and it maps free-text specialties to a controlled
-vocabulary your platform can match on.
-
-The result: minutes of manual entry become one API call, and weak records are flagged for review
-instead of quietly entering your pipeline wrong.
-
-## What you get
-
-| Area | Capability |
+| | |
 |---|---|
 | **Formats** | Digital PDF, DOCX, RTF, and scanned PDF / PNG / JPG / TIFF / WEBP (OCR) |
-| **Healthcare domain** | 350+ clinical specialties, credential & state-licence capture, per-facility travel history, Work History field mapping |
+| **Healthcare domain** | 350+ specialties, credential & state-licence capture, per-facility travel history |
 | **Platform IDs** | Specialty, facility, profession, country, state, and city resolved to GigHealth IDs |
-| **Accuracy** | Per-role work-history extraction with bullet-count verification |
-| **Confidence** | Per-section 0–1 scores to route low-quality records to human review |
-| **Honesty** | Never returns an empty record and never a silent partial — a degraded parse says so |
-| **Integration** | Synchronous parse, async (OCR) jobs, batch upload, webhooks, and a correction-feedback loop |
-| **Security** | API-key & session auth, magic-byte file validation, SSRF-guarded webhooks, no resume storage |
+| **Confidence** | Per-section 0–1 scores to route weak records to human review |
+| **Honesty** | Never an empty record and never a silent partial — a degraded parse says so |
+| **Security** | API-key & session auth, magic-byte validation, SSRF-guarded webhooks, no resume storage |
 
 ---
 
-## Quick start
+## Installation
 
-Send a resume, get a structured candidate record back in one authenticated call:
+**Prerequisites:** Python 3.12, [Poetry](https://python-poetry.org/), Docker (for local AWS via
+LocalStack), and the Tesseract OCR binary (`tesseract-ocr`) for scanned documents.
+
+```bash
+git clone https://github.com/gagankarthik/resume-parser-blue-iq-dev.git
+cd resume-parser-blue-iq-dev
+
+poetry install                 # install dependencies (poetry.lock is committed)
+cp .env.example .env           # then fill in OPENAI_API_KEY, GIG_SPECIALTIES_API_KEY, AUTH_SECRET
+
+docker-compose up              # API + LocalStack (S3 + DynamoDB) for local development
+```
+
+The service needs an `OPENAI_API_KEY` (model: `gpt-4.1-mini`) and, for platform-ID resolution, a
+`GIG_SPECIALTIES_API_KEY`. All settings are documented in [`.env.example`](.env.example).
+
+---
+
+## Usage
+
+Parse a resume in one authenticated call:
 
 ```bash
 curl -X POST https://<your-api-host>/api/v1/resume/parse \
@@ -49,8 +54,39 @@ curl -X POST https://<your-api-host>/api/v1/resume/parse \
   -F "file=@nurse_resume.pdf"
 ```
 
-**Every section is always present** (empty when the resume doesn't mention it), each role and
-credential resolved to the placement platform's own IDs, with a per-section confidence score:
+Digital files return the parsed JSON immediately. Scans and unusually dense CVs return a `job_id`
+to **poll** at `GET /api/v1/resume/job/{job_id}` (or receive a webhook). Behind a short gateway
+timeout, pass `async_only=true` and poll — a complete parse can take longer than a blocking request
+allows.
+
+**Core endpoints** (all under `/api/v1`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/resume/parse` | Parse one resume |
+| `POST` | `/resume/upload-url` → `/resume/parse-uploaded` | Presigned upload for files above ~6 MB |
+| `GET` | `/resume/job/{job_id}` | Poll an async job |
+| `POST` | `/resume/batch` | Batch submit (≤ 200 files) |
+| `POST` | `/resume/{job_id}/feedback` | Submit corrections to improve accuracy |
+| `POST`/`GET`/`DELETE` | `/webhooks` | Manage HMAC-signed delivery |
+
+Full integration walkthrough: [`docs/CLIENT_INTEGRATION_GUIDE.md`](docs/CLIENT_INTEGRATION_GUIDE.md).
+
+**Developer commands:**
+
+```bash
+poetry run pytest              # full test suite
+poetry run ruff check app/     # lint
+poetry run mypy app/           # type-check
+python -m benchmark.run        # score parser output against the labelled benchmark
+```
+
+---
+
+## Examples
+
+A parsed record — every section present, each role and credential resolved to platform IDs, with
+per-section confidence:
 
 ```jsonc
 {
@@ -58,85 +94,42 @@ credential resolved to the placement platform's own IDs, with a per-section conf
   "status": "completed",
   "data": {
     "personal_info": { "full_name": "Jane Smith", "email": "jane@example.com",
-                       "phone": "865-541-1111", "credentials": ["RN", "BSN"], "location": "..." },
+                       "phone": "865-541-1111", "credentials": ["RN", "BSN"] },
     "experience": [
       { "company": "Fort Sanders Regional Medical Center", "role": "RN - Med Surg/Tele",
         "start_date": "01/2022", "end_date": "Present", "city": "Knoxville", "state": "TN",
         "state_id": "42", "city_id": "1234", "profession": "RN", "profession_id": "1",
         "specialties": [{ "name": "Med Surg/Tele", "specialty_id": "88", "confidence": 1.0 }],
-        "description": ["Charge nurse on a 30-bed telemetry unit", "..."] }
+        "description": ["Charge nurse on a 30-bed telemetry unit"] }
     ],
     "education":      [{ "institution": "University of Tennessee", "degree": "BSN", "graduation_year": 2021 }],
-    "skills":         ["Telemetry", "ACLS", "IV Placement"],
     "certifications": [{ "name": "BLS", "issued_date": "01/2024", "expiry_date": "01/2026" }],
-    "licenses":       [{ "license_type": "RN", "state": "TN", "is_compact": true }],
-    "languages": [], "references": [], "awards": [], "publications": [],
-    "projects": [], "professional_associations": [], "clinical_rotations": [],
-    "compliance": { "compliance_risk": false },
-    "extraction_notes": []
+    "licenses":       [{ "license_type": "RN", "state": "TN", "is_compact": true }]
   },
-  "confidence": { "overall": 0.9, "personal_info": 1.0, "experience": 1.0,
-                  "education": 1.0, "skills": 1.0, "catalog_mapping": 0.8 },
-  "skills_validation": { "total": 12, "recognized_count": 9, "recognized_ratio": 0.75 },
+  "confidence": { "overall": 0.9, "experience": 1.0, "catalog_mapping": 0.8 },
   "partial": false,
   "warnings": []
 }
 ```
 
-A scan or an unusually dense CV may instead return `status: "processing"` with a `job_id` to
-**poll** at `GET /api/v1/resume/job/{job_id}` (or receive a webhook). A degraded parse comes back
-with `partial: true` and human-readable `warnings[]` — **never an empty record, never a silent
-partial.**
-
-> **Integrating behind a short gateway timeout** (e.g. a 30 s serverless host)? Send
-> `async_only=true` and poll — a complete parse can take longer than a blocking request allows.
-> See the [Client Integration Guide](docs/CLIENT_INTEGRATION_GUIDE.md).
+A degraded parse returns `partial: true` with human-readable `warnings[]` — **never an empty
+record, never a silent partial.** An unresolved platform ID comes back `null`, never a guess.
 
 ---
 
-## Platform ID mapping
+## License
 
-Free text becomes GigHealth IDs, so records map onto your forms with no manual lookup. **An
-unresolved ID comes back `null` — never a guess.**
-
-| Catalog | Coverage |
-|---|---|
-| Specialty | 350+ clinical specialties, profession-scoped |
-| Facility | 8,000+ facilities |
-| Geography | Countries and states |
-| City | Live lookup against the partner catalog |
-
-## Security & data privacy
-
-| Control | What it means |
-|---|---|
-| **Authentication** | Per-company API keys, session tokens, and a separate admin token |
-| **No resume storage** | Resume bytes pass through transiently and are deleted immediately after parsing |
-| **Tenant isolation** | Every job, webhook, and record is scoped to your company |
-| **Encryption** | Encrypted at rest and in transit |
-| **PII-safe logging** | Resume content is never logged |
-
-**One deliberate exception:** the optional feedback endpoint stores submitted original + corrected
-JSON (which contains candidate PII) for 90 days, so the parser can be improved. It is written
-*only* when you explicitly submit corrections — if your data policy forbids that, simply don't
-call it; nothing else depends on it.
+**Proprietary.** © Ocean Blue Solutions. All rights reserved. Built exclusively for BlueIQ; not
+licensed for redistribution or use outside that engagement.
 
 ---
 
-## Documentation
+## Contributors & Contact
 
-| Guide | For |
-|---|---|
-| [Client Integration Guide](docs/CLIENT_INTEGRATION_GUIDE.md) | Consuming the API: auth, sync vs. async, polling, webhooks, examples |
-| [Architecture](docs/ARCHITECTURE.md) | How the system is built and why |
-| [Deployment & Operations](docs/DEPLOYMENT.md) | CI/CD, AWS services, OpenAI configuration, runbook |
-| [Engineering guide](docs/PROJECT.md) | Mission, invariants, and rules for changing the system safely |
-| [Custom API domain](docs/custom-api-domain.md) | CloudFront + ACM setup for a branded hostname |
+Developed and maintained by **Ocean Blue Solutions**.
 
-Engineers building or operating the service should start with the
-[Engineering guide](docs/PROJECT.md).
+- Maintainer: [@gagankarthik](https://github.com/gagankarthik)
+- Contact: **oceanbluesolutions@gmail.com**
 
-## Support
-
-This is a managed, single-tenant service for BlueIQ. For access, API keys, or integration help,
-contact the Ocean Blue Solutions team.
+For engineering documentation (architecture, deployment, operations, and the rules for changing the
+system safely), see [`docs/`](docs/) — start with [`docs/PROJECT.md`](docs/PROJECT.md).

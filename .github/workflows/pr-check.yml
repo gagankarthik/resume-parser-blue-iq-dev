@@ -8,6 +8,23 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  # Mandatory secret scan - pre-commit's gitleaks hook only runs for developers who
+  # installed it locally, so enforce the same scan (full history) here on every PR.
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the scan covers every commit, not just the tip
+      - name: Run gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | tar -xz -C /tmp gitleaks
+          # --redact: any hit is masked in the log, so a leaked secret is never re-printed here.
+          # --config: allowlist documentation placeholders (real keys are still caught).
+          /tmp/gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --exit-code 1
+
   lint-and-test:
     name: Lint + Unit Tests
     runs-on: ubuntu-latest

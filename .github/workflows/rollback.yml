@@ -71,19 +71,21 @@ jobs:
       # the API and Worker would drift onto different code versions.
       - name: Update Lambda image (API + Worker)
         run: |
+          IMG="${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ inputs.image_tag }}"
           for FN in "${{ env.FUNCTION_NAME }}" "${{ env.WORKER_FUNCTION_NAME }}"; do
-            aws lambda update-function-code \
-              --function-name "$FN" \
-              --image-uri "${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ inputs.image_tag }}" \
-              --region "${{ env.AWS_REGION }}"
+            if aws lambda get-function --function-name "$FN" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+              aws lambda update-function-code --function-name "$FN" --image-uri "$IMG" --region "${{ env.AWS_REGION }}"
+            else
+              echo "::warning::$FN not found - skipping (async worker not provisioned)."
+            fi
           done
 
       - name: Wait for Lambda update (API + Worker)
         run: |
           for FN in "${{ env.FUNCTION_NAME }}" "${{ env.WORKER_FUNCTION_NAME }}"; do
-            aws lambda wait function-updated \
-              --function-name "$FN" \
-              --region "${{ env.AWS_REGION }}"
+            if aws lambda get-function --function-name "$FN" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+              aws lambda wait function-updated --function-name "$FN" --region "${{ env.AWS_REGION }}"
+            fi
           done
 
       - name: Smoke test - health check

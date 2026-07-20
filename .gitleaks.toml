@@ -1,0 +1,23 @@
+# gitleaks configuration for the resume-parser repo.
+#
+# Keeps ALL of gitleaks' default rules and only allowlists the documentation
+# placeholder keys / truncated example secrets that appear in README and the
+# integration guide. These are illustrative values, never live credentials - a
+# real rp_live_ / sk- key would not match the anchored patterns below and is still
+# reported. Verified via `gitleaks detect` (see the six historical findings).
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documentation placeholder API keys and truncated example secrets"
+regexes = [
+  '''rp_live_your_key_here''',
+  '''rp_live_\.\.\.''',
+  '''rp_live_x{4,}''',
+  '''rp_live_devkey0+''',
+  '''rp_live_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcd''',
+  '''sk-proj-replace-with-your-key''',
+  '''sk-test[-_a-z0-9]*''',
+  '''a3f8d2e1c9b7\.\.\.''',
+]

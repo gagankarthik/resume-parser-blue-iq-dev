@@ -20,11 +20,18 @@ Environment variables (set in Terraform):
 
 from typing import Any
 
+from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 
 # Configure logging at cold-start (lifespan="off" skips the FastAPI startup event)
 configure_logging()
 log = get_logger(__name__)
+
+# Fail closed at cold start. Mangum runs with lifespan="off", so FastAPI's startup
+# event - which calls assert_production_ready() - never fires on Lambda. Enforce the
+# same gate here: a production deploy with an unset/default AUTH_SECRET refuses to
+# boot rather than serving forgeable session tokens. No-op outside production.
+get_settings().assert_production_ready()
 
 from mangum import Mangum  # noqa: E402
 
