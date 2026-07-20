@@ -10,7 +10,7 @@ The Resume Parsing Service is a production-grade HTTP API that converts **PDF, D
 resumes** into clean, schema-validated JSON suitable for auto-filling candidate forms and
 populating downstream systems.
 
-It combines deterministic rule-based extraction with **OpenAI GPT-4o structured-output parsing**,
+It combines deterministic rule-based extraction with **OpenAI gpt-4.1-mini structured-output parsing**,
 then validates, normalizes, and confidence-scores every result. The platform is built on a
 **fully serverless AWS stack** (Lambda + DynamoDB + S3) and is engineered around three
 non-negotiable principles:
@@ -80,7 +80,7 @@ non-negotiable principles:
             +------------------+-----------------------+
                                v
         +-----------------------------------------------+
-        |   DynamoDB (state)         OpenAI GPT-4o (AI)   |
+        |   DynamoDB (state)         OpenAI gpt-4.1-mini   |
         |   api_keys - rate_limits   Amazon Textract (OCR)|
         |   jobs - batches                                |
         |   webhooks - audit_logs                         |
@@ -135,7 +135,7 @@ A single orchestrator (`app/services/pipeline.py`) runs every stage with per-ste
  5. Section detect    Header-based segmentation -> cuts AI token usage
         |
         v
- 6. AI parse          OpenAI GPT-4o structured output - temperature 0
+ 6. AI parse          OpenAI gpt-4.1-mini structured output - temperature 0
         |             schema-guaranteed JSON - 1 automatic retry
         v
  7. Validate          Pydantic v2 - type coercion + schema enforcement
@@ -173,7 +173,7 @@ need it.
 A **hybrid rule-based + AI** approach:
 
 - **Deterministic (regex):** contact details - email, phone, social/portfolio URLs.
-- **AI (GPT-4o structured outputs):** semantic content - experience, education, skills, roles,
+- **AI (gpt-4.1-mini structured outputs):** semantic content - experience, education, skills, roles,
   date associations, projects, certifications.
 
 | Technique | Purpose |
@@ -370,7 +370,7 @@ Each field is scored `0.0-1.0` so clients can route low-confidence records to hu
 | API framework | FastAPI + Python 3.12 (Mangum adapter) |
 | Compute | AWS Lambda (container image) - API + Worker |
 | Public ingress | Lambda Function URL (HTTPS) |
-| AI parsing | OpenAI GPT-4o (structured outputs) |
+| AI parsing | OpenAI gpt-4.1-mini (structured outputs), via the shared resilient executor |
 | PDF extraction | PyMuPDF |
 | DOCX extraction | python-docx |
 | OCR | Tesseract -> Amazon Textract (fallback) |

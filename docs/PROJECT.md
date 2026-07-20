@@ -268,6 +268,6 @@ Recorded here because stale docs cost more than no docs.
   Terraform note in §8. A redeploy will not pick up a new secret, and neither will an apply.
 - **Rollback:** `rollback.yml` (`workflow_dispatch`) -> verify tag in ECR -> update -> smoke test.
   Shares a concurrency group with deploy so the two cannot race.
-- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **560 passing, 78%**.
+- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **598 passing**.
 - **Local:** `docker-compose up` (LocalStack: S3 + DynamoDB). Note `Dockerfile` is dev-only -
   `Dockerfile.lambda` is what ships.
