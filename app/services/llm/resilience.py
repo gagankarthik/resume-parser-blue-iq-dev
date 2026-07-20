@@ -39,7 +39,7 @@ def is_retryable(exc: BaseException) -> bool:
     """True for a transient provider fault worth retrying: 429, any 5xx, request
     timeout, or a connection error. A 4xx other than 429 is a client/content error
     and is NOT retried (retrying reproduces it and burns budget)."""
-    if isinstance(exc, (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError)):
+    if isinstance(exc, RateLimitError | APITimeoutError | APIConnectionError | InternalServerError):
         return True
     if isinstance(exc, APIStatusError):
         code = getattr(exc, "status_code", 0) or 0
