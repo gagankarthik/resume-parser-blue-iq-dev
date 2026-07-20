@@ -2,76 +2,55 @@
 BaseAgent - shared structured-output LLM calling for every section agent.
 
 Design notes:
-  * One AsyncOpenAI client + semaphore are reused *per event loop* (connection-pool
-    reuse across the ~5 Stage-2 agents + N per-role WorkAgent calls). The worker
-    Lambda creates a fresh event loop on every invocation, so a process-global
-    client/semaphore bound to a previous (now-closed) loop would raise
-    "bound to a different event loop" (semaphore) or "Event loop is closed"
-    (httpx pool) on the 2nd+ warm-container invocation. We therefore rebuild both
-    whenever the running loop changes.
-  * The semaphore caps in-flight LLM calls so a long travel-nurse resume
-    (many roles -> many parallel per-role calls) can't blow the OpenAI TPM ceiling.
-  * Structured outputs (`beta.chat.completions.parse`) keep the per-agent schema
-    guarantee - agents never hand-parse JSON.
+  * The actual provider call + resilience (retry/backoff, circuit breaker, Azure
+    same-model fallback) lives in `app.services.llm.client.structured_parse`, shared
+    with the single-shot parser and the specialty-AI tier so the policy is defined
+    once. This module owns only the per-loop concurrency semaphore and token metering.
+  * The semaphore caps in-flight LLM calls so a long travel-nurse resume (many roles
+    -> many parallel per-role calls) can't blow the OpenAI TPM ceiling. It is rebuilt
+    per event loop: the worker Lambda creates a fresh loop each invocation, and a
+    semaphore bound to a previous (now-closed) loop would raise "bound to a different
+    event loop" on warm-container reuse.
+  * Structured outputs keep the per-agent schema guarantee - agents never hand-parse.
   * TokenMeter accumulates total tokens across the whole pipeline for billing.
 """
 
 from __future__ import annotations
 
 import asyncio
-import random
 import time
 from dataclasses import dataclass, field
-from typing import TypeVar
+from typing import TypeVar, cast
 
-from openai import AsyncOpenAI, LengthFinishReasonError, RateLimitError
 from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.core.exceptions import AIParsingError
 from app.core.logging import get_logger
+from app.services.llm.client import structured_parse
 
 log = get_logger(__name__)
 
 _MODEL = TypeVar("_MODEL", bound=BaseModel)
 
-_MAX_RETRIES   = 3
-_BACKOFF_BASE  = 5     # seconds
-_JITTER_FACTOR = 0.2
-
-# Escalating frequency_penalty used ONLY to break a degenerate repetition loop
-# (a strict-schema call that runs to the token ceiling - see the LengthFinishReasonError
-# handler in `_structured_call`). Default calls stay at 0.0 so verbatim extraction is
-# never biased away from words a résumé legitimately repeats.
-_LOOP_BREAK_PENALTIES = (0.3, 0.6)
-
-# Shared across all agents running on the SAME event loop. Rebuilt when the
-# running loop changes (see module docstring - warm Lambda worker reuse).
-_client: AsyncOpenAI | None = None
+# Per-event-loop concurrency gate, rebuilt when the running loop changes (see the
+# module docstring - warm Lambda worker reuse).
 _semaphore: asyncio.Semaphore | None = None
 _bound_loop: asyncio.AbstractEventLoop | None = None
 
 
 def _ensure_for_loop() -> None:
-    """(Re)build the client + semaphore if the running loop changed.
+    """(Re)build the semaphore if the running loop changed.
 
-    Called from within an async context, so ``get_running_loop()`` is valid and
-    the (synchronous, await-free) rebuild is atomic w.r.t. concurrent agents on
-    the same loop - no locking needed.
+    Called from within an async context, so ``get_running_loop()`` is valid and the
+    (synchronous, await-free) rebuild is atomic w.r.t. concurrent agents on the same
+    loop - no locking needed.
     """
-    global _client, _semaphore, _bound_loop
+    global _semaphore, _bound_loop
     loop = asyncio.get_running_loop()
-    if _bound_loop is loop and _client is not None and _semaphore is not None:
+    if _bound_loop is loop and _semaphore is not None:
         return
-    _client = AsyncOpenAI(api_key=get_settings().openai_api_key)
     _semaphore = asyncio.Semaphore(get_settings().multi_agent_max_concurrency)
     _bound_loop = loop
-
-
-def _get_client() -> AsyncOpenAI:
-    _ensure_for_loop()
-    assert _client is not None  # set by _ensure_for_loop
-    return _client
 
 
 def _get_semaphore() -> asyncio.Semaphore:
@@ -137,10 +116,13 @@ class BaseAgent:
         max_tokens: int | None = None,
         model: str | None = None,
     ) -> _MODEL:
-        """Run one structured-output call with retry + concurrency control.
+        """Run one structured-output call, recording usage into `meter`.
 
-        Raises AIParsingError after retries are exhausted so the orchestrator can
-        decide how to degrade (per-section default, or whole-pipeline fallback).
+        Delegates the provider call + resilience (retry/backoff, circuit breaker,
+        Azure fallback) to `app.services.llm.client.structured_parse`, under this
+        module's per-loop concurrency semaphore. Raises AIParsingError after the
+        resilience layer is exhausted so the orchestrator can decide how to degrade
+        (per-section default, or whole-pipeline fallback).
 
         `model` overrides the default `settings.openai_model` for this call, letting
         cheaper/faster models be assigned to the simpler section agents (model
@@ -148,10 +130,6 @@ class BaseAgent:
         configured model so behaviour is unchanged unless a caller opts in.
         """
         settings = get_settings()
-        client   = _get_client()
-        sem      = _get_semaphore()
-        last_exc: Exception | None = None
-        penalty  = 0.0  # bumped only after a repetition-loop (length) failure
 
         # Resolve the model once: an explicit arg wins; otherwise a FAST_TIER agent
         # uses the configured fast model when one is set; otherwise the primary model.
@@ -160,77 +138,28 @@ class BaseAgent:
             else settings.openai_model
         )
 
-        for attempt in range(_MAX_RETRIES):
-            try:
-                t0 = time.monotonic()
-                async with sem:
-                    resp = await client.beta.chat.completions.parse(
-                        model=chosen_model,
-                        max_tokens=max_tokens or settings.openai_max_tokens,
-                        temperature=0.0,
-                        seed=settings.openai_seed,
-                        frequency_penalty=penalty,
-                        messages=[
-                            {"role": "system", "content": system},
-                            {"role": "user", "content": user},
-                        ],
-                        response_format=response_format,
-                    )
-                elapsed_ms = (time.monotonic() - t0) * 1000.0
-                parsed = resp.choices[0].message.parsed
-                usage = resp.usage
-                tokens = usage.total_tokens if usage else 0
-                prompt_tok = usage.prompt_tokens if usage else 0
-                completion_tok = usage.completion_tokens if usage else 0
-                # Prompt-cache hits are reported under prompt_tokens_details when the
-                # provider supplies them; absent on older SDKs/models, hence getattr.
-                details = getattr(usage, "prompt_tokens_details", None) if usage else None
-                cached_tok = getattr(details, "cached_tokens", 0) or 0 if details else 0
-                meter.add(
-                    self.name, tokens, prompt=prompt_tok, completion=completion_tok,
-                    cached=cached_tok, ms=elapsed_ms,
-                )
-                if parsed is None:
-                    raise AIParsingError(f"[{self.name}] empty structured output")
-                return parsed
+        t0 = time.monotonic()
+        result = await structured_parse(
+            system=system,
+            user=user,
+            response_format=response_format,
+            model=chosen_model,
+            max_tokens=max_tokens or settings.openai_max_tokens,
+            label=self.name,
+            semaphore=_get_semaphore(),
+        )
+        elapsed_ms = (time.monotonic() - t0) * 1000.0
 
-            except LengthFinishReasonError as exc:
-                # The model ran to the token ceiling. With a large strict schema, small
-                # models sometimes fall into a degenerate repetition loop (e.g. emitting
-                # "Radiologic Tech / Radiologic Technologist / ..." until max_tokens) and
-                # never close the JSON. Retrying with identical params just reproduces it
-                # deterministically (temperature 0 + fixed seed) and burns a full
-                # max_tokens of latency each time - which is what silently cancelled the
-                # whole WorkExperienceAgent stage and dropped every role. Break the loop
-                # with an escalating frequency_penalty; fail fast once it's spent so the
-                # caller (WorkExperienceAgent.run) can stub the role inside its deadline.
-                last_exc = exc
-                if penalty < _LOOP_BREAK_PENALTIES[-1]:
-                    penalty = next(p for p in _LOOP_BREAK_PENALTIES if p > penalty)
-                    log.warning("agent_length_loop", agent=self.name, next_penalty=penalty)
-                    continue
-                raise AIParsingError(
-                    f"[{self.name}] hit the token ceiling (repetition loop) even with penalty {penalty}"
-                ) from exc
-
-            except RateLimitError as exc:
-                last_exc = exc
-                if attempt < _MAX_RETRIES - 1:
-                    base   = _BACKOFF_BASE * (2 ** attempt)
-                    jitter = base * _JITTER_FACTOR * (2 * random.random() - 1)
-                    await asyncio.sleep(max(base + jitter, 1.0))
-                else:
-                    raise AIParsingError(f"[{self.name}] rate limited after {_MAX_RETRIES} attempts") from exc
-
-            except AIParsingError:
-                raise
-
-            except Exception as exc:
-                last_exc = exc
-                log.warning("agent_attempt_failed", agent=self.name, attempt=attempt + 1, error=str(exc))
-                if attempt < _MAX_RETRIES - 1:
-                    await asyncio.sleep(1)
-                else:
-                    raise AIParsingError(f"[{self.name}] failed after {_MAX_RETRIES} attempts: {exc}") from exc
-
-        raise AIParsingError(f"[{self.name}] failed: {last_exc}")
+        usage = result.usage
+        tokens = usage.total_tokens if usage else 0
+        prompt_tok = usage.prompt_tokens if usage else 0
+        completion_tok = usage.completion_tokens if usage else 0
+        # Prompt-cache hits are reported under prompt_tokens_details when the provider
+        # supplies them; absent on older SDKs/models, hence getattr.
+        details = getattr(usage, "prompt_tokens_details", None) if usage else None
+        cached_tok = getattr(details, "cached_tokens", 0) or 0 if details else 0
+        meter.add(
+            self.name, tokens, prompt=prompt_tok, completion=completion_tok,
+            cached=cached_tok, ms=elapsed_ms,
+        )
+        return cast(_MODEL, result.parsed)

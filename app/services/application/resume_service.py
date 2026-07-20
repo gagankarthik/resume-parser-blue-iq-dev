@@ -17,7 +17,7 @@ from app.db import dynamodb as db
 from app.services.pipeline import PipelineInput, PipelineResult
 from app.services.pipeline import run as run_pipeline
 from app.workers.background import process_resume_async
-from app.workers.dispatch import invoke_worker
+from app.workers.dispatch import enqueue_job
 
 log = get_logger(__name__)
 
@@ -128,9 +128,10 @@ async def dispatch_async(
     background_tasks: BackgroundTasks,
     payload: dict,
 ) -> None:
-    """Hand an async parse job to the Lambda worker, or to in-process BackgroundTasks."""
-    if settings.use_lambda_worker:
-        if not invoke_worker(settings, payload):
+    """Enqueue an async parse job on the worker queue, or run it in-process
+    (BackgroundTasks) when no queue is configured (local dev)."""
+    if settings.use_queue_worker:
+        if not enqueue_job(settings, payload):
             # Fail the job NOW so pollers get a clear "failed" with a reason,
             # not an eternal "processing" that only ends when the client gives up.
             db.update_job_failed(

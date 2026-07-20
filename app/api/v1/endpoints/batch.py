@@ -27,7 +27,7 @@ from app.db import dynamodb as db
 from app.models.schemas import BatchJob, BatchSkipped, BatchStatusResponse, BatchSubmitResponse
 from app.storage import s3_client
 from app.workers.batch_processor import process_batch_locally
-from app.workers.dispatch import invoke_worker
+from app.workers.dispatch import enqueue_jobs
 
 router = APIRouter()
 log = get_logger(__name__)
@@ -144,18 +144,16 @@ async def batch_parse(
         skipped=len(skipped),
     )
 
-    if settings.use_lambda_worker:
-        # Fan out the worker invocations concurrently (each invoke_worker is a
-        # blocking boto3 call); doing them sequentially on the event loop risks the
-        # API gateway timeout before the 202 is returned for a large batch.
+    if settings.use_queue_worker:
+        # Enqueue the whole batch onto SQS in chunks of 10 (SendMessageBatch). This
+        # is a few blocking boto3 calls even for a 200-file batch, so run it off the
+        # event loop to keep the 202 well under the gateway timeout.
         loop = asyncio.get_running_loop()
-        dispatched = await asyncio.gather(
-            *(loop.run_in_executor(None, invoke_worker, settings, job) for job in accepted_jobs)
-        )
-        for job, ok in zip(accepted_jobs, dispatched):
-            if not ok:
+        failed_ids = await loop.run_in_executor(None, enqueue_jobs, settings, accepted_jobs)
+        for job in accepted_jobs:
+            if job["job_id"] in failed_ids:
                 # Mark the job failed immediately so the batch status converges
-                # instead of counting a never-started job as "processing" forever.
+                # instead of counting a never-queued job as "processing" forever.
                 db.update_job_failed(
                     job["job_id"],
                     "Background processing could not be started for this file.",

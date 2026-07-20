@@ -9,8 +9,23 @@ output "ecr_repository_url" {
 }
 
 output "api_lambda_arn" {
-  description = "Resume-parser Lambda ARN"
+  description = "Resume-parser API Lambda ARN"
   value       = aws_lambda_function.api.arn
+}
+
+output "worker_lambda_arn" {
+  description = "Async Worker Lambda ARN"
+  value       = aws_lambda_function.worker.arn
+}
+
+output "worker_queue_url" {
+  description = "Async worker SQS queue URL - the API's WORKER_QUEUE_URL env var points here"
+  value       = aws_sqs_queue.worker.url
+}
+
+output "worker_dlq_url" {
+  description = "Dead-letter queue URL - inspect poison messages that failed past all retries"
+  value       = aws_sqs_queue.worker_dlq.url
 }
 
 output "github_actions_role_arn" {

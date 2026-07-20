@@ -91,13 +91,16 @@ A hard resume (a scan, or an unusually dense CV) may instead return `status: "pr
 
 ## Architecture
 
-**One AWS Lambda** (container image, `us-east-2`) serves the HTTP API *and*, by self-invoking
-with `InvocationType="Event"`, runs the async OCR worker. There is no API Gateway - a Lambda
-Function URL, optionally fronted by CloudFront for the custom domain. State lives in DynamoDB
-(7 tables). Resume bytes pass through S3 transiently and are deleted in a `finally` block.
+**Two AWS Lambdas from one container image** (`us-east-2`). The **API Lambda** serves the HTTP
+API and, for async work, pushes a job onto an **SQS queue** and returns in well under a second. A
+separate **Worker Lambda** drains that queue and runs the heavy OCR / multi-agent pipeline - sized
+for that load without taxing the request path. A **dead-letter queue** captures messages that fail
+past 3 retries as an alertable event. There is no API Gateway - a Lambda Function URL, optionally
+fronted by CloudFront for the custom domain. State lives in DynamoDB (7 tables). Resume bytes pass
+through S3 transiently and are deleted in a `finally` block.
 
 ```
-Client --HTTPS--> CloudFront (60s origin read timeout) --> Lambda Function URL
+Client --HTTPS--> CloudFront (60s origin read timeout) --> API Lambda (Function URL)
                                                               |
                                                         Mangum -> FastAPI
                                                               |
@@ -108,10 +111,10 @@ Client --HTTPS--> CloudFront (60s origin read timeout) --> Lambda Function URL
                             |  sections -> PARSE -> validate -> normalize   |
                             |  -> catalog-match -> score                    |
                             +---------------------------------+--------------+
-                                                              | partial?
-                                                     self-invoke (Event)
+                                                              | partial? (or scanned)
+                                                     SendMessage -> SQS -> DLQ (alarm)
                                                               v
-                                                   async worker, full budget
+                                                   Worker Lambda, full budget
                                                    -> DynamoDB job -> webhook
 ```
 

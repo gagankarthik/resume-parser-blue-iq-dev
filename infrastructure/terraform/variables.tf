@@ -78,6 +78,77 @@ variable "max_batch_size" {
   default     = 200
 }
 
+# -- Worker Lambda (async OCR / multi-agent, fed by SQS) -----------------------
+
+variable "worker_lambda_memory_mb" {
+  description = "Memory for the Worker Lambda (MB) - sized for OCR + the 10-way per-role LLM fan-out"
+  type        = number
+  default     = 2048
+}
+
+variable "worker_lambda_timeout_seconds" {
+  description = "Worker Lambda timeout (s). Must be < worker_queue_visibility_timeout_seconds so a running job is never redelivered."
+  type        = number
+  default     = 300
+}
+
+variable "worker_reserved_concurrency" {
+  description = "Reserved concurrency for the Worker Lambda. -1 leaves it on the account's unreserved pool; set a positive value to cap fan-out during batch bursts."
+  type        = number
+  default     = -1
+}
+
+variable "worker_sqs_batch_size" {
+  description = "Messages the SQS event-source mapping hands the Worker per invocation. 1 = one heavy job per invocation (elastic scaling); raise only for light workloads."
+  type        = number
+  default     = 1
+}
+
+variable "worker_event_source_max_concurrency" {
+  description = "Max concurrent Worker invocations the event-source mapping will drive (SQS backpressure lever, protects the OpenAI TPM budget). 0 = unbounded (up to account concurrency); a set value must be between 2 and 1000."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.worker_event_source_max_concurrency == 0 || (var.worker_event_source_max_concurrency >= 2 && var.worker_event_source_max_concurrency <= 1000)
+    error_message = "worker_event_source_max_concurrency must be 0 (unbounded) or between 2 and 1000."
+  }
+}
+
+# -- Worker queue tuning -------------------------------------------------------
+
+variable "worker_queue_visibility_timeout_seconds" {
+  description = "How long a claimed message is hidden from other consumers. Must exceed worker_lambda_timeout_seconds (and the ~130s orchestrator ceiling) so a still-running job is not picked up twice."
+  type        = number
+  default     = 360
+}
+
+variable "worker_queue_max_receive_count" {
+  description = "Deliveries attempted before a message is routed to the DLQ as a poison pill."
+  type        = number
+  default     = 3
+}
+
+# -- Alarms --------------------------------------------------------------------
+
+variable "alarm_sns_topic_arn" {
+  description = "SNS topic ARN the CloudWatch alarms notify. Empty = alarms still evaluate and show in the console but send no notification."
+  type        = string
+  default     = ""
+}
+
+variable "worker_queue_backlog_alarm_threshold" {
+  description = "Alarm when visible messages on the worker queue stay above this for 5 minutes (backpressure)."
+  type        = number
+  default     = 100
+}
+
+variable "worker_errors_alarm_threshold" {
+  description = "Alarm when the Worker Lambda logs more than this many errors in a 5-minute window."
+  type        = number
+  default     = 5
+}
+
 # Custom API domain (optional). Leave empty to keep only the raw Lambda Function
 # URL. Set to e.g. "api.parsinglab.blue-iq.ai" to front the Function URL with a
 # CloudFront distribution + ACM cert on that hostname (see cloudfront_api.tf).

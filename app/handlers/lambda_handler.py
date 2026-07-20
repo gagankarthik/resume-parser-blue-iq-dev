@@ -1,18 +1,20 @@
 """
-Unified AWS Lambda entry point - a single function serves both roles:
+API Lambda entry point (also the fallback worker router).
 
-  * HTTP API     - Lambda Function URL events -> FastAPI (via Mangum)
-  * Async worker - self-invoked events (InvocationType="Event") -> OCR pipeline
+Primary role: serve the HTTP API - Lambda Function URL events -> FastAPI (Mangum).
+Async parse work runs on a *separate* Worker Lambda that drains the SQS queue
+(`app.handlers.worker_lambda.handler`); the API function only enqueues.
 
-Deploy this file as the Lambda handler: app.handlers.lambda_handler.handler
+Deploy this file as the API Lambda handler: app.handlers.lambda_handler.handler
 
-Routing: Function URL / API Gateway events carry "rawPath"/"requestContext".
-Async worker events are plain job dicts (job_id, s3_key, ...), so anything that
-isn't an HTTP event is handed to the worker pipeline.
+Routing: Function URL / API Gateway events carry "rawPath"/"requestContext" and go
+to FastAPI. Anything else (an SQS batch event, or a plain job dict) is handed to the
+worker pipeline - so this handler still works if it is ever wired to the queue, but
+in the normal topology only the dedicated Worker Lambda receives those events.
 
 Environment variables (set in Terraform):
   AWS_REGION, OPENAI_API_KEY, S3_BUCKET_NAME,
-  DYNAMODB_TABLE_*, WORKER_LAMBDA_FUNCTION_NAME (= this function's own name),
+  DYNAMODB_TABLE_*, WORKER_QUEUE_URL (SQS queue the API enqueues onto),
   ENVIRONMENT=production
 """
 
@@ -34,7 +36,7 @@ _http_handler = Mangum(app, lifespan="off")
 
 
 def handler(event: Any, context: Any) -> Any:
-    """Route HTTP events to FastAPI and async job events to the worker pipeline."""
+    """Route HTTP events to FastAPI and async job/SQS events to the worker pipeline."""
     if isinstance(event, dict) and ("rawPath" in event or "requestContext" in event):
         return _http_handler(event, context)
     return _worker_handler(event, context)

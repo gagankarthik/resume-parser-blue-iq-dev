@@ -70,13 +70,21 @@ failure. **A change that breaks one of these is a regression, no matter what the
 
 ## 5. Architecture
 
-One AWS Lambda (container image, `us-east-2`) serves the HTTP API *and*, by self-invoking with
-`InvocationType="Event"`, runs the async OCR worker. No API Gateway - a Lambda Function URL,
-optionally fronted by CloudFront for the custom domain. State is in DynamoDB (7 tables). Resume
-bytes pass through S3 transiently.
+Two AWS Lambdas (one container image, two entry points, `us-east-2`). The **API Lambda** serves
+the HTTP API and, for async work, pushes a job onto an **SQS queue** and returns. A separate
+**Worker Lambda** drains that queue and runs the heavy OCR / multi-agent pipeline, sized for that
+load independently of the thin request path. No API Gateway - a Lambda Function URL, optionally
+fronted by CloudFront for the custom domain. State is in DynamoDB (7 tables). Resume bytes pass
+through S3 transiently.
+
+The queue is what makes the async path operable: a visibility timeout above the ~130s
+orchestrator ceiling stops a still-running job being redelivered; SQS retries transient failures
+for free; queue depth is a backpressure metric we alarm on; and a **dead-letter queue** turns a
+poison message into a visible, alertable event after `maxReceiveCount` (3) failed deliveries,
+instead of a job that silently never finishes. See `infrastructure/terraform/sqs.tf`.
 
 ```
-Client --HTTPS--> CloudFront (60s origin read timeout) --> Lambda Function URL
+Client --HTTPS--> CloudFront (60s origin read timeout) --> API Lambda (Function URL)
                                                               |
                                                         Mangum -> FastAPI
                                                               |
@@ -87,10 +95,12 @@ Client --HTTPS--> CloudFront (60s origin read timeout) --> Lambda Function URL
                             |  sections -> PARSE -> validate -> normalize ->     |
                             |  catalog-match -> score                          |
                             +---------------------------------+--------------+
-                                                              | partial?
-                                                     self-invoke (Event)
+                                                              | partial? (or scanned)
+                                                     SendMessage -> SQS worker queue
+                                                              |         \
+                                                     (maxReceiveCount)   -> DLQ (alarm)
                                                               v
-                                                   async worker, full budget
+                                                   Worker Lambda, full budget
                                                    -> DynamoDB job -> webhook
 ```
 
@@ -119,6 +129,28 @@ section-only "enrich" pass, merged by `_backfill_from_floor`.
 > The full orchestrator was tried on the sync path and **silently dropped all work history** -
 > the per-role fan-out got cancelled under the tight budget. This is why sync and async use
 > different ladders. Do not "simplify" them back together.
+
+### The shared LLM executor (`services/llm/`)
+
+Every LLM call - single-shot, all the orchestrator agents, and the specialty-AI tier - goes
+through **one** function, `llm.client.structured_parse`, so the resilience policy is defined
+once instead of drifting across call sites. It wraps a provider call with:
+
+- **Transient retry** on 429 / 5xx / timeout / connection with exponential backoff + jitter,
+  honoring a `Retry-After` header when present. (A 4xx like 400 is a content error - not retried.)
+- **A per-process circuit breaker.** After N consecutive infra failures it opens and calls
+  fast-fail, so during an OpenAI outage jobs degrade to the deterministic floor **immediately**
+  (invariant 1) instead of every one hanging through full backoff. It half-opens to probe recovery
+  and is process-global so a warm container remembers the outage across invocations.
+- **An optional Azure OpenAI same-model fallback.** Off unless configured (today: OpenAI /
+  `gpt-4.1-mini` only). Same model + params → no accuracy shift, so it needs no separate
+  benchmark; a cross-*vendor* fallback would and is intentionally not wired. A content error
+  (repetition-loop, empty output, 400) does **not** fall over - the same model would fail identically.
+- **A token-bucket RPM limiter** ahead of the fan-out (per process, opt-in). The cross-instance
+  backpressure lever in production is the SQS event-source mapping's `maximum_concurrency` +
+  Lambda reserved concurrency (see §5 diagram), which a per-process bucket cannot replace.
+
+The concurrency semaphore that caps the per-role fan-out still lives in `agents/base.py`.
 
 ### The agents (`services/parsing/agents/`)
 
@@ -206,8 +238,10 @@ Recorded here because stale docs cost more than no docs.
 - **Resume content IS stored, in one place.** The `feedback` table persists original + corrected
   parsed JSON - full resume PII - for 90 days. Terraform says so; the marketing copy did not.
   Any privacy statement to the client must disclose this.
-- **One Lambda, not two.** `docs/ARCHITECTURE.md` described a separate worker function. It does
-  not exist; the API self-invokes.
+- **Two Lambdas, decoupled by SQS.** The API Lambda enqueues async jobs onto an SQS queue; a
+  separate Worker Lambda drains it (with a DLQ for poison messages). This replaced the old
+  single-function self-invoke (`InvocationType="Event"`) design - if a doc still describes the API
+  self-invoking, it is stale. See §5 and `infrastructure/terraform/sqs.tf`.
 - **Secrets are plain Lambda env vars,** not SSM Parameter Store.
 - **There is no rate-limit DynamoDB table.** `core/rate_limit.py` is an in-process fixed-window
   counter, **disabled by default**. It does not survive a cold start and does not coordinate

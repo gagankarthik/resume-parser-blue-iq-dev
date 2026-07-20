@@ -110,6 +110,48 @@ class Settings(BaseSettings):
     # those sections with `python -m benchmark.run --local`.
     openai_model_fast: str = ""
 
+    # -- LLM resilience --------------------------------------------------------
+    # Every LLM call (single-shot, the orchestrator agents, the specialty-AI tier)
+    # goes through one shared executor (app/services/llm/client.py). Without the
+    # controls below a provider outage is a full correlated failure across both
+    # paths, a rate-limit burst has no admission control, and there is no fallback.
+
+    # Retry transient faults (429 + 5xx + timeout + connection) with exponential
+    # backoff and jitter, honoring a Retry-After header when the provider sends one.
+    llm_max_retries: int = 3
+    llm_backoff_base_seconds: float = 5.0
+    llm_backoff_jitter: float = 0.2         # ±fraction of the computed delay
+    llm_backoff_max_seconds: float = 30.0   # cap on any single backoff sleep
+
+    # Circuit breaker (per process/warm container). After this many consecutive
+    # infra failures the breaker OPENS and calls fail fast - degrading to the
+    # deterministic rule floor ("never return nothing") instead of every job
+    # hanging through full backoff during an outage. It half-opens after the reset
+    # window to probe recovery. Disable only for debugging.
+    llm_circuit_breaker_enabled: bool = True
+    llm_circuit_fail_threshold: int = 5
+    llm_circuit_reset_seconds: float = 30.0
+
+    # Token-bucket rate limiter ahead of the fan-out (per process). Smooths the
+    # per-role burst against the account's requests-per-minute ceiling. 0 disables
+    # it (default) - the primary cross-instance backpressure lever in production is
+    # the SQS event-source mapping's maximum_concurrency + Lambda reserved
+    # concurrency (see infrastructure/terraform), which a per-process bucket cannot
+    # replace. Set a positive RPM to also smooth bursts within a single worker.
+    llm_rate_limit_rpm: int = 0
+    llm_rate_limit_burst: int = 0           # 0 -> defaults to the per-second rate x2
+    llm_rate_limit_max_wait_seconds: float = 20.0  # cap the wait so it can't blow the budget
+
+    # Azure OpenAI same-model fallback. When configured, a call that exhausts the
+    # primary (or finds the primary breaker open) retries on Azure with the SAME
+    # model + params - lowest-risk fallback since accuracy shouldn't shift. All
+    # empty (default) = OpenAI only, exactly today's behaviour. A cross-VENDOR
+    # fallback would need its own benchmark validation and is intentionally not wired.
+    azure_openai_api_key: str = ""
+    azure_openai_endpoint: str = ""
+    azure_openai_api_version: str = "2024-10-21"
+    azure_openai_deployment: str = ""       # deployment name; defaults to openai_model
+
     # Multi-agent parser
     # When True, resumes are parsed by the multi-agent orchestrator (structure ->
     # per-role work extraction -> parallel section agents -> bullet-count validation)
@@ -273,14 +315,26 @@ class Settings(BaseSettings):
     max_retry_count: int = 3            # maximum retry attempts per job
                                         # on Lambda, control via reserved concurrency
 
-    # Lambda (async worker)
-    # Set to the Lambda function name in production; leave empty to use BackgroundTasks in dev
-    worker_lambda_function_name: str = ""
+    # Async worker (SQS)
+    # URL of the SQS queue the API pushes async parse jobs onto; a separate Worker
+    # Lambda drains it (see infrastructure/terraform/sqs.tf). Set in production;
+    # leave empty in dev to run async work in-process via FastAPI BackgroundTasks.
+    worker_queue_url: str = ""
 
     @property
-    def use_lambda_worker(self) -> bool:
-        """True when running in Lambda and a worker function is configured."""
-        return bool(self.worker_lambda_function_name)
+    def use_queue_worker(self) -> bool:
+        """True when an SQS worker queue is configured (production path)."""
+        return bool(self.worker_queue_url)
+
+    @property
+    def use_azure_fallback(self) -> bool:
+        """True when an Azure OpenAI same-model fallback is fully configured."""
+        return bool(self.azure_openai_api_key and self.azure_openai_endpoint)
+
+    @property
+    def azure_deployment_name(self) -> str:
+        """Azure deployment to use for the fallback (defaults to the primary model)."""
+        return self.azure_openai_deployment or self.openai_model
 
     @property
     def max_file_size_bytes(self) -> int:

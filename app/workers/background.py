@@ -98,10 +98,11 @@ async def process_resume_async(
 
     finally:
         # Everything below is best-effort cleanup/bookkeeping. It MUST NOT raise:
-        # under an async Lambda (InvocationType="Event") a propagated exception
-        # makes AWS retry the entire invocation, re-running the pipeline and
-        # re-emitting a byte-identical parse.completed webhook + job write
-        # (duplicate output). Swallow and log instead.
+        # on the SQS worker a propagated exception makes the message redeliver
+        # (at-least-once), re-running the pipeline and re-emitting a byte-identical
+        # parse.completed webhook + job write (duplicate output). Swallow and log
+        # instead. (The worker also skips a job already in a terminal state, so a
+        # redelivery after completion is a no-op - see worker_lambda._process_one.)
         _s3_delete(s3_key)
 
         try:
@@ -123,9 +124,9 @@ async def process_resume_async(
 
         if batch_id:
             try:
-                # Claim the increment idempotently - an async-Lambda Event retry
-                # (after a hard timeout/OOM) re-runs this whole block, and without
-                # the guard it would double-count the batch's completed/failed.
+                # Claim the increment idempotently - an SQS redelivery (after a
+                # hard timeout/OOM) re-runs this whole block, and without the guard
+                # it would double-count the batch's completed/failed.
                 if not db.mark_batch_counted(job_id):
                     log.info("batch_already_counted", job_id=job_id, batch_id=batch_id)
                 else:

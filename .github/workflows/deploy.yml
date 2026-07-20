@@ -136,18 +136,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
-      - name: Update Lambda image
+      # Both functions run the SAME image (different entry-point commands, set in
+      # Terraform), so a deploy ships the new image to both: the API function and
+      # the async Worker function that drains the SQS queue.
+      - name: Update Lambda image (API + Worker)
         run: |
-          aws lambda update-function-code \
-            --function-name resume-parser-production-api \
-            --image-uri ${{ needs.build-and-push.outputs.image_uri }} \
-            --region ${{ env.AWS_REGION }}
+          for FN in resume-parser-production-api resume-parser-production-worker; do
+            aws lambda update-function-code \
+              --function-name "$FN" \
+              --image-uri ${{ needs.build-and-push.outputs.image_uri }} \
+              --region ${{ env.AWS_REGION }}
+          done
 
-      - name: Wait for Lambda update
+      - name: Wait for Lambda update (API + Worker)
         run: |
-          aws lambda wait function-updated \
-            --function-name resume-parser-production-api \
-            --region ${{ env.AWS_REGION }}
+          for FN in resume-parser-production-api resume-parser-production-worker; do
+            aws lambda wait function-updated \
+              --function-name "$FN" \
+              --region ${{ env.AWS_REGION }}
+          done
 
       # NOTE: Lambda environment variables and sizing (memory/timeout) are owned by
       # Terraform (infrastructure/terraform - see lambda.tf `local.lambda_env` and the
