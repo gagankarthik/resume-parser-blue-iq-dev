@@ -7,7 +7,7 @@ Steps (all with per-step timeouts):
   3. Clean text (Unicode-safe, preserves international names)
   4. Rule-based anchor extraction (email, phone, URLs)
   5. Section detection
-  6. AI parsing (async, GPT-4o structured output)
+  6. AI parsing (async, GPT-4.1-mini structured output)
   7. Pydantic validation
   8. Normalization (healthcare specialties, degrees, dates)
   8b. Specialty -> catalog-id matching (deterministic tiers + batched AI tier)
@@ -306,30 +306,44 @@ async def run(inp: PipelineInput) -> PipelineResult:
     normalized.compliance = scan_compliance(cleaned, normalized)
     warnings.extend(cert_expiry_warnings(normalized))
 
-    # Tier-4 specialty resolution: one batched LLM call maps any per-role specialty
-    # the deterministic tiers missed to a catalog id (no-op without a catalog or
-    # when nothing is unmatched). Best-effort and time-bounded - a failure leaves
-    # the deterministic matches intact and never fails the parse.
-    spec_budget = budget.for_specialty_ai()
-    if spec_budget > 0:
+    # Post-parse enrichment: tier-4 specialty resolution and city-id enrichment.
+    #   * Tier-4 specialty: one batched LLM call maps any per-role specialty the
+    #     deterministic tiers missed to a catalog id (no-op without a catalog or when
+    #     nothing is unmatched).
+    #   * City id: opt-in, live fuzzy match against the cities endpoint using the
+    #     offline-resolved country_id/state_id (no-op unless enabled + keyed).
+    # They run CONCURRENTLY. Both are best-effort, time-bounded, and mutate DISJOINT
+    # fields on the same roles - specialty writes experience[*].specialties[], city
+    # writes experience[*].city_id/state/country - so there is no shared-state hazard,
+    # and overlapping their LLM call with the cities HTTP lookups shaves their latency
+    # off the tail instead of stacking it. Budgets are read once (at gather start) so
+    # neither waits behind the other, and each is guarded independently: one failing
+    # leaves the other and the deterministic result intact and never fails the parse.
+    async def _specialty_ai_tier() -> int:
+        spec_budget = budget.for_specialty_ai()
+        if spec_budget <= 0:
+            return 0
         try:
-            tokens += await asyncio.wait_for(
+            return await asyncio.wait_for(
                 specialty_matcher.resolve_unmatched_with_ai(normalized, budget=spec_budget),
                 timeout=spec_budget,
             )
         except Exception as exc:  # noqa: BLE001 — tier 4 is optional, never fatal
             log.warning("specialty_ai_tier_skipped", job_id=inp.job_id, error=str(exc))
+            return 0
 
-    # City id enrichment: opt-in, live fuzzy match against the cities endpoint using
-    # the offline-resolved country_id/state_id. No-op unless enabled + keyed. Best-
-    # effort and time-bounded - a failure leaves the deterministic result intact.
-    if settings.enable_city_api_match and budget.can_afford_city():
+    async def _city_api_tier() -> None:
+        if not (settings.enable_city_api_match and budget.can_afford_city()):
+            return
         try:
             await asyncio.wait_for(
                 city_resolver.resolve_cities(normalized), timeout=budget.for_city(),
             )
         except Exception as exc:  # noqa: BLE001 — city enrichment is optional, never fatal
             log.warning("city_api_tier_skipped", job_id=inp.job_id, error=str(exc))
+
+    spec_tokens, _ = await asyncio.gather(_specialty_ai_tier(), _city_api_tier())
+    tokens += spec_tokens
 
     confidence = score(normalized)
 

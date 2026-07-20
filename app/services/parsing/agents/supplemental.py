@@ -20,6 +20,7 @@ RULES:
 
 class SupplementalAgent(BaseAgent):
     name = "SupplementalAgent"
+    FAST_TIER = True  # projects/languages/awards/references — safe candidate for a cheaper model
 
     async def run(self, text: str, meter: TokenMeter) -> SupplementalResult:
         user = f"=== RESUME TEXT ===\n{text}\n=== END ===\n\nReturn the supplemental sections."

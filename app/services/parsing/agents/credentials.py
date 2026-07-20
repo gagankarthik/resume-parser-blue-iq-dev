@@ -34,6 +34,7 @@ CLASSIFY each item into exactly one bucket:
 
 class CredentialsAgent(BaseAgent):
     name = "CredentialsAgent"
+    FAST_TIER = True  # skills/certs/licenses list extraction — safe candidate for a cheaper model
 
     async def run(self, text: str, meter: TokenMeter) -> CredentialsResult:
         user = f"=== RESUME TEXT ===\n{text}\n=== END ===\n\nReturn skills, certifications, and licenses."

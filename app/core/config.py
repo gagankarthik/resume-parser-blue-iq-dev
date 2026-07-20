@@ -101,6 +101,14 @@ class Settings(BaseSettings):
     # completeness is never capped. This is a CEILING, not a target: short
     # resumes still finish in ~2k tokens.
     openai_max_tokens: int = 16384
+    # Model tiering (opt-in). The "hard" stages - structure mapping, per-role work
+    # extraction, and validation - always use openai_model. The simpler section
+    # agents (education, credentials, supplemental, personal-info) can be routed to a
+    # cheaper/faster model via this setting for a latency + cost win. Empty (default)
+    # means every agent uses openai_model, i.e. today's exact behaviour - flip this to
+    # a smaller model (e.g. "gpt-4.1-nano") only AFTER validating no accuracy loss on
+    # those sections with `python -m benchmark.run --local`.
+    openai_model_fast: str = ""
 
     # Multi-agent parser
     # When True, resumes are parsed by the multi-agent orchestrator (structure ->
@@ -201,6 +209,14 @@ class Settings(BaseSettings):
     # Upper bound on how many catalog candidates are offered to the AI shortlist
     # tier in one call (keeps the prompt and token cost bounded).
     specialty_ai_shortlist_max: int = 60
+    # Opt-in recall boost for the deterministic fuzzy tier (3.5): also compare the
+    # candidate against each catalog target with its tokens SORTED, so a pure word-
+    # order difference ("Telemetry Med Surg" vs "Med Surg Telemetry") can still match
+    # above FUZZY_THRESHOLD. Deterministic and offline (no extra model/network cost),
+    # and it can resolve phrases that would otherwise hit the slower AI tier - a small
+    # accuracy + latency win. Default False (today's exact behaviour); enable only
+    # after confirming no precision loss with `python -m benchmark.run --local`.
+    specialty_fuzzy_token_set: bool = False
 
     # Processing limits
     # The direct multipart endpoint (POST /resume/parse) is still bounded by the

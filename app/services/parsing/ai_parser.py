@@ -189,7 +189,7 @@ async def parse(
     anchors: RuleExtracted,
 ) -> tuple[ParsedResumeAI, int]:
     """
-    Parse resume with GPT-4o structured output.
+    Parse resume with the configured OpenAI model (gpt-4.1-mini) structured output.
     Returns (parsed_resume, total_tokens_used).
     Raises AIParsingError after MAX_RETRIES exhausted.
     """

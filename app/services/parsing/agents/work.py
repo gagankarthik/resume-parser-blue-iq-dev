@@ -24,8 +24,6 @@ _SYSTEM_ONE = f"""You extract ONE work-history role from a healthcare résumé i
 
 {CORE_RULES}
 
-{{bullet_instruction}}
-
 FIELD RULES:
 - company = the FACILITY/employer where the work was performed (e.g. "Brattleboro Memorial Hospital") — NEVER the staffing agency. role = job title (include the credential if written, e.g. "RN - MICU").
 - If this is a travel/agency assignment, the agency goes in agency_name ONLY and the facility stays in company; keep the role's own profession/specialties. An employer with its OWN job title and date range is NOT an agency assignment — leave agency_name null for it.
@@ -34,7 +32,7 @@ FIELD RULES:
 - employer_phone = the employer/facility phone number if one is written next to this role (e.g. "304-287-2120"), copied verbatim; null otherwise. Do NOT confuse it with the candidate's own contact phone.
 - description = an ARRAY, one item per responsibility/duty bullet, copied VERBATIM. If the role is written as prose, split each duty sentence into its own item. Never merge separate bullets; never split one bullet into several.
 - achievements = only items with measurable results.
-- specialties = ONLY the unit/specialty named for THIS role in its heading, title, or an explicit unit/specialty label (e.g. "ICU", "Med Surg/Tele"). Return a list of OBJECTS each with just the name: [{{{{"name": "ICU"}}}}] — fill ONLY `name`, leave specialty_id/confidence/group null (the system fills them). Each `name` MUST be the SHORT canonical unit label — an acronym or a few words (e.g. "NICU", "SICU", "CCU", "Med Surg/Tele"). When the résumé writes the unit out with an acronym ("Surgical Intensive Care Unit (SICU)"), use the acronym ("SICU"). NEVER copy a whole sentence, a duty-bullet phrase, a level/description ("Level III and Level IV including high frequency ventilation"), or a repeated/run-on string into `name`. Do NOT mine phrases out of the duty bullets — a bullet mentioning "surgical patients", a piece of equipment, a therapy, or a physician group is NOT a specialty.
+- specialties = ONLY the unit/specialty named for THIS role in its heading, title, or an explicit unit/specialty label (e.g. "ICU", "Med Surg/Tele"). Return a list of OBJECTS each with just the name: [{{"name": "ICU"}}] — fill ONLY `name`, leave specialty_id/confidence/group null (the system fills them). Each `name` MUST be the SHORT canonical unit label — an acronym or a few words (e.g. "NICU", "SICU", "CCU", "Med Surg/Tele"). When the résumé writes the unit out with an acronym ("Surgical Intensive Care Unit (SICU)"), use the acronym ("SICU"). NEVER copy a whole sentence, a duty-bullet phrase, a level/description ("Level III and Level IV including high frequency ventilation"), or a repeated/run-on string into `name`. Do NOT mine phrases out of the duty bullets — a bullet mentioning "surgical patients", a piece of equipment, a therapy, or a physician group is NOT a specialty.
 - BED COUNTS (facility_beds, beds_in_unit) = populate ONLY from an explicit, unambiguous bed-count stated for THIS facility/unit in the work-history entry (e.g. "32-bed MICU", "Facility beds: 450"). NEVER infer them from the professional summary/objective, a narrative sentence, or a nearby number (a "64 bed unit" mentioned in the summary is NOT this role's facility_beds). When there is any doubt, leave BOTH null — a missing bed count is required; a guessed one corrupts the profile.
 - Fill profession, shift, charting_system, nurse_to_patient_ratio, facility_beds, beds_in_unit, reason_for_leaving, position_held, and the teaching/magnet/trauma flags ONLY when explicitly stated for this role."""
 
@@ -153,13 +151,23 @@ class WorkExperienceAgent(BaseAgent):
                 "Extract every responsibility/duty into description[] (verbatim, one per item). "
                 "Leave it empty only if the role truly lists no duties."
             )
-        system = _SYSTEM_ONE.format(bullet_instruction=bullet_instruction)
+        # Prompt-cache layout: the system message is the static rules PLUS the full
+        # résumé text, byte-identical across every per-role call of this résumé (and its
+        # rules prefix identical across résumés). OpenAI automatically serves a matching
+        # prefix from cache, so roles 2..N of the fan-out prefill much faster and cheaper.
+        # The only per-call variation - the target role and its bullet count - lives in
+        # the short user message so it never breaks the cached prefix.
+        system = (
+            f"{_SYSTEM_ONE}\n\n"
+            "=== FULL RÉSUMÉ TEXT (context; extract ONLY the one role named below) ===\n"
+            f"{text}\n=== END RÉSUMÉ ==="
+        )
         user = (
+            f"{bullet_instruction}\n\n"
             f"Extract this role: {role.company} | {role.title or ''} | "
             f"{role.start_date or ''}–{role.end_date or ''}"
             + (f" | agency: {role.agency_name}" if role.agency_name else "")
-            + "\n\n=== RESUME TEXT ===\n"
-            f"{text}\n=== END ===\n\nReturn ONLY this single role."
+            + "\n\nReturn ONLY this single role."
         )
         item = await self._structured_call(system, user, ExperienceItem, meter, max_tokens=4096)
         # Seed identity/agency from the structure map and fix agency-vs-facility mixups.

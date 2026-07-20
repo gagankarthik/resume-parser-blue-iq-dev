@@ -55,6 +55,24 @@ def test_tier3_keyword(catalog):
     assert (m.specialty_id, m.match_tier, m.confidence) == ("1042", "keywords", 0.80)
 
 
+# -- Tier 3.5 token-set option (opt-in, default off) ---------------------------
+
+def test_token_set_off_by_default_leaves_word_order_variant_unmatched(catalog):
+    # "Telemetry Medical Surgical" is a pure word-order variant of the catalog
+    # full_name; with the flag OFF (default) plain fuzzy can't clear the threshold.
+    from app.core.config import get_settings
+    assert get_settings().specialty_fuzzy_token_set is False
+    m = specialty_matcher.match("Telemetry Medical Surgical")
+    assert m.matched is False and m.specialty_id is None
+
+
+def test_token_set_on_resolves_word_order_variant(catalog, monkeypatch):
+    from app.core.config import get_settings
+    monkeypatch.setattr(get_settings(), "specialty_fuzzy_token_set", True)
+    m = specialty_matcher.match("Telemetry Medical Surgical")
+    assert m.matched is True and m.specialty_id == "1042"
+
+
 # -- Candidate extraction: a specialty embedded in a phrase still resolves ------
 
 @pytest.fixture
