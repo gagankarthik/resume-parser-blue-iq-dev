@@ -27,7 +27,7 @@ from app.models.schemas import ConfidenceScores, ParsedResumeAI
 from app.services.budget import TIMEOUT_EXTRACTION, TIMEOUT_OCR, ParseBudget
 from app.services.extraction import classifier, docx_extractor, ocr_extractor, pdf_extractor, rtf_extractor
 from app.services.extraction.classifier import ExtractionStrategy
-from app.services.normalization import city_resolver, specialty_matcher
+from app.services.normalization import city_resolver, credential_recovery, specialty_matcher
 from app.services.normalization.normalizer import (
     cert_expiry_warnings,
     normalize,
@@ -204,7 +204,12 @@ async def run(inp: PipelineInput) -> PipelineResult:
                 f"human review. ({reason})"
             )
 
-    # -- 7-9. Normalize + score ------------------------------------------------
+    # -- 7-9. Recover + normalize + score --------------------------------------
+    # Deterministic backstop BEFORE normalization: rescue any state licence or
+    # professional-association line the AI dropped (common when a mixed credentials
+    # heading or a two-column layout defeats the model). Additive and conservative;
+    # recovered items then flow through the same normalization/hygiene below.
+    credential_recovery.recover(cleaned, parsed_ai)
     normalized = normalize(parsed_ai)
 
     # Deterministic compliance scan (needs the full text) + tracked-cert expiry

@@ -73,3 +73,48 @@ def test_compound_education_header_buckets_degrees():
     sections = detect(resume)
     assert "education" in sections
     assert "BSN" in sections["education"] and "ADN" in sections["education"]
+
+
+def test_mixed_credentials_heading_is_detected():
+    """The real-world 'Professional Associations/Certifications/Licenses/Collaboratives'
+    heading: 64 chars, slash-joined with no spaces, and not starting with a bare
+    keyword - the single-keyword rule misses it, so compound detection must catch it."""
+    assert _match_section_header(
+        "Professional Associations/Certifications/Licenses/Collaboratives"
+    ) == "certifications"
+
+
+def test_slash_joined_header_without_spaces_is_detected():
+    assert _match_section_header("Certifications/Licenses") == "certifications"
+    assert _match_section_header("Certifications/Licenses/Collaboratives") == "certifications"
+
+
+def test_standalone_associations_headers_bucket_as_credentials():
+    for h in ("Professional Associations", "Affiliations", "Memberships", "Committees"):
+        assert _match_section_header(h) == "certifications", h
+
+
+def test_prose_with_association_words_is_not_a_header():
+    # A duty line that merely mentions a committee/council is not a section header.
+    assert _match_section_header("Managed the sepsis committee and stroke council") is None
+    assert _match_section_header("Member of the rapid response team on nights") is None
+
+
+def test_mixed_credentials_block_is_bucketed_together():
+    resume = (
+        "Katherine Driscoll, RN\n\n"
+        "Education\n"
+        "University at Buffalo- BSN, Class of 2015\n\n"
+        "Professional Associations/Certifications/Licenses/Collaboratives\n"
+        "Florida RN License #RN9411204\n"
+        "CCRN Certification\n"
+        "Sigma Theta Tau International Honor Society of Nursing Member\n"
+        "Sepsis Clinical Services Committee\n"
+    )
+    sections = detect(resume)
+    block = sections.get("certifications", "")
+    assert "RN9411204" in block
+    assert "CCRN Certification" in block
+    assert "Sepsis Clinical Services Committee" in block
+    # ...and it did not spill into the preceding education section.
+    assert "RN9411204" not in sections.get("education", "")
