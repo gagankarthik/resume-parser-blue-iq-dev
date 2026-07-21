@@ -53,16 +53,12 @@ flowchart LR
   %% ===================== LANE 3: OCEAN BLUE API =====================
   subgraph OB["Ocean Blue API"]
     direction TB
-    O4["4. Parse resume - LIVE<br/>JSON + confidence + skills_validation"]:::ob
-    FT{"File type?"}:::dec
-    SYNC["Synchronous<br/>JSON returned immediately"]:::ob
-    ASYNC["Asynchronous (OCR) - LIVE<br/>job_id + poll_url"]:::ob
-    POLL["Retrieve result - LIVE<br/>GET /resume/job/job_id<br/>or parse.completed webhook"]:::ob
+    O4["4. Accept submission - LIVE<br/>returns job_id + status processing + poll_url<br/>immediately - nothing parses on the request"]:::ob
+    WRK["Worker parses (async, any file type) - LIVE<br/>classify -> text extract / OCR -> AI parse<br/>-> normalize + resolve platform IDs + confidence"]:::ob
+    POLL["Retrieve result - LIVE<br/>GET /resume/job/job_id<br/>or parse.completed / parse.failed webhook<br/>JSON + confidence + skills_validation"]:::ob
     POK{"Parse OK?"}:::dec
     O12["12. Feedback API - LIVE<br/>POST /resume/job_id/feedback<br/>orig + updated JSON + changed -> 202"]:::ob
-    O4 --> FT
-    FT -->|"Digital PDF / DOCX"| SYNC --> POK
-    FT -->|"Scanned / image"| ASYNC --> POLL --> POK
+    O4 --> WRK --> POLL --> POK
   end
 
   %% ===================== CROSS-LANE FLOW =====================
@@ -87,15 +83,18 @@ flowchart LR
    The browser never holds the key. *If you specifically need the browser to call us
    directly, we can add short-lived, scoped tokens - just say the word.*
 
-2. **Parse is sync or async by file type.** Digital PDF/DOCX returns JSON immediately;
-   scanned PDFs and images run OCR and return a `job_id` - retrieve the result by polling
-   `GET /resume/job/{job_id}` or via a `parse.completed` webhook. (Added that branch.)
+2. **Parse is uniformly asynchronous.** Every supported file - digital or scanned PDF, DOCX,
+   RTF, or image - is submitted the same way: `POST /api/v1/resume/parse` stores the file and
+   returns `{ job_id, status: "processing", poll_url }` immediately; nothing parses on the HTTP
+   request path. The worker classifies (digital -> text extract, scanned -> OCR), extracts, AI
+   parses, then normalizes and scores confidence. Retrieve the result by polling
+   `GET /resume/job/{job_id}` or via a `parse.completed` / `parse.failed` webhook.
 
 3. **Feedback API is live.** Step 12 (`POST /resume/{job_id}/feedback`) is implemented in
    production - it accepts the original and corrected JSON plus the changed flag and returns
    the exact `changed_fields`.
 
-> Bonus already in the parse response: per-section `confidence` scores and
+> Bonus already in the retrieved result: per-section `confidence` scores and
 > `skills_validation` against the healthcare taxonomy.
 
 ---

@@ -46,18 +46,31 @@ The service needs an `OPENAI_API_KEY` (model: `gpt-4.1-mini`) and, for platform-
 
 ## Usage
 
-Parse a resume in one authenticated call:
+One uniform flow for **every** file: submit it, then poll (or take a webhook) for the JSON. Submit
+a resume:
 
 ```bash
 curl -X POST https://<your-api-host>/api/v1/resume/parse \
   -H "X-API-Key: rp_live_..." \
   -F "file=@nurse_resume.pdf"
+# -> { "job_id": "01K...", "status": "processing", "poll_url": "/api/v1/resume/job/01K..." }
 ```
 
-Digital files return the parsed JSON immediately. Scans and unusually dense CVs return a `job_id`
-to **poll** at `GET /api/v1/resume/job/{job_id}` (or receive a webhook). Behind a short gateway
-timeout, pass `async_only=true` and poll — a complete parse can take longer than a blocking request
-allows.
+Every request returns a `job_id` + `poll_url` **immediately** — nothing parses on the request path,
+so it never blocks or trips a gateway timeout, whatever the file's type or size. A background worker
+runs the full parse (digital text extraction or OCR, then the AI parse ladder), and you retrieve the
+structured JSON by polling `GET /api/v1/resume/job/{job_id}` until `status` is `completed`, or by
+registering a webhook:
+
+```bash
+curl https://<your-api-host>/api/v1/resume/job/01K... -H "X-API-Key: rp_live_..."
+# -> { "status": "completed", "data": { ...parsed resume... }, "confidence": {...}, "partial": false }
+```
+
+> **Note (breaking change):** the API used to return parsed JSON inline on the POST for digital
+> files. It now **always** returns a `job_id` to poll. Direct callers that read `data` from the POST
+> response must switch to polling (or a webhook). The `async_only` flag is deprecated and ignored —
+> everything is async now.
 
 **Core endpoints** (all under `/api/v1`):
 

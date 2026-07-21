@@ -30,8 +30,9 @@ That domain knowledge - not the code around it - is the product.
 specialty / facility / geography / city IDs are the vocabulary we normalize into.
 
 **In scope**
-- Digital PDF, DOCX, RTF (synchronous path)
-- Scanned PDF, PNG / JPG / TIFF / WEBP via OCR (asynchronous path)
+- Digital PDF, DOCX, RTF (text extraction)
+- Scanned PDF, PNG / JPG / TIFF / WEBP via OCR
+- One uniform asynchronous submit -> poll flow for every file type (up to 10 MB)
 - Per-field confidence scores, so low-quality records can be routed to human review
 - Credential and state-licence capture with post-nominals preserved
 - 350+ clinical specialties resolved to canonical, profession-scoped catalog IDs
@@ -61,9 +62,10 @@ failure. **A change that breaks one of these is a regression, no matter what the
 4. **Never drop a role.** The `StructureAgent` maps every role and its exact bullet count. If a
    per-role extraction fails, the role is *stubbed from the boundary*, not omitted. Positional
    1:1 with the structure map is what the `ValidatorAgent` checks.
-5. **Never blow the gateway ceiling.** A synchronous caller sits behind a timeout we do not
-   control. The parse must degrade and answer *before* it, or the caller gets a bodyless 504
-   with no data at all. See §6 - this is the system's hardest constraint.
+5. **Never parse on the request path.** The submit endpoint only validates, stores, and
+   dispatches, then returns a `job_id` + `poll_url` immediately - so it always answers well
+   inside the gateway timeout we do not control. All parsing runs on the worker, off the HTTP
+   request path, where no gateway ceiling sits over it. See §6.
 6. **Never log PII.** Resume filenames embed candidate names. Log the extension and the length.
 
 ---
@@ -71,13 +73,13 @@ failure. **A change that breaks one of these is a regression, no matter what the
 ## 5. Architecture
 
 Two AWS Lambdas (one container image, two entry points, `us-east-2`). The **API Lambda** serves
-the HTTP API and, for async work, pushes a job onto an **SQS queue** and returns. A separate
-**Worker Lambda** drains that queue and runs the heavy OCR / multi-agent pipeline, sized for that
-load independently of the thin request path. No API Gateway - a Lambda Function URL, optionally
-fronted by CloudFront for the custom domain. State is in DynamoDB (7 tables). Resume bytes pass
-through S3 transiently.
+the HTTP API; for every parse it stores the file, pushes a job onto an **SQS queue**, and returns
+a poll URL. A separate **Worker Lambda** drains that queue and runs the heavy OCR / multi-agent
+pipeline, sized for that load independently of the thin request path. No API Gateway - a Lambda
+Function URL, optionally fronted by CloudFront for the custom domain. State is in DynamoDB (7
+tables). Resume bytes pass through S3 transiently.
 
-The queue is what makes the async path operable: a visibility timeout above the ~130s
+The queue is what makes the async flow operable: a visibility timeout above the ~130s
 orchestrator ceiling stops a still-running job being redelivered; SQS retries transient failures
 for free; queue depth is a backpressure metric we alarm on; and a **dead-letter queue** turns a
 poison message into a visible, alertable event after `maxReceiveCount` (3) failed deliveries,
@@ -88,6 +90,15 @@ Client --HTTPS--> CloudFront (60s origin read timeout) --> API Lambda (Function 
                                                               |
                                                         Mangum -> FastAPI
                                                               |
+                                          validate -> store (S3) -> dispatch
+                                                              |
+                                          return { job_id, "processing", poll_url }
+                                                              |
+                                                     enqueue -> SQS worker queue
+                                                              |         \
+                                                     (maxReceiveCount)   -> DLQ (alarm)
+                                                              v
+                                                   Worker Lambda, full budget
                             +---------------------------------+--------------+
                             |              app/services/pipeline.py           |
                             |                                                 |
@@ -95,13 +106,8 @@ Client --HTTPS--> CloudFront (60s origin read timeout) --> API Lambda (Function 
                             |  sections -> PARSE -> validate -> normalize ->     |
                             |  catalog-match -> score                          |
                             +---------------------------------+--------------+
-                                                              | partial? (or scanned)
-                                                     SendMessage -> SQS worker queue
-                                                              |         \
-                                                     (maxReceiveCount)   -> DLQ (alarm)
                                                               v
-                                                   Worker Lambda, full budget
-                                                   -> DynamoDB job -> webhook
+                                     DynamoDB job (poll) -> webhook (parse.completed/failed)
 ```
 
 ### The pipeline stages
@@ -121,14 +127,16 @@ Client --HTTPS--> CloudFront (60s origin read timeout) --> API Lambda (Function 
 
 ### The parse ladder
 
-**Async (full 200s budget):** multi-agent orchestrator -> single-shot -> deterministic floor.
+**One ladder, on the worker's full 200s budget:** multi-agent orchestrator -> single-shot ->
+deterministic floor. Every parse - digital or scanned, any file type - runs this same ladder;
+there is no separate synchronous path. Each AI step self-bounds against the wall-clock time left
+under it (see `ParseBudget`, §6), so a slow orchestrator can degrade and still leave a full
+single-shot fallback.
 
-**Sync (tight budget):** single-shot is *primary* -> on timeout, deterministic floor + a
-section-only "enrich" pass, merged by `_backfill_from_floor`.
-
-> The full orchestrator was tried on the sync path and **silently dropped all work history** -
-> the per-role fan-out got cancelled under the tight budget. This is why sync and async use
-> different ladders. Do not "simplify" them back together.
+> The full orchestrator, if started with too little budget left, **silently drops all work
+> history** - the per-role fan-out gets cancelled. `ParseBudget.can_afford_orchestrator()` guards
+> against this by going straight to the cheaper single-shot when the remaining window is too tight.
+> That guard is load-bearing; do not remove it.
 
 ### The shared LLM executor (`services/llm/`)
 
@@ -188,11 +196,11 @@ name (1.00) -> full_name (0.95) -> keywords (0.80) -> deterministic fuzzy (<=0.9
 
 ---
 
-## 6. The time-budget problem - read this before touching `pipeline.py`
+## 6. The time budget - read this before touching `pipeline.py` or `budget.py`
 
-This is the hardest constraint in the system and the source of most of its churn.
+Parsing is slow and variable, and that is why it never runs on the HTTP request path.
 
-A synchronous caller sits behind a gateway we do not control:
+Every caller sits behind a gateway we do not control:
 
 | Caller | Ceiling | Source |
 |---|---|---|
@@ -201,15 +209,19 @@ A synchronous caller sits behind a gateway we do not control:
 | Lambda itself | 300s | Function timeout |
 
 A single-shot parse of even a *typical* two-role resume takes ~20s; a dense 12-role radiology
-resume takes 39-55s. **There is no budget value that makes a complete synchronous parse fit
-30s.** Callers behind a tight gateway must not block on a parse at all - they pass `async_only`
-and poll. This is why `/resume/parse` runs a fast *probe* and promotes to the async worker
-rather than returning a degraded record.
+resume takes 39-55s. **There is no budget value that makes a complete parse fit 30s.** So no
+caller ever blocks on a parse: the submit endpoint validates, stores, and dispatches, then
+returns a `job_id` + `poll_url` immediately - a round-trip that fits any of these ceilings with
+room to spare. The parse itself runs on the Worker Lambda, off the request path, where the only
+deadline is the 300s function timeout.
 
-`pipeline.py` currently carries **eleven** tuned constants implementing this. Each one was added
-by a production incident. **They are correct, and they are in the wrong place** - deadline
-arithmetic is interleaved with parse orchestration, so there is no seam to put the next fix in.
-Extracting a budget object is the single highest-value refactor available. See `CLEANUP_PLAN.md`.
+That worker deadline is owned by **`app/services/budget.py`** - a single async `ParseBudget`
+(`ParseBudget.for_async()`) that carries every tuned constant, each one born from a production
+incident. Deadline arithmetic used to be interleaved with parse orchestration inside
+`pipeline.py`; `ParseBudget` is that seam - each deadline rule is a named, unit-testable method
+carrying the incident that produced it. The AI steps in `pipeline.run()` self-bound against the
+time `ParseBudget` reports as remaining, so `pipeline.py` orchestrates the parse and the budget
+object solves the deadline. Keep them separate. See `CLEANUP_PLAN.md`.
 
 ---
 
@@ -224,8 +236,9 @@ as one more special case, and the code gets worse with every PR.*
    IDs belong to a matcher. Degradation belongs to the ladder. Not to `run()`.
 3. **Pin the behavior before you change it.** Every one of the invariants in §4 has tests. If
    you are changing behavior, the test that proves the old behavior must fail *first*.
-4. **Never simplify away a comment that names an incident.** `pipeline.py:262-264` explains why
-   sync and async use different ladders. That comment is load-bearing.
+4. **Never simplify away a comment that names an incident.** Every constant in `budget.py`
+   carries the production incident that produced it - a 504, a silently dropped work history, an
+   OCR pass that ate the whole budget. Those comments are load-bearing.
 5. **A rewrite is not a refactor.** The catalogs, the prompts, and the 560 tests are the
    product. The code shape around them is replaceable - freely, incrementally, behind the suite.
 
@@ -268,6 +281,6 @@ Recorded here because stale docs cost more than no docs.
   Terraform note in §8. A redeploy will not pick up a new secret, and neither will an apply.
 - **Rollback:** `rollback.yml` (`workflow_dispatch`) -> verify tag in ECR -> update -> smoke test.
   Shares a concurrency group with deploy so the two cannot race.
-- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **598 passing**.
+- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **575 passing**.
 - **Local:** `docker-compose up` (LocalStack: S3 + DynamoDB). Note `Dockerfile` is dev-only -
   `Dockerfile.lambda` is what ships.

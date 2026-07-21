@@ -1,5 +1,14 @@
 # Cleanup Plan
 
+> **Status (2026-07-20): the budget/parse-flow items here are RESOLVED.** The time-budget seam this
+> plan called for was extracted into `app/services/budget.py`, and the API then moved to **one
+> uniform asynchronous flow** for every file (submit → worker parse → poll). The synchronous parse
+> path, the sync time-budget ladder (`SYNC_WALL_BUDGET` and its reserves), the `sync`/`sync_probe`
+> pipeline branches, and the `run_parse`/`enrich`/promote machinery were **removed** - so the
+> "eleven timeout constants" and the "sync vs async prompt drift" concerns below no longer apply
+> (there is a single async `ParseBudget` and a single parse ladder). Non-flow items (e.g. committing
+> `poetry.lock`) may still be open. Kept as a historical record of the analysis.
+
 **Verdict: do not rewrite.** Baseline is 560 tests passing at 78% coverage, above the 70% CI
 gate. The package boundaries are sound. The domain modeling is good. A greenfield rebuild would
 discard the catalogs, the tuned prompts, and 560 tests' worth of hard-won resume edge cases, and

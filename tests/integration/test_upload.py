@@ -12,8 +12,6 @@ import app.api.dependencies as deps
 import app.api.v1.endpoints.resume as resume
 import app.services.application.resume_service as resume_service
 from app.main import app
-from app.models.schemas import ConfidenceScores, ParsedResumeAI
-from app.services.pipeline import PipelineResult
 
 client = TestClient(app)
 
@@ -143,7 +141,8 @@ def test_parse_uploaded_missing_file_returns_422(monkeypatch):
     assert resp.json()["error"]["error_code"] == "UPLOAD_NOT_FOUND"
 
 
-def test_parse_uploaded_async_path_dispatches(monkeypatch):
+def test_parse_uploaded_dispatches_scanned_file_to_worker(monkeypatch):
+    """A scanned image dispatches to the full-budget worker and returns a poll URL."""
     _authenticate(monkeypatch, company_id="acme-1")
     monkeypatch.setattr(
         resume.db, "get_job",
@@ -152,7 +151,6 @@ def test_parse_uploaded_async_path_dispatches(monkeypatch):
     )
     monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"\x89PNG\r\n\x1a\n")
     monkeypatch.setattr(resume, "validate_file", lambda fn, content: "png")
-    monkeypatch.setattr(resume, "classify", lambda fn, content: ("ocr", True))
     monkeypatch.setattr(resume.db, "claim_upload_job", lambda jid: True)
 
     dispatched: dict = {}
@@ -174,7 +172,10 @@ def test_parse_uploaded_async_path_dispatches(monkeypatch):
     assert dispatched["s3_key"] == "temp/J1/scan.png"
 
 
-def test_parse_uploaded_sync_path_returns_result(monkeypatch):
+def test_parse_uploaded_digital_file_also_dispatches_async(monkeypatch):
+    """Uniform flow: a digital PDF is dispatched to the worker exactly like a scan -
+    it is NEVER parsed inline on the request path, and the S3 file is KEPT for the
+    worker to download (not deleted here)."""
     _authenticate(monkeypatch, company_id="acme-1")
     monkeypatch.setattr(
         resume.db, "get_job",
@@ -183,76 +184,7 @@ def test_parse_uploaded_sync_path_returns_result(monkeypatch):
     )
     monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"%PDF-1.4 digital")
     monkeypatch.setattr(resume, "validate_file", lambda fn, content: "pdf")
-    monkeypatch.setattr(resume, "classify", lambda fn, content: ("pdf", False))
     monkeypatch.setattr(resume.db, "claim_upload_job", lambda jid: True)
-
-    result = PipelineResult(
-        parsed=ParsedResumeAI(skills=["ICU"]),
-        confidence=ConfidenceScores(
-            overall=0.9, personal_info=0.9, experience=0.9, education=0.9, skills=1.0
-        ),
-        file_type="pdf", ocr_used=False, ai_tokens_used=123, duration_ms=42,
-    )
-
-    async def _fake_pipeline(inp):
-        return result
-
-    monkeypatch.setattr(resume_service, "run_pipeline", _fake_pipeline)
-
-    completed: dict = {}
-    monkeypatch.setattr(resume.db, "update_job_completed", lambda jid, r: completed.update(jid=jid))
-    monkeypatch.setattr(resume.db, "write_audit_log", lambda **kw: None)
-    deleted: dict = {}
-    monkeypatch.setattr(resume.s3_client, "delete_file", lambda key: deleted.update(key=key))
-
-    resp = client.post(
-        "/api/v1/resume/parse-uploaded",
-        headers={"X-API-Key": VALID_KEY},
-        json={"job_id": "J1"},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["status"] == "completed"
-    assert body["data"]["skills"] == ["ICU"]
-    assert body["skills_validation"]["total"] == 1
-    # Sync path persists the result and deletes the temp file.
-    assert completed["jid"] == "J1"
-    assert deleted["key"] == "temp/J1/cv.pdf"
-
-
-def test_parse_uploaded_partial_is_promoted_to_async(monkeypatch):
-    """A degraded sync parse (AI couldn't finish in the gateway budget) must NOT be
-    returned as a partial - it is PROMOTED to the full-budget async worker so the
-    caller polls for a COMPLETE record. The response is 'processing' + poll_url and
-    the S3 file is kept for the worker."""
-    _authenticate(monkeypatch, company_id="acme-1")
-    monkeypatch.setattr(
-        resume.db, "get_job",
-        lambda jid: {"company_id": "acme-1", "status": "pending_upload",
-                     "s3_key": "temp/J2/cv.pdf", "filename": "cv.pdf"},
-    )
-    monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"%PDF-1.4 digital")
-    monkeypatch.setattr(resume, "validate_file", lambda fn, content: "pdf")
-    monkeypatch.setattr(resume, "classify", lambda fn, content: ("pdf", False))
-    monkeypatch.setattr(resume.db, "claim_upload_job", lambda jid: True)
-
-    result = PipelineResult(
-        parsed=ParsedResumeAI(),
-        confidence=ConfidenceScores(
-            overall=0.2, personal_info=0.4, experience=0.0, education=0.0, skills=0.0
-        ),
-        file_type="pdf", ocr_used=False, ai_tokens_used=0, duration_ms=45000,
-        partial=True,
-        warnings=["AI parsing did not complete; ... needs human review. "
-                  "(AI parsing timed out after 45s)"],
-    )
-
-    async def _fake_pipeline(inp):
-        # The probe must NOT waste the enrich pass - it will be promoted to async.
-        assert inp.sync is True and inp.sync_probe is True
-        return result
-
-    monkeypatch.setattr(resume_service, "run_pipeline", _fake_pipeline)
 
     deleted: list = []
     dispatched: dict = {}
@@ -266,14 +198,12 @@ def test_parse_uploaded_partial_is_promoted_to_async(monkeypatch):
     resp = client.post(
         "/api/v1/resume/parse-uploaded",
         headers={"X-API-Key": VALID_KEY},
-        json={"job_id": "J2"},
+        json={"job_id": "J1"},
     )
     assert resp.status_code == 200
     body = resp.json()
-    # Promoted, not returned as a partial.
     assert body["status"] == "processing"
-    assert body["poll_url"] and "J2" in body["poll_url"]
-    assert body.get("partial") in (False, None)
-    # Handed to the worker, and the S3 file kept for it (not deleted).
-    assert dispatched.get("job_id") == "J2"
-    assert deleted == []
+    assert body["poll_url"] == "/api/v1/resume/job/J1"
+    assert body.get("data") is None            # nothing parsed inline
+    assert dispatched["s3_key"] == "temp/J1/cv.pdf"
+    assert deleted == []                        # S3 file kept for the worker

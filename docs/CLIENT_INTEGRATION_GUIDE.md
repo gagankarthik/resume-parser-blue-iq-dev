@@ -10,19 +10,34 @@ auto-filling candidate forms.
 - **Content:** `multipart/form-data` for uploads; JSON for everything else
 - **All endpoints are under** `/api/v1`
 
+> **⚠️ Breaking change — every parse is now asynchronous.** `POST /resume/parse`
+> (and every other submit endpoint) now returns `{ "status": "processing", "poll_url": ... }`
+> **immediately for every file** and **never** returns parsed `data` inline. There is no
+> longer a synchronous path and no digital-vs-scanned split. **Direct callers that used to
+> read the parsed JSON straight from the POST response must now poll `poll_url` (Section 4)
+> or register a webhook (Section 6).** The old `async_only` flag is deprecated and ignored —
+> the behavior it used to opt into is now the only behavior.
+
 ---
 
 ## 1. Quick start
 
 ```bash
+# 1. Submit — returns a job_id immediately (never blocks)
 curl -X POST "https://<your-function-url>/api/v1/resume/parse" \
   -H "X-API-Key: rp_live_your_key_here" \
   -F "file=@/path/to/resume.pdf"
+
+# 2. Poll until status is "completed" (or "failed")
+curl "https://<your-function-url>/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0" \
+  -H "X-API-Key: rp_live_your_key_here"
 ```
 
-A digital PDF/DOCX returns the parsed result directly (synchronous). A scanned
-PDF or image returns a `job_id` to poll (asynchronous). Both paths are covered
-below.
+**Every file — digital PDF, scanned PDF, DOCX, RTF, or an image — follows the same
+submit → poll flow.** The POST returns a `job_id` and `status: "processing"` right away;
+a background worker parses the file, and you read the parsed JSON by polling `poll_url`
+(Section 4) or via a webhook (Section 6). Nothing parses on the request path, so it never
+blocks a user and never trips a gateway timeout.
 
 ---
 
@@ -61,27 +76,16 @@ X-API-Key: rp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 Files are validated by **magic bytes**, not just extension - a renamed file is rejected.
 
-### Two response modes
+### One response mode — always asynchronous
 
-The processing path is chosen automatically from the file:
+**Every file follows the same path, chosen automatically:** the request is accepted, the
+file is stored, and a `job_id` is returned **immediately**. A background worker then
+classifies the file (digital PDF/DOCX/RTF → text extraction; scanned PDF, image, or a
+broken PDF text layer → OCR), extracts the text, runs the AI parse ladder, normalizes
+healthcare specialties/credentials, resolves platform IDs, and scores confidence. You
+fetch the result by polling (Section 4) or via a webhook (Section 6).
 
-- **Digital PDF / DOCX / RTF -> synchronous.** The full result is in the response.
-- **Scanned PDF / image -> asynchronous** (OCR is slow). You get a `job_id`;
-  fetch the result by polling (Section 4) or via a webhook (Section 6).
-
-**Synchronous response** (`status: "completed"`):
-
-```json
-{
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "status": "completed",
-  "data": { "...": "see Output schema (Section 8)" },
-  "confidence": { "overall": 0.91, "personal_info": 0.96, "experience": 0.88, "education": 0.90, "skills": 1.0 },
-  "poll_url": null
-}
-```
-
-**Asynchronous response** (`status: "processing"`):
+**Response — always `status: "processing"`:**
 
 ```json
 {
@@ -93,53 +97,22 @@ The processing path is chosen automatically from the file:
 }
 ```
 
-> **Integration tip:** branch on `status`. If `completed`, use `data` immediately.
-> If `processing`, poll `poll_url` or wait for the `parse.completed` webhook.
+> **Integration tip:** the POST never carries parsed `data`. Take the `job_id`/`poll_url`
+> and poll `poll_url` (Section 4) until `status` is `completed`, or wait for the
+> `parse.completed` webhook. Your user is unblocked instantly and the accurate parse
+> completes in the background.
 
-### 3b. Never block a user on the parse — use `async_only`
+> **Migrating from the old synchronous behavior?** Callers that previously read `data`
+> straight from this response must now poll or use a webhook. The response no longer
+> depends on file type, and the old `async_only` flag is deprecated — it is accepted for
+> backward compatibility but ignored, since the flow it used to select is now the default
+> for every file.
 
-By default a digital PDF/DOCX is parsed **synchronously**: the HTTP request stays open
-until the parse finishes. A high-accuracy parse of a dense, multi-role resume can take
-**up to ~55 seconds**. That is by design — the parser runs a multi-stage extraction and
-verification pipeline for accuracy — but it means **you must not make an end user wait on
-the response**, and it will **break any caller behind a gateway with a request timeout
-shorter than that** (e.g. AWS Amplify SSR's hard 30 s limit, many API gateways, serverless
-function ceilings).
-
-The fix is to **always run parsing in the background and poll**. Send `async_only=true`
-and the API returns a `job_id` in ~1 second instead of holding the connection open:
-
-```bash
-curl -X POST "https://<your-function-url>/api/v1/resume/parse" \
-  -H "X-API-Key: rp_live_your_key_here" \
-  -F "file=@/path/to/resume.pdf" \
-  -F "async_only=true"
-```
-
-```json
-// immediate response (~1s) — always status: "processing"
-{
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "status": "processing",
-  "data": null,
-  "confidence": null,
-  "poll_url": "/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0"
-}
-```
-
-Then poll `poll_url` (Section 4) every 2–3 s, or — better at scale — register a webhook
-(Section 6) and let us POST the result to you. Either way your user is unblocked instantly
-and the accurate parse completes in the background.
-
-| Situation | Recommendation |
-|---|---|
-| Interactive UI (user is waiting on screen) | **`async_only=true` + poll/webhook** |
-| Caller behind a gateway with a < 60 s timeout (Amplify, most API gateways) | **`async_only=true` + poll/webhook** (required) |
-| Server-to-server batch/back-office, no user waiting | Either mode works; `async_only` still recommended |
-
-> `async_only=true` **never** returns a partial and **never** blocks — it always hands back a
-> `job_id` to poll. Digital and scanned files behave identically under it. Treat it as the
-> default for any latency-sensitive or gateway-fronted integration.
+A high-accuracy parse of a dense, multi-role resume can take **up to ~55 seconds** — that
+is by design (a multi-stage extraction and verification pipeline for accuracy). Because it
+runs entirely in the background, that latency never reaches your user and never breaks a
+caller behind a gateway with a short request timeout (e.g. AWS Amplify SSR's hard 30 s
+limit, many API gateways, serverless function ceilings).
 
 ### 3a. Large-file upload (over ~6 MB)
 
@@ -176,7 +149,8 @@ with open("jane.pdf", "rb") as fh:
 ```
 
 **3. Parse it** - `POST /api/v1/resume/parse-uploaded` with `{ "job_id": "<from step 1>" }`.
-The response is identical to `/resume/parse` (sync for digital PDF/DOCX, async for scans).
+The response is identical to `/resume/parse` — `status: "processing"` with a `poll_url` —
+so fetch the result by polling (Section 4) or via a webhook.
 
 > The upload URL expires after `expires_in_seconds` (15 min). After that, request a new one.
 
@@ -209,7 +183,7 @@ The response is identical to `/resume/parse` (sync for digital PDF/DOCX, async f
 ### Retry a parse - `POST /api/v1/resume/{job_id}/retry`
 Re-upload the **same file** to re-run extraction + AI when a result was poor. Returns
 a new `job_id` linked to the original. Up to 3 retries per job (`RETRY_LIMIT_REACHED`
-after that). Same sync/async behavior as `/parse`.
+after that). Same submit → poll behavior as `/parse` (returns `status: "processing"`).
 
 ### Submit feedback - `POST /api/v1/resume/{job_id}/feedback`
 After a user reviews and corrects a parsed resume, send the original parser JSON and the
@@ -496,7 +470,7 @@ For transient `5xx`, retry with exponential backoff. For `4xx`, fix the request.
 
 ## 10. End-to-end examples
 
-### Python (sync + async)
+### Python (submit + poll)
 
 ```python
 import time, requests
@@ -505,19 +479,13 @@ BASE = "https://<your-function-url>/api/v1"
 HEADERS = {"X-API-Key": "rp_live_your_key_here"}
 
 def parse_resume(path: str) -> dict:
+    # 1. Submit — returns a job_id in ~1s and never blocks, for any file type.
     with open(path, "rb") as f:
-        # async_only=true -> returns a job_id in ~1s and never blocks. Recommended for
-        # any interactive UI or gateway-fronted caller. Drop it to allow a sync result.
-        r = requests.post(f"{BASE}/resume/parse", headers=HEADERS,
-                          files={"file": f}, data={"async_only": "true"})
+        r = requests.post(f"{BASE}/resume/parse", headers=HEADERS, files={"file": f})
     r.raise_for_status()
-    res = r.json()
+    job_id = r.json()["job_id"]               # response is always status: "processing"
 
-    if res["status"] == "completed":
-        return res["data"]
-
-    # async - poll the job
-    job_id = res["job_id"]
+    # 2. Poll the job until it finishes.
     for _ in range(60):                       # ~2 minutes
         time.sleep(2)
         jr = requests.get(f"{BASE}/resume/job/{job_id}", headers=HEADERS).json()
@@ -530,20 +498,20 @@ def parse_resume(path: str) -> dict:
 print(parse_resume("resume.pdf"))
 ```
 
-### Node.js (sync + async)
+### Node.js (submit + poll)
 
 ```javascript
 const BASE = "https://<your-function-url>/api/v1";
 const HEADERS = { "X-API-Key": "rp_live_your_key_here" };
 
 async function parseResume(file /* Blob/File */) {
+  // 1. Submit — returns a job_id immediately, for any file type.
   const form = new FormData();
   form.append("file", file);
-  let res = await (await fetch(`${BASE}/resume/parse`, { method: "POST", headers: HEADERS, body: form })).json();
+  const res = await (await fetch(`${BASE}/resume/parse`, { method: "POST", headers: HEADERS, body: form })).json();
+  const jobId = res.job_id;                 // response is always status: "processing"
 
-  if (res.status === "completed") return res.data;
-
-  const jobId = res.job_id;
+  // 2. Poll the job until it finishes.
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 2000));
     const jr = await (await fetch(`${BASE}/resume/job/${jobId}`, { headers: HEADERS })).json();
@@ -560,8 +528,8 @@ async function parseResume(file /* Blob/File */) {
 
 - **Resume files are never stored.** They are processed in memory / a temp location and
   deleted immediately after parsing.
-- **Parsed results** for async jobs are kept for **1 hour** then auto-deleted; sync results
-  are returned in the response and not retained.
+- **Parsed results** are kept for **1 hour** after the job completes, then auto-deleted.
+  Poll or receive the webhook and persist the result on your side within that window.
 - **Audit metadata** (job id, file type/size, status, timings) is retained for 90 days and is
   content-free.
 - Resume text is sent to OpenAI for parsing. No copy is retained by us.
@@ -579,9 +547,8 @@ async function parseResume(file /* Blob/File */) {
 ## 12. Integration checklist
 
 - [ ] Store the API key server-side (never in client code)
-- [ ] **For any interactive UI or gateway-fronted caller, send `async_only=true` and poll/webhook — never block a user on the parse (it can take ~55 s)**
-- [ ] Branch on `status` (`completed` vs `processing`)
-- [ ] Handle both sync results and async polling/webhooks
+- [ ] **Take the `job_id` from every submit response and poll `poll_url` (or use a webhook) — the POST never returns parsed `data` inline**
+- [ ] Poll `GET /resume/job/{job_id}` until `status` is `completed` or `failed` (every 2-3 s)
 - [ ] Register a webhook and **verify the HMAC signature** on every delivery
 - [ ] Make webhook handling idempotent (key on `job_id`)
 - [ ] Persist results within the 1-hour window

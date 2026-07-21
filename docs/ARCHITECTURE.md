@@ -1,14 +1,14 @@
 # Resume Parsing Backend - Enterprise Architecture
 
-**Status:** Production - **Version:** 1.0 - **Last updated:** 2026-06-02
+**Status:** Production - **Version:** 2.0 - **Last updated:** 2026-07-20
 
 ---
 
 ## 1. Executive Summary
 
-The Resume Parsing Service is a production-grade HTTP API that converts **PDF, DOCX, and image
-resumes** into clean, schema-validated JSON suitable for auto-filling candidate forms and
-populating downstream systems.
+The Resume Parsing Service is a production-grade HTTP API that converts a resume of **any type** -
+digital PDF, scanned PDF, DOCX, RTF, or an image (PNG / JPG / TIFF / WEBP), up to 10 MB - into clean,
+schema-validated JSON suitable for auto-filling candidate forms and populating downstream systems.
 
 It combines deterministic rule-based extraction with **OpenAI gpt-4.1-mini structured-output parsing**,
 then validates, normalizes, and confidence-scores every result. The platform is built on a
@@ -32,10 +32,43 @@ non-negotiable principles:
    scanned/image documents, and Textract is used only as a fallback when local OCR confidence is low.
 3. **Deterministic before probabilistic.** Regex anchors (email, phone, URLs) are extracted before
    the AI runs and passed in as ground truth - eliminating hallucination on contact details.
-4. **Sync where possible, async where necessary.** Fast paths return inline; slow OCR paths run on a
-   dedicated worker and notify via webhook + polling.
+4. **One uniform flow, always async.** Every file - digital or scanned, small or large - is submitted,
+   parsed on a dedicated worker, and retrieved by polling or webhook. Nothing parses on the HTTP
+   request path, so a request never blocks and never trips a gateway timeout.
 5. **Serverless and stateless.** All shared state lives in DynamoDB and S3, so compute scales
    horizontally with zero coordination.
+
+---
+
+## 2a. Simple Architecture at a Glance
+
+Input a resume of **any type** → the file is analysed and its contents extracted → structured JSON out.
+
+```text
+  ANY RESUME FILE                    ┌───────────── ASYNC WORKER ─────────────┐
+  PDF · DOCX · RTF                   │                                         │
+  PNG · JPG · TIFF · WEBP            │  ② FILE ANALYZER (classify)             │
+  (≤ 10 MB)                          │     digital PDF/DOCX/RTF → text extract │
+        │                           │     scanned / image / broken layer → OCR│
+        │ ① SUBMIT                   │             │                           │
+        ▼   (POST, or presigned      │             ▼                           │
+  ┌──────────────┐  upload for       │  ③ EXTRACT TEXT                         │
+  │  API         │  large files)     │     PyMuPDF · python-docx · RTF · OCR   │
+  │  store file, │ ───── dispatch ──►│             │                           │
+  │  return      │                   │             ▼                           │
+  │  job_id +    │                   │  ④ ANALYSE / PARSE (AI ladder)          │
+  │  poll_url    │◄──── result ──────│     orchestrator → single-shot →        │
+  └──────────────┘   (stored 1h)     │     deterministic floor                 │
+        ▲                            │             │                           │
+        │ ④ RETRIEVE                 │             ▼                           │
+        │   GET /resume/job/{id}     │  ⑤ NORMALISE + RESOLVE IDS + SCORE      │
+        │   → structured JSON        │     specialties · credentials · dates · │
+        │   (or webhook)             │     facility/geo/city IDs · confidence  │
+        └────────────────────────────└─────────────────────────────────────────┘
+```
+
+**Every file takes the same four steps: submit → analyse → extract → return.** There is no
+sync/async split and no size/type branching - the worker picks text extraction or OCR internally.
 
 ---
 
@@ -44,7 +77,7 @@ non-negotiable principles:
 ```text
 +------------------------------------------------------------------+
 |                          CLIENT APPLICATION                        |
-|   Uploads resume (PDF / DOCX / image) - Renders structured fields  |
+|  Submits resume (any type) - polls / webhook - renders JSON fields |
 +------------------------------------------------------------------+
                                   |  HTTPS  (X-API-Key)
                                   v
@@ -55,30 +88,22 @@ non-negotiable principles:
 |   * API-key authentication      (DynamoDB lookup, SHA-256)         |
 |   * Sliding-window rate limiting (DynamoDB, TTL)                   |
 |   * File validation             (extension + magic bytes + size)  |
-|   * Document classification     (sync vs. async routing)          |
+|   * Store file in S3, create job, dispatch to worker              |
+|   * Return  { job_id, status: processing, poll_url }  immediately |
 +------------------------------------------------------------------+
-            |                                          |
-   digital PDF / DOCX                          scanned PDF / image
-   (synchronous)                               (asynchronous)
-            |                                          |
-            v                                          v
-+--------------------------+         +------------------------------+
-|   PARSING PIPELINE        |         |  S3 (temp) + SQS worker queue |
-|   (runs inline in the     |         |  upload -> SendMessage          |
-|    API Lambda)            |         +------------------------------+
-|                           |                         |  SQS event-source mapping
-|  returns JSON immediately |                         v   (DLQ after 3 retries)
-+--------------------------+         +------------------------------+
-            |                          |   WORKER LAMBDA               |
-            |                          |   (async OCR + full pipeline) |
-            |                          |                               |
-            |                          |  S3 get -> Tesseract -> Textract|
-            |                          |  -> parse -> store result (1h)  |
-            |                          |  -> webhook -> delete S3 file   |
-            |                          +------------------------------+
-            |                                          |
-            +------------------+-----------------------+
-                               v
+                                  |  S3 (temp) + SQS SendMessage
+                                  v                (DLQ after 3 retries)
+              +------------------------------------------------+
+              |   WORKER LAMBDA   (full pipeline, one budget)   |
+              |                                                 |
+              |   S3 get -> classify (digital text OR OCR) ->   |
+              |   extract -> AI parse ladder (orchestrator ->   |
+              |   single-shot -> deterministic floor) ->        |
+              |   normalize + resolve IDs + score ->            |
+              |   store result (1h TTL) -> webhook -> delete S3 |
+              +------------------------------------------------+
+                                  |
+                                  v   (client polls GET /resume/job/{id})
         +-----------------------------------------------+
         |   DynamoDB (state)         OpenAI gpt-4.1-mini   |
         |   api_keys - rate_limits   Amazon Textract (OCR)|
@@ -95,8 +120,8 @@ The service runs as **two container-image Lambda functions** sharing one codebas
 
 | Function | Handler | Trigger | Responsibility |
 |---|---|---|---|
-| **API Lambda** | `app.handlers.lambda_handler.handler` (Mangum -> FastAPI) | Lambda **Function URL** (public HTTPS) | All synchronous request handling, auth, rate limiting, sync parsing, enqueuing async jobs onto SQS |
-| **Worker Lambda** | `app.handlers.worker_lambda.handler` | SQS **event-source mapping** (drains the worker queue) | OCR-heavy parsing for scanned PDFs / images; reserved concurrency + the mapping's `maximum_concurrency` cap parallel OCR + AI calls |
+| **API Lambda** | `app.handlers.lambda_handler.handler` (Mangum -> FastAPI) | Lambda **Function URL** (public HTTPS) | Auth, rate limiting, file validation + storage, job creation, and dispatching every parse to the worker. **Never parses on the request path** - it returns a `job_id` + `poll_url` in well under a second. |
+| **Worker Lambda** | `app.handlers.worker_lambda.handler` | SQS **event-source mapping** (drains the worker queue) | The full parse for **every** file: classify → extract (text or OCR) → AI parse ladder → normalize → resolve IDs → score → persist. Reserved concurrency + the mapping's `maximum_concurrency` cap parallel OCR + AI calls. |
 
 **Why Lambda + SQS (not ECS/Kubernetes):**
 
@@ -117,14 +142,16 @@ The service runs as **two container-image Lambda functions** sharing one codebas
 
 ## 5. Processing Pipeline
 
-A single orchestrator (`app/services/pipeline.py`) runs every stage with per-step timeouts.
+A single orchestrator (`app/services/pipeline.py`) runs every stage on the worker's one budget
+(`app/services/budget.py`), with per-step timeouts.
 
 ```text
- 1. Classify          File type + strategy (PDF / DOCX / OCR), sync vs async
-        |
- 2. Extract           PyMuPDF (digital PDF) - python-docx (DOCX)
-        |             Tesseract -> Textract fallback (scanned / image)
-        |             - sync extractors run in an executor (non-blocking)
+ 1. Classify          File type + extraction strategy (digital text vs OCR).
+        |             A digital PDF with a broken/garbled text layer falls back to OCR.
+        v
+ 2. Extract           PyMuPDF (digital PDF) - python-docx (DOCX) - RTF
+        |             Tesseract -> Textract fallback (scanned / image / broken layer)
+        |             - blocking extractors run in an executor (non-blocking)
         v
  3. Clean             Unicode-safe: strips control chars, preserves
         |             international names (é, ñ, Arabic, CJK), fixes ligatures
@@ -135,8 +162,11 @@ A single orchestrator (`app/services/pipeline.py`) runs every stage with per-ste
  5. Section detect    Header-based segmentation -> cuts AI token usage
         |
         v
- 6. AI parse          OpenAI gpt-4.1-mini structured output - temperature 0
-        |             schema-guaranteed JSON - 1 automatic retry
+ 6. AI parse          A ladder, gpt-4.1-mini structured output, temperature 0:
+        |               (a) multi-agent orchestrator (structure -> per-role -> validate)
+        |               (b) single-shot whole-document parser  [fallback]
+        |               (c) deterministic rule-based floor      [last resort]
+        |             so a parse is never empty; a degrade sets partial=true.
         v
  7. Validate          Pydantic v2 - type coercion + schema enforcement
         |
@@ -150,8 +180,10 @@ A single orchestrator (`app/services/pipeline.py`) runs every stage with per-ste
  9. Confidence score  Per-field 0.0-1.0 scores for human-review triage
 ```
 
-**Per-step timeouts:** extraction 60 s - OCR 180 s - AI parse 120 s. A timeout raises a typed
-domain error rather than hanging the invocation.
+**Budget:** the whole parse runs under one ~200 s wall budget (well inside the Lambda's 300 s
+timeout), with per-step caps - extraction 60 s, OCR 90 s, orchestrator ~130 s, single-shot 90 s. Each
+step is bounded by the time actually left; a timeout raises a typed domain error or degrades to the
+next rung of the ladder rather than hanging the invocation.
 
 ---
 
@@ -239,8 +271,7 @@ Point-in-time recovery is enabled on the durable tables (`api_keys`, `jobs`, `we
 | Data | Where | Lifetime |
 |---|---|---|
 | Raw resume file | S3 `temp/{job_id}/{filename}`, SSE-AES256 | Deleted in `finally` block immediately after processing |
-| Parsed result (async only) | DynamoDB `jobs` | 1 hour (TTL), then auto-deleted |
-| Parsed result (sync) | Returned in response only | Not retained |
+| Parsed result | DynamoDB `jobs` | 1 hour (TTL), then auto-deleted - retrieved via the poll endpoint or webhook |
 | Audit log | DynamoDB `audit_logs` | 90 days - **metadata only** (`job_id`, `company_id`, `file_type`, `file_size_bytes`, `status`, `duration_ms`, `ocr_used`, `ai_tokens_used`, `error_code`). **No content, no PII.** |
 | **Feedback (original + corrected parse)** | DynamoDB `feedback` | **90 days (`feedback_retention_days`) - CONTAINS CANDIDATE PII.** Written only when a caller submits corrections to `POST /resume/{job_id}/feedback`. This is the only store of parsed resume content in the system. |
 
@@ -282,30 +313,19 @@ Base path: `/api/v1` - all endpoints require `X-API-Key` (except health).
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/resume/parse` | Parse one resume. Digital -> sync result; scanned/image -> async `job_id` |
-| `GET` | `/resume/job/{job_id}` | Poll async job status / result |
+| `POST` | `/resume/parse` | Submit one resume (any type, multipart). Returns `job_id` + `poll_url` |
+| `POST` | `/resume/upload-url` → `/resume/parse-uploaded` | Presigned upload for files above the ~6 MB direct-request cap (up to 10 MB), then submit |
+| `GET` | `/resume/job/{job_id}` | Poll job status / retrieve the parsed result |
 | `POST` | `/resume/{job_id}/retry` | Re-parse a resume (new linked job, retry-limited) |
-| `POST` | `/batch` | Submit a batch of resumes |
+| `POST` | `/resume/{job_id}/feedback` | Submit corrections to improve accuracy |
+| `POST` | `/resume/batch` | Submit a batch of resumes |
 | `POST` | `/webhooks` | Register a webhook (returns one-time HMAC secret) |
 | `GET` | `/webhooks` | List webhooks |
 | `DELETE` | `/webhooks/{webhook_id}` | Remove a webhook |
 | `GET` | `/health` | Liveness check (no auth) |
 
-**Parse - synchronous response**
-
-```json
-{
-  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-  "status": "completed",
-  "data": { "personal_info": {}, "experience": [], "education": [],
-            "skills": [], "certifications": [], "projects": [], "languages": [] },
-  "confidence": { "overall": 0.87, "personal_info": 0.92, "experience": 0.85,
-                  "education": 0.90, "skills": 1.0 },
-  "poll_url": null
-}
-```
-
-**Parse - asynchronous response**
+**Submit response** - every parse request answers immediately with a job to poll (no parsing on the
+request path):
 
 ```json
 {
@@ -314,6 +334,22 @@ Base path: `/api/v1` - all endpoints require `X-API-Key` (except health).
   "data": null,
   "confidence": null,
   "poll_url": "/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0"
+}
+```
+
+**Poll response** (`GET /resume/job/{job_id}`) - once `status` is `completed`, the parsed JSON is in
+`data`:
+
+```json
+{
+  "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
+  "status": "completed",
+  "data": { "personal_info": {}, "experience": [], "education": [], "skills": [],
+            "certifications": [], "licenses": [], "professional_associations": [] },
+  "confidence": { "overall": 0.87, "personal_info": 0.92, "experience": 0.85,
+                  "education": 0.90, "skills": 1.0 },
+  "partial": false,
+  "warnings": []
 }
 ```
 
