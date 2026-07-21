@@ -1,12 +1,10 @@
 """Resume parsing use-case (application) layer.
 
-Orchestration shared by the resume endpoints - running the pipeline, writing the
-usage audit log, shaping the persisted job result, and dispatching async work -
-lives here so the HTTP handlers stay thin (validate -> delegate -> respond) and the
-orchestration is defined once instead of being repeated per route.
-
-None of this changes behavior: each helper is the exact call the endpoints made
-inline, just named and shared.
+Every parse request follows one uniform flow: the HTTP handler validates and stores
+the file, then dispatches it to the async worker (this module), which runs the full
+pipeline on its own budget and persists the result for the poll endpoint. Nothing
+parses on the request path. The helpers here assemble the worker payload and enqueue
+it, so the HTTP handlers stay thin (validate -> store -> dispatch -> respond).
 """
 
 from fastapi import BackgroundTasks
@@ -14,90 +12,10 @@ from fastapi import BackgroundTasks
 from app.core.errors import ErrorCode
 from app.core.logging import get_logger
 from app.db import dynamodb as db
-from app.services.pipeline import PipelineInput, PipelineResult
-from app.services.pipeline import run as run_pipeline
 from app.workers.background import process_resume_async
 from app.workers.dispatch import enqueue_job
 
 log = get_logger(__name__)
-
-
-def terminal_status(result: PipelineResult) -> str:
-    """Client-facing terminal status for a finished parse.
-
-    Returns "partial" when the parse degraded - `result.parsed` holds only what
-    rule-based extraction could recover (contact anchors) and the record needs
-    human review. Returns "completed" only for a clean parse. A partial parse
-    must never be reported as "completed"; consumers gate ingestion on this.
-    """
-    return "partial" if result.partial else "completed"
-
-
-async def run_parse(
-    *,
-    job_id: str,
-    filename: str,
-    content: bytes,
-    company_id: str,
-    force_textract: bool,
-    sync_probe: bool = False,
-) -> PipelineResult:
-    """Run the full parsing pipeline for one file, synchronously.
-
-    Every caller here is an HTTP handler blocking on the response, so the parse
-    runs under the gateway wall-clock budget (sync=True): it degrades to the
-    deterministic floor and returns 200 + a rich partial rather than running long
-    and being severed into a bare 504 by the proxy.
-
-    `sync_probe=True` means the caller will PROMOTE any partial to the async worker
-    (full budget, complete parse) instead of returning it - so the pipeline skips
-    the section-only enrich pass and gives the single-shot the reserve time.
-    """
-    return await run_pipeline(
-        PipelineInput(
-            job_id=job_id,
-            filename=filename,
-            content=content,
-            company_id=company_id,
-            force_textract=force_textract,
-            sync=True,
-            sync_probe=sync_probe,
-        )
-    )
-
-
-def audit_parse(
-    *,
-    job_id: str,
-    company_id: str,
-    result: PipelineResult,
-    file_size_bytes: int,
-    record: dict,
-    status: str = "completed",
-) -> None:
-    """Write the usage/audit record for a completed parse (never stores content)."""
-    db.write_audit_log(
-        job_id=job_id,
-        company_id=company_id,
-        file_type=result.file_type,
-        file_size_bytes=file_size_bytes,
-        status=status,
-        duration_ms=result.duration_ms,
-        ocr_used=result.ocr_used,
-        ai_tokens_used=result.ai_tokens_used,
-        key_hash=record["key_hash"],
-        key_prefix=record.get("key_prefix", ""),
-    )
-
-
-def result_record(result: PipelineResult) -> dict:
-    """Shape a pipeline result for persistence on the job record."""
-    return {
-        "data": result.parsed.model_dump(),
-        "confidence": result.confidence.model_dump(),
-        "partial": result.partial,
-        "warnings": result.warnings,
-    }
 
 
 def build_async_payload(

@@ -101,7 +101,7 @@ API gates this on `WORKER_QUEUE_URL`:
 > memory/timeout/reserved concurrency), the SQS → Worker event-source mapping, the Worker's IAM
 > consume permissions and the API's IAM produce permission, and `WORKER_QUEUE_URL` set on the API
 > function. Deploying the enqueue code *before* this is provisioned will silently degrade async
-> parsing (scans, promoted partials, batches) to the in-process fallback.
+> parsing (every parse job now runs on this path) to the in-process fallback.
 
 The Terraform in `infrastructure/terraform/` (`sqs.tf`, `lambda.tf`, `iam.tf`) is the authoritative
 *description* of this stack — but see the next section on how it must actually be applied.

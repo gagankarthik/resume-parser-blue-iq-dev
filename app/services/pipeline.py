@@ -49,17 +49,6 @@ class PipelineInput:
     # (scanned files, or a digital PDF that falls back to OCR). OR's with the
     # global settings.force_textract default.
     force_textract: bool = False
-    # True when the caller is waiting synchronously on the HTTP response, so the
-    # pipeline must finish within the gateway ceiling (budget.SYNC_WALL_BUDGET) and
-    # degrade gracefully rather than run to the full budget and 504. The async
-    # worker leaves this False to use the full budget.TOTAL_BUDGET.
-    sync: bool = False
-    # True when this sync run is only a fast PROBE: if the single-shot can't finish
-    # in the budget, the caller will re-dispatch the file to the async worker (full
-    # budget, complete parse) instead of returning the partial. So skip the costly
-    # section-only enrich pass (it would be thrown away) and give the single-shot
-    # the reserve time instead. Only meaningful together with sync=True.
-    sync_probe: bool = False
 
 
 @dataclass
@@ -93,16 +82,12 @@ async def run(inp: PipelineInput) -> PipelineResult:
     # every stage below is bounded by it, extraction included. (The clock used to
     # start just before the AI parse, which left extraction's 60s/90s per-step caps
     # free to overrun the sync gateway ceiling on their own.)
-    budget = ParseBudget.for_sync(probe=inp.sync_probe) if inp.sync else ParseBudget.for_async()
+    budget = ParseBudget.for_async()
 
     # -- 1. Classify -----------------------------------------------------------
     strategy, _ = classifier.classify(inp.filename, inp.content)
     file_type   = strategy.value
     ocr_used    = False
-    # Set when a sync run discovers the file can only be read by OCR, which cannot
-    # fit the sync budget. The AI parse is then skipped and the run degrades to a
-    # flagged partial, which the endpoints promote to the async worker.
-    sync_needs_ocr = False
 
     # -- 2. Extract (sync extractors -> executor, async-safe) -------------------
     try:
@@ -117,30 +102,22 @@ async def run(inp: PipelineInput) -> PipelineResult:
             # extracted text looks low-quality, fall back to the OCR/Textract path so
             # the resume is still read instead of feeding the AI garbage.
             if _is_low_quality_pdf_text(raw_text):
-                if inp.sync:
-                    # An OCR pass alone is budgeted at TIMEOUT_OCR - several times the
-                    # whole sync wall budget. Starting it behind a gateway that severs
-                    # the connection at 30s just guarantees a bodyless 504. Bail out to
-                    # a partial instead: the caller promotes the file to the async
-                    # worker, which OCRs and parses it on the full budget.
-                    log.info(
-                        "pdf_text_low_quality_needs_async",
-                        job_id=inp.job_id, chars=len(raw_text.strip()),
-                    )
-                    sync_needs_ocr = True
-                else:
-                    log.info(
-                        "pdf_text_low_quality_ocr_fallback",
-                        job_id=inp.job_id, chars=len(raw_text.strip()),
-                    )
-                    raw_text, ocr_used = await asyncio.wait_for(
-                        loop.run_in_executor(
-                            None, ocr_extractor.extract,
-                            inp.content, inp.filename, inp.force_textract,
-                        ),
-                        timeout=budget.for_extraction(TIMEOUT_OCR),
-                    )
-                    file_type = ExtractionStrategy.OCR.value
+                # The digital text layer is broken/garbled (e.g. CID glyphs with no
+                # Unicode map). Fall back to OCR so the resume is still read instead
+                # of feeding the AI unusable junk. The worker has the full budget for
+                # the extra OCR pass.
+                log.info(
+                    "pdf_text_low_quality_ocr_fallback",
+                    job_id=inp.job_id, chars=len(raw_text.strip()),
+                )
+                raw_text, ocr_used = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, ocr_extractor.extract,
+                        inp.content, inp.filename, inp.force_textract,
+                    ),
+                    timeout=budget.for_extraction(TIMEOUT_OCR),
+                )
+                file_type = ExtractionStrategy.OCR.value
         elif strategy == ExtractionStrategy.DOCX:
             raw_text = await asyncio.wait_for(
                 loop.run_in_executor(None, docx_extractor.extract, inp.content),
@@ -177,125 +154,54 @@ async def run(inp: PipelineInput) -> PipelineResult:
     sections = section_detector.detect(cleaned)
 
     # -- 6. AI parsing --------------------------------------------------------
-    # The two request shapes get different ladders because they have very
-    # different budgets:
-    #   ASYNC (worker, full budget): multi-agent orchestrator (structure -> per-role
-    #     -> validate) -> single-shot fallback -> deterministic floor.
-    #   SYNC (gateway ceiling): single-shot PRIMARY - fast AND complete for the
-    #     resumes it parses inside its cap. The cap sits below the wall budget so a
-    #     resume that would run long is cut early, leaving room for a section-only
-    #     "enrich" pass (semantic sections, no slow per-role work stage) plus
-    #     deterministic work history - far richer than the bare floor. Probe callers
-    #     skip the enrich and promote to async instead.
-    #     (The full orchestrator was tried on sync and dropped the per-role work
-    #     stage - cancelled on the tight budget - silently losing all experience.)
-    # The arithmetic behind both lives in ParseBudget; this reads as a ladder.
+    # One ladder, run on the worker's full budget: the multi-agent orchestrator
+    # (structure -> per-role -> validate) is primary, with the single-shot parser as
+    # fallback and the deterministic heuristic floor as the last resort so a parse
+    # never comes back empty. The arithmetic behind each step lives in ParseBudget.
     settings  = get_settings()
     warnings: list[str] = []
     partial   = False
     tokens    = 0
     parsed_ai = None
 
-    if sync_needs_ocr:
-        # Unreadable text layer on the sync path (see extraction). There is nothing
-        # worth feeding the AI, and OCR does not fit the budget - degrade to the
-        # deterministic floor and flag it. `partial` is the signal the endpoints use
-        # to promote the file to the async worker, which reads it properly via OCR.
-        parsed_ai = heuristic_parser.parse(cleaned, anchors)
-        partial   = True
-        warnings.append(
-            "This PDF's text layer could not be decoded, so the resume needs OCR - "
-            "which does not fit the synchronous budget. Re-run it on the asynchronous "
-            "path (the API does this for you) to get a complete record."
-        )
-    elif not inp.sync:
-        # -- ASYNC: orchestrator primary -> single-shot -> floor -----------------
-        use_orchestrator = (
-            settings.use_multi_agent
-            and len(cleaned) >= settings.multi_agent_min_chars
-            and budget.can_afford_orchestrator()
-        )
-        if use_orchestrator:
-            orch = budget.for_orchestrator()
-            try:
-                parsed_ai, tokens, warnings = await asyncio.wait_for(
-                    orchestrator.parse(cleaned, anchors, budget=orch.budget),
-                    timeout=orch.timeout,  # hard net above the self-bounded stages
-                )
-            except (AIParsingError, TimeoutError) as exc:
-                log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))
-                warnings = []  # discard partial orchestrator warnings; the fallback is authoritative
-
-        if parsed_ai is None:
-            ai_timeout = budget.for_async_ai_parse()
-            try:
-                parsed_ai, tokens = await asyncio.wait_for(
-                    ai_parser.parse(sections, anchors), timeout=ai_timeout,
-                )
-            except (AIParsingError, TimeoutError) as exc:
-                reason = (
-                    f"AI parsing timed out after {ai_timeout:.0f}s"
-                    if isinstance(exc, TimeoutError) else f"AI parsing failed: {exc}"
-                )
-                log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
-                parsed_ai = heuristic_parser.parse(cleaned, anchors)
-                partial = True
-                recovered = (
-                    f"{len(parsed_ai.experience)} experience, "
-                    f"{len(parsed_ai.education)} education, {len(parsed_ai.skills)} skill entries"
-                )
-                warnings.append(
-                    "AI parsing did not complete; returned a rule-based partial record "
-                    f"(recovered {recovered}) with no semantic cleanup. This record needs "
-                    f"human review. ({reason})"
-                )
-    else:
-        # -- SYNC: single-shot primary -----------------------------------------
-        ai_timeout = budget.for_sync_ai_parse()
+    use_orchestrator = (
+        settings.use_multi_agent
+        and len(cleaned) >= settings.multi_agent_min_chars
+        and budget.can_afford_orchestrator()
+    )
+    if use_orchestrator:
+        orch = budget.for_orchestrator()
         try:
-            if not ParseBudget.is_viable_sync_window(ai_timeout):
-                raise TimeoutError(
-                    f"only {max(0.0, ai_timeout):.0f}s of the {budget.total:.0f}s "
-                    "synchronous budget was left for the AI parse"
-                )
+            parsed_ai, tokens, warnings = await asyncio.wait_for(
+                orchestrator.parse(cleaned, anchors, budget=orch.budget),
+                timeout=orch.timeout,  # hard net above the self-bounded stages
+            )
+        except (AIParsingError, TimeoutError) as exc:
+            log.warning("orchestrator_degraded", job_id=inp.job_id, error=str(exc))
+            warnings = []  # discard partial orchestrator warnings; the fallback is authoritative
+
+    if parsed_ai is None:
+        ai_timeout = budget.for_async_ai_parse()
+        try:
             parsed_ai, tokens = await asyncio.wait_for(
                 ai_parser.parse(sections, anchors), timeout=ai_timeout,
             )
         except (AIParsingError, TimeoutError) as exc:
             reason = (
-                f"AI parsing did not fit the {budget.total:.0f}s synchronous budget"
+                f"AI parsing timed out after {ai_timeout:.0f}s"
                 if isinstance(exc, TimeoutError) else f"AI parsing failed: {exc}"
             )
             log.warning("ai_parse_degraded", job_id=inp.job_id, reason=reason)
-            # Deterministic floor is the base - never empty, never times out.
-            floor = heuristic_parser.parse(cleaned, anchors)
-            parsed_ai = floor
+            parsed_ai = heuristic_parser.parse(cleaned, anchors)
             partial = True
-            # Enrich: recover the high-value semantic sections (headline, secondary
-            # phone, education locations, skills, certs, licenses) with the fast
-            # section-only agents - omitting the slow per-role work stage - and keep
-            # the deterministic work history. Skipped in probe mode (the partial is
-            # not returned to the caller - it triggers an async re-parse instead).
-            if settings.use_multi_agent and budget.can_afford_enrich():
-                enrich = budget.for_enrich()
-                try:
-                    light, ltok, lwarn = await asyncio.wait_for(
-                        orchestrator.parse_light(cleaned, anchors, budget=enrich.budget),
-                        timeout=enrich.timeout,
-                    )
-                    tokens += ltok
-                    parsed_ai = _backfill_from_floor(light, floor)
-                    warnings.extend(lwarn)
-                except (AIParsingError, TimeoutError) as exc2:  # noqa: BLE001 — enrich is optional
-                    log.warning("sync_enrich_failed", job_id=inp.job_id, error=str(exc2))
             recovered = (
                 f"{len(parsed_ai.experience)} experience, "
                 f"{len(parsed_ai.education)} education, {len(parsed_ai.skills)} skill entries"
             )
             warnings.append(
-                "The high-accuracy parse did not finish in time; returned a recovered "
-                f"record (recovered {recovered}; work history not semantically verified). "
-                f"This record needs human review. ({reason})"
+                "AI parsing did not complete; returned a rule-based partial record "
+                f"(recovered {recovered}) with no semantic cleanup. This record needs "
+                f"human review. ({reason})"
             )
 
     # -- 7-9. Normalize + score ------------------------------------------------
@@ -414,26 +320,6 @@ def _surname_mismatch_warning(parsed: ParsedResumeAI) -> str | None:
             "truncate a hyphenated or double surname - review full_name."
         )
     return None
-
-
-def _backfill_from_floor(primary: ParsedResumeAI, floor: ParsedResumeAI) -> ParsedResumeAI:
-    """Fill sections the semantic parse left empty with the deterministic parser's
-    recovery. Used on the sync enrich path: `primary` carries the high-quality
-    section-agent output (personal / education / credentials); `floor` supplies the
-    work history - and any other section the agents could not finish in time - so
-    a section is never silently dropped when its agent times out under the tight
-    enrich budget (e.g. a slow CredentialsAgent losing every certification)."""
-    if not primary.experience:
-        primary.experience = floor.experience
-    if not primary.education:
-        primary.education = floor.education
-    if not primary.skills:
-        primary.skills = floor.skills
-    if not primary.certifications:
-        primary.certifications = floor.certifications
-    if not primary.licenses:
-        primary.licenses = floor.licenses
-    return primary
 
 
 # A digital PDF must clear this many usable characters before we trust its text

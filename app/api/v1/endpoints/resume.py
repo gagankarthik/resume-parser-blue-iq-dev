@@ -1,12 +1,23 @@
 """
 Resume parsing endpoints.
 
+One uniform flow for every file, whatever its size (up to the configured limit) or
+type: the request queues the file on the full-budget async worker and returns a
+`job_id` + `poll_url` immediately, then the client polls until the JSON is ready.
+Nothing parses on the request path, so no request ever blocks on the AI parse or
+trips a gateway timeout (the ~27-30s ceilings that used to sever a synchronous
+parse mid-flight). Larger files still go through the presigned upload flow to clear
+the direct-request size cap, but behave identically once submitted.
+
 POST /api/v1/resume/parse
-  Single file parse. Digital PDF/DOCX -> synchronous (returns result immediately).
-  Scanned PDF/image -> asynchronous (returns job_id; use webhook or polling).
+  Upload a single file (multipart). Returns job_id + poll_url; poll for the result.
+
+POST /api/v1/resume/upload-url  +  POST /api/v1/resume/parse-uploaded
+  Two-step upload for files above the direct-request cap: get a presigned S3 URL,
+  upload straight to storage, then parse. Same async contract as /resume/parse.
 
 GET /api/v1/resume/job/{job_id}
-  Poll async job status.
+  Poll job status; returns the parsed JSON once status is `completed`.
 
 POST /api/v1/resume/{job_id}/retry
   Re-parse a resume when the original result was unsatisfactory.
@@ -44,7 +55,6 @@ from app.models.schemas import (
     UploadUrlResponse,
 )
 from app.services.application import resume_service
-from app.services.extraction.classifier import classify
 from app.services.feedback import diff_fields
 from app.services.normalization.skills_validator import validate_skills
 from app.storage import s3_client
@@ -78,11 +88,11 @@ async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
     response_model=ParseResponse,
     summary="Parse a resume",
     description=(
-        "Upload a single resume (PDF, DOCX, RTF, PNG, JPG, TIFF). "
-        "Digital PDFs, DOCX, and RTF files are processed **synchronously** and the parsed JSON "
-        "is returned immediately. "
-        "Scanned PDFs and images require OCR and are processed **asynchronously** - "
-        "a `job_id` is returned and results are delivered via webhook and the polling endpoint."
+        "Upload a single resume (PDF, DOCX, RTF, PNG, JPG, TIFF). The file is queued "
+        "and parsed on the async worker, and the response returns a `job_id` + "
+        "`poll_url` immediately. Poll `GET /resume/job/{job_id}` until `status` is "
+        "`completed` to retrieve the parsed JSON. This one flow is used for every "
+        "file, so a request never blocks on the parse or hits a gateway timeout."
     ),
     tags=["Resume"],
 )
@@ -95,15 +105,6 @@ async def parse_resume(
                     "file needs (scanned PDFs/images, or a digital PDF with a broken "
                     "text layer). Higher accuracy on hard scans, higher cost.",
     ),
-    async_only: bool = Form(
-        False,
-        description="Never parse synchronously: return a `job_id` + `poll_url` "
-                    "immediately and run the full parse on the async worker. Use this "
-                    "when your own gateway cannot hold a request open long enough for "
-                    "a complete parse (a proxy or serverless host with a short request "
-                    "timeout) - blocking there would cost you a 504 with no data. "
-                    "Costs one poll round-trip; never returns a partial.",
-    ),
     record: dict = Depends(get_api_key_record),
 ) -> ParseResponse:
     settings   = get_settings()
@@ -111,62 +112,28 @@ async def parse_resume(
     job_id     = str(ULID())
 
     content, filename = await _validate_file(file, settings)
-    strategy, needs_async = classify(filename, content)
-    needs_async = needs_async or async_only
-
     log.info("parse_request", job_id=job_id, company_id=company_id,
-             strategy=strategy, needs_async=needs_async, size_bytes=len(content),
-             force_textract=force_textract, async_only=async_only)
+             size_bytes=len(content), force_textract=force_textract)
 
-    # Fast synchronous PROBE for digital files. If it parses cleanly inside the
-    # gateway budget, return the complete JSON inline. If it can't finish (a dense
-    # resume that would otherwise degrade to a partial), PROMOTE it to the async
-    # worker - which runs the full multi-agent parse with no gateway ceiling - and
-    # hand back a poll URL, so the caller always ends up with a COMPLETE record and
-    # never a partial.
-    sync_result = None
-    if not needs_async:
-        sync_result = await resume_service.run_parse(
-            job_id=job_id, filename=filename, content=content,
-            company_id=company_id, force_textract=force_textract, sync_probe=True,
-        )
-        if not sync_result.partial:
-            resume_service.audit_parse(
-                job_id=job_id, company_id=company_id, result=sync_result,
-                file_size_bytes=len(content), record=record,
-            )
-            return ParseResponse(job_id=job_id,
-                                 status=resume_service.terminal_status(sync_result),
-                                 data=sync_result.parsed, confidence=sync_result.confidence,
-                                 skills_validation=validate_skills(sync_result.parsed),
-                                 partial=False, warnings=sync_result.warnings)
-        log.info("sync_partial_promoted_to_async", job_id=job_id)
-
-    # Async: originally needed (scanned files) OR a sync partial promoted to be
-    # completed end-to-end on the full-budget worker.
+    # One uniform flow for every file: store it and hand it to the full-budget async
+    # worker, then return a poll URL. Nothing parses on the request path, so the
+    # caller never blocks and never trips a gateway timeout - whatever the file's
+    # size or type. The worker runs the complete pipeline (digital or OCR) and stores
+    # the result for the poll endpoint.
+    s3_key = s3_client.upload_temp_file(job_id, filename, content)
+    db.create_job(job_id, company_id)
     try:
-        s3_key = s3_client.upload_temp_file(job_id, filename, content)
-        db.create_job(job_id, company_id)
         await resume_service.dispatch_async(settings, background_tasks,
             resume_service.build_async_payload(
                 job_id=job_id, company_id=company_id, s3_key=s3_key, filename=filename,
                 file_size_bytes=len(content), force_textract=force_textract, record=record,
             ))
     except Exception:
-        # Couldn't hand off to the worker. If we at least have a probe result,
-        # return it (flagged partial) rather than failing the whole request.
         log.exception("async_dispatch_failed", job_id=job_id)
-        if sync_result is not None:
-            resume_service.audit_parse(
-                job_id=job_id, company_id=company_id, result=sync_result,
-                file_size_bytes=len(content), record=record, status="partial",
-            )
-            return ParseResponse(job_id=job_id,
-                                 status=resume_service.terminal_status(sync_result),
-                                 data=sync_result.parsed, confidence=sync_result.confidence,
-                                 skills_validation=validate_skills(sync_result.parsed),
-                                 partial=sync_result.partial, warnings=sync_result.warnings)
-        raise
+        raise api_error(
+            503, ErrorCode.WORKER_DISPATCH_FAILED,
+            "Could not queue the resume for parsing. Please retry.",
+        )
     return ParseResponse(job_id=job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{job_id}")
 
@@ -226,10 +193,10 @@ async def create_upload_url(
     response_model=ParseResponse,
     summary="Parse a file uploaded via a presigned URL",
     description=(
-        "Parse a resume that was uploaded with `/resume/upload-url`. "
-        "Behaves exactly like `/resume/parse`: digital PDF/DOCX/RTF return the parsed JSON "
-        "**synchronously**; scanned PDFs and images return a `job_id` for "
-        "**asynchronous** (OCR) processing via webhook + polling."
+        "Parse a resume that was uploaded with `/resume/upload-url`. Behaves exactly "
+        "like `/resume/parse`: the file is queued on the async worker and the response "
+        "returns a `job_id` + `poll_url` immediately. Poll `GET /resume/job/{job_id}` "
+        "for the parsed JSON."
     ),
     tags=["Resume"],
 )
@@ -274,48 +241,21 @@ async def parse_uploaded(
         s3_client.delete_file(s3_key)
         raise api_error(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
 
-    # Atomically claim the job (pending_upload -> processing) before the billed
-    # parse. Two concurrent parse-uploaded calls for the same job_id both pass the
-    # status read above; only the claim winner proceeds - the loser gets 409 and
-    # we do NOT delete the S3 file (the winner still needs it).
+    # Atomically claim the job (pending_upload -> processing) so two concurrent
+    # parse-uploaded calls for the same job_id can't both dispatch; the loser gets a
+    # 409 and we do NOT delete the S3 file (the winner's worker still needs it).
     if not db.claim_upload_job(payload.job_id):
         raise api_error(
             409, ErrorCode.UPLOAD_ALREADY_PARSED,
             "This upload has already been processed",
         )
 
-    strategy, needs_async = classify(filename, content)
-    needs_async = needs_async or payload.async_only
     log.info("parse_uploaded_request", job_id=payload.job_id, company_id=company_id,
-             strategy=strategy, needs_async=needs_async, size_bytes=len(content),
-             async_only=payload.async_only)
+             size_bytes=len(content), force_textract=payload.force_textract)
 
-    # Fast synchronous PROBE; promote a partial to the full-budget async worker so
-    # the caller always ends up with a COMPLETE record (see parse_resume).
-    sync_result = None
-    if not needs_async:
-        sync_result = await resume_service.run_parse(
-            job_id=payload.job_id, filename=filename, content=content,
-            company_id=company_id, force_textract=payload.force_textract, sync_probe=True,
-        )
-        if not sync_result.partial:
-            db.update_job_completed(payload.job_id, resume_service.result_record(sync_result))
-            resume_service.audit_parse(
-                job_id=payload.job_id, company_id=company_id, result=sync_result,
-                file_size_bytes=len(content), record=record,
-            )
-            s3_client.delete_file(s3_key)
-            return ParseResponse(job_id=payload.job_id,
-                                 status=resume_service.terminal_status(sync_result),
-                                 data=sync_result.parsed, confidence=sync_result.confidence,
-                                 skills_validation=validate_skills(sync_result.parsed),
-                                 partial=False, warnings=sync_result.warnings)
-        log.info("sync_partial_promoted_to_async", job_id=payload.job_id)
-
-    # Async: the file is already in S3; the worker downloads and deletes it. This
-    # covers scanned files AND a promoted sync partial - do NOT delete the S3 file
-    # here (the worker needs it) and leave the job "processing" for the worker to
-    # finish.
+    # Uniform async flow: the file is already in S3; hand it to the full-budget
+    # worker (which downloads and deletes it) and return a poll URL. Nothing parses
+    # on the request path. Leave the job "processing" for the worker to finish.
     try:
         await resume_service.dispatch_async(settings, background_tasks,
             resume_service.build_async_payload(
@@ -324,19 +264,10 @@ async def parse_uploaded(
             ))
     except Exception:
         log.exception("async_dispatch_failed", job_id=payload.job_id)
-        if sync_result is not None:
-            db.update_job_completed(payload.job_id, resume_service.result_record(sync_result))
-            resume_service.audit_parse(
-                job_id=payload.job_id, company_id=company_id, result=sync_result,
-                file_size_bytes=len(content), record=record, status="partial",
-            )
-            s3_client.delete_file(s3_key)
-            return ParseResponse(job_id=payload.job_id,
-                                 status=resume_service.terminal_status(sync_result),
-                                 data=sync_result.parsed, confidence=sync_result.confidence,
-                                 skills_validation=validate_skills(sync_result.parsed),
-                                 partial=sync_result.partial, warnings=sync_result.warnings)
-        raise
+        raise api_error(
+            503, ErrorCode.WORKER_DISPATCH_FAILED,
+            "Could not queue the resume for parsing. Please retry.",
+        )
     return ParseResponse(job_id=payload.job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{payload.job_id}")
 
@@ -412,13 +343,6 @@ async def retry_parse(
         description="Skip Tesseract and use AWS Textract directly for any OCR this "
                     "file needs. Useful when retrying a scan the tiered OCR misread.",
     ),
-    async_only: bool = Form(
-        False,
-        description="Never parse synchronously: return a `job_id` + `poll_url` "
-                    "immediately and run the full re-parse on the async worker. Use "
-                    "this when your own gateway cannot hold a request open long enough "
-                    "for a complete parse.",
-    ),
     record: dict = Depends(get_api_key_record),
 ) -> RetryResponse:
     settings   = get_settings()
@@ -439,66 +363,27 @@ async def retry_parse(
         )
 
     content, filename = await _validate_file(file, settings)
-    strategy, needs_async = classify(filename, content)
-    needs_async = needs_async or async_only
     new_job_id = str(ULID())
 
     log.info("retry_request", original_job_id=job_id, new_job_id=new_job_id,
-             company_id=company_id, retry_count=retry_count, async_only=async_only)
+             company_id=company_id, retry_count=retry_count)
 
-    # Create retry job linked to original
+    # Create retry job linked to original, then run the same uniform async flow as
+    # /resume/parse: dispatch to the full-budget worker and return a poll URL.
     db.create_job(new_job_id, company_id, retried_from=job_id, retry_count=retry_count)
-
-    # Same fast PROBE -> PROMOTE contract as /resume/parse: a retry is a synchronous
-    # HTTP request under the same gateway ceiling, so it cannot hold the connection
-    # for a full-budget parse either. If the probe can't finish, hand the file to the
-    # async worker and return a poll URL rather than blocking until the gateway 504s.
-    sync_result = None
-    if not needs_async:
-        sync_result = await resume_service.run_parse(
-            job_id=new_job_id, filename=filename, content=content,
-            company_id=company_id, force_textract=force_textract, sync_probe=True,
-        )
-        if not sync_result.partial:
-            resume_service.audit_parse(
-                job_id=new_job_id, company_id=company_id, result=sync_result,
-                file_size_bytes=len(content), record=record,
-            )
-            db.update_job_completed(new_job_id, resume_service.result_record(sync_result))
-            return RetryResponse(
-                job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
-                status=resume_service.terminal_status(sync_result),
-                data=sync_result.parsed, confidence=sync_result.confidence,
-                skills_validation=validate_skills(sync_result.parsed),
-                partial=False, warnings=sync_result.warnings,
-            )
-        log.info("sync_partial_promoted_to_async", job_id=new_job_id)
-
+    s3_key = s3_client.upload_temp_file(new_job_id, filename, content)
     try:
-        s3_key = s3_client.upload_temp_file(new_job_id, filename, content)
         await resume_service.dispatch_async(settings, background_tasks,
             resume_service.build_async_payload(
                 job_id=new_job_id, company_id=company_id, s3_key=s3_key, filename=filename,
                 file_size_bytes=len(content), force_textract=force_textract, record=record,
             ))
     except Exception:
-        # Couldn't hand off to the worker. If the probe produced something, return it
-        # (flagged partial) rather than failing the retry outright.
         log.exception("async_dispatch_failed", job_id=new_job_id)
-        if sync_result is not None:
-            resume_service.audit_parse(
-                job_id=new_job_id, company_id=company_id, result=sync_result,
-                file_size_bytes=len(content), record=record, status="partial",
-            )
-            db.update_job_completed(new_job_id, resume_service.result_record(sync_result))
-            return RetryResponse(
-                job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
-                status=resume_service.terminal_status(sync_result),
-                data=sync_result.parsed, confidence=sync_result.confidence,
-                skills_validation=validate_skills(sync_result.parsed),
-                partial=sync_result.partial, warnings=sync_result.warnings,
-            )
-        raise
+        raise api_error(
+            503, ErrorCode.WORKER_DISPATCH_FAILED,
+            "Could not queue the resume for parsing. Please retry.",
+        )
     return RetryResponse(
         job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
         status="processing", poll_url=f"/api/v1/resume/job/{new_job_id}",

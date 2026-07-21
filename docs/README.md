@@ -10,7 +10,7 @@ in the [root `README.md`](../README.md); everything engineering-facing lives her
 | [`PROJECT.md`](./PROJECT.md) | Engineers | Mission, the non-negotiable invariants, the parse ladder, and the rules for changing the system without degrading it. **Start here to work on the code.** |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Engineers / reviewers | Design principles, compute model, processing pipeline, data layer, security, scalability. |
 | [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Ops / infra | CI/CD pipeline, AWS services, OpenAI configuration, the async-worker (SQS) provisioning reality, and the deploy/rollback runbook. |
-| [`CLIENT_INTEGRATION_GUIDE.md`](./CLIENT_INTEGRATION_GUIDE.md) | API consumers | Auth, sync vs. async parsing, polling, webhooks, rate limits, Python/Node examples, checklist. |
+| [`CLIENT_INTEGRATION_GUIDE.md`](./CLIENT_INTEGRATION_GUIDE.md) | API consumers | Auth, the async submit → poll flow, webhooks, rate limits, Python/Node examples, checklist. |
 | [`custom-api-domain.md`](./custom-api-domain.md) | Ops / infra | The `api.parsinglab.blue-iq.ai` custom domain: CloudFront + ACM setup, runbook, troubleshooting. |
 | [`ocean-blue-integration-flow.md`](./ocean-blue-integration-flow.md) | Integration partners | End-to-end frontend → backend → API flow (swimlane diagram + Mermaid source). |
 | [`CLEANUP_PLAN.md`](./CLEANUP_PLAN.md) | Engineers | Tracked technical debt and the Terraform-adoption plan. |
