@@ -59,12 +59,40 @@ class Settings(BaseSettings):
     dynamodb_table_audit_logs: str = "resume-parser-audit-logs"
     dynamodb_table_companies: str = "resume-parser-companies"
     dynamodb_table_feedback: str = "resume-parser-feedback"
+    dynamodb_table_agent_instructions: str = "resume-parser-agent-instructions"
 
     # GSI names (used by usage/stats and onboarding queries)
     audit_logs_company_index: str = "company-timestamp-index"
     companies_email_index: str = "email-index"
     api_keys_company_index: str = "company-index"
     feedback_company_index: str = "company-created-index"
+
+    # -- Feedback-driven instruction refinement (the self-improvement loop) -----
+    # Reviewer corrections (feedback) are aggregated per agent, an LLM proposes
+    # prompt rules, and APPROVED rules are appended to that agent's system prompt at
+    # parse time. Generation is admin-triggered and off the hot path; only the
+    # application below touches parsing and is a no-op until a proposal is approved.
+    #
+    # Master switch for APPLYING learned rules during parsing. False = collect
+    # feedback and let admins generate/review proposals, but change nothing at parse
+    # time (exactly today's behaviour). Generation endpoints work regardless.
+    refinement_enabled: bool = True
+    # Scope whose approved rules the agents apply. "global" = rules learned across
+    # all companies; set to a company_id to apply that tenant's rules instead.
+    refinement_scope: str = "global"
+    # How long a warm container caches the active rule snapshot before reloading it
+    # from DynamoDB. Keeps parsing from doing a per-call DB read; an approval becomes
+    # visible within this window (or immediately when the admin mutation invalidates).
+    refinement_cache_ttl_seconds: int = 300
+    # Minimum concrete correction examples an agent needs before the refiner will
+    # propose rules for it - guards against overfitting to one-off edits.
+    refinement_min_examples: int = 5
+    # Hard cap on proposed rules per agent, so an agent's prompt can't grow unbounded.
+    refinement_max_rules_per_agent: int = 8
+    # When True, a generation run auto-approves its proposals (rules apply after the
+    # next cache reload) instead of leaving them PENDING for human review. Off by
+    # default: prompt changes should be reviewed before they affect production parses.
+    refinement_auto_apply: bool = False
 
     # How long parsing feedback (original + corrected JSON) is retained before
     # the DynamoDB TTL expires it. Feedback carries resume PII, so it is not kept

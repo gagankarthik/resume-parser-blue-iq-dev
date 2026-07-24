@@ -62,6 +62,7 @@ data "aws_iam_policy_document" "lambda_app_common" {
       "${aws_dynamodb_table.companies.arn}/index/*",
       aws_dynamodb_table.feedback.arn,
       "${aws_dynamodb_table.feedback.arn}/index/*",
+      aws_dynamodb_table.agent_instructions.arn,
     ]
   }
 

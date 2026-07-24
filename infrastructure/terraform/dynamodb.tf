@@ -192,3 +192,27 @@ resource "aws_dynamodb_table" "feedback" {
   point_in_time_recovery { enabled = true }
   tags = local.common_tags
 }
+
+# Learned agent-instruction packs (feedback-driven refinement). One item per
+# (scope, agent): the ACTIVE rules applied at parse time plus any PENDING proposal.
+# Not TTL'd - these are curated config, not transient PII (rules are generalised and
+# reviewed, never raw résumé content).
+resource "aws_dynamodb_table" "agent_instructions" {
+  name         = "resume-parser-agent-instructions"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "scope"
+  range_key    = "agent"
+
+  attribute {
+    name = "scope"
+    type = "S"
+  }
+
+  attribute {
+    name = "agent"
+    type = "S"
+  }
+
+  point_in_time_recovery { enabled = true }
+  tags = local.common_tags
+}

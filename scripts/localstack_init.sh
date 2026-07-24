@@ -126,6 +126,18 @@ awslocal dynamodb update-time-to-live \
   --time-to-live-specification Enabled=true,AttributeName=ttl \
   --region $REGION || true
 
+# agent_instructions (scope pk + agent sk) — learned instruction packs from feedback
+awslocal dynamodb create-table \
+  --table-name resume-parser-agent-instructions \
+  --attribute-definitions \
+    AttributeName=scope,AttributeType=S \
+    AttributeName=agent,AttributeType=S \
+  --key-schema \
+    AttributeName=scope,KeyType=HASH \
+    AttributeName=agent,KeyType=RANGE \
+  --billing-mode PAY_PER_REQUEST \
+  --region $REGION || true
+
 # Seed a development API key: rp_live_devkey00000000000000000000000000000000
 # hash of "rp_live_devkey00000000000000000000000000000000"
 DEV_KEY_HASH=$(echo -n "rp_live_devkey00000000000000000000000000000000" | sha256sum | awk '{print $1}')

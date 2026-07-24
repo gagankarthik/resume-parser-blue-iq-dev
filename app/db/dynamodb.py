@@ -32,6 +32,15 @@ from app.db.companies import (
     update_company,
 )
 from app.db.feedback import create_feedback, list_feedback_for_company
+from app.db.instructions import (
+    active_rules,
+    approve,
+    get_instruction,
+    list_for_scope,
+    reject,
+    save_proposal,
+    set_disabled,
+)
 from app.db.jobs import (
     _dynamo_safe,
     _plain,
@@ -87,6 +96,14 @@ __all__ = [
     # feedback
     "create_feedback",
     "list_feedback_for_company",
+    # agent instructions (feedback refinement)
+    "get_instruction",
+    "list_for_scope",
+    "active_rules",
+    "save_proposal",
+    "approve",
+    "reject",
+    "set_disabled",
     # batches
     "create_batch",
     "get_batch",
