@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.services.llm.client import structured_parse
+from app.services.refinement import store as refinement_store
 
 log = get_logger(__name__)
 
@@ -137,6 +138,12 @@ class BaseAgent:
             settings.openai_model_fast if self.FAST_TIER and settings.openai_model_fast
             else settings.openai_model
         )
+
+        # Append any APPROVED learned rules for this agent (feedback refinement).
+        # No-op unless refinement is enabled and an approved pack exists, so default
+        # behaviour is unchanged; served from an in-process TTL cache, never a
+        # per-call DB read, and never raises on the hot path.
+        system = refinement_store.augment_system(self.name, system)
 
         t0 = time.monotonic()
         result = await structured_parse(
