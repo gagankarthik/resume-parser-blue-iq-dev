@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import cast
 
 from pydantic import BaseModel, Field
 
@@ -104,7 +105,7 @@ async def refine_agent(ac: AgentCorrections, *, max_rules: int) -> list[str]:
         max_tokens=1024,
         label=f"refiner:{ac.agent}",
     )
-    proposal: RuleProposal = result.parsed  # type: ignore[assignment]
+    proposal = cast(RuleProposal, result.parsed)
     # Defensive cap + de-dup + strip; the schema is advisory, enforce hard limits here.
     seen: set[str] = set()
     rules: list[str] = []
