@@ -56,7 +56,7 @@ def _truncate(value: object) -> object:
     """Bound a value's size; keep scalars/None as-is when short."""
     if isinstance(value, str) and len(value) > _MAX_VALUE_CHARS:
         return value[:_MAX_VALUE_CHARS] + "…"
-    if isinstance(value, (dict, list)):
+    if isinstance(value, dict | list):
         text = str(value)
         return text[:_MAX_VALUE_CHARS] + "…" if len(text) > _MAX_VALUE_CHARS else text
     return value
