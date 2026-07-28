@@ -137,6 +137,14 @@ The service runs as **two container-image Lambda functions** sharing one codebas
 > **Local-dev fallback:** when no worker queue is configured (`use_queue_worker = false`), async
 > work runs via FastAPI `BackgroundTasks` in-process, so the same code path works on a laptop or in
 > Docker Compose with LocalStack.
+>
+> **This fallback is local-dev only, and now fails closed elsewhere.** Starlette runs
+> `BackgroundTasks` *inside* the ASGI cycle, so under Mangum the HTTP response is not returned
+> until the task finishes — a deployed function without a queue turns every "async submit" into a
+> full-length blocking parse (and lets `parse.completed` overtake the submit response). Production
+> ran this way for four days in July 2026; see [`DEPLOYMENT.md`](./DEPLOYMENT.md) §5. The API now
+> refuses to boot in production without `WORKER_QUEUE_URL`, and `GET /api/v1/health` reports the
+> live mode as `dependencies.worker` (`"queue"` | `"in-process"`).
 
 ---
 

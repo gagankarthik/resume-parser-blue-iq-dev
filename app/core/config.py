@@ -382,13 +382,23 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     def assert_production_ready(self) -> None:
-        """Refuse to boot a production deployment that is missing critical secrets.
+        """Refuse to boot a production deployment that is missing critical config.
 
-        Called once at app startup (main.lifespan). Today the only fail-closed
-        check is the account-token signing secret: an unset/dev-default value in
-        production would let anyone forge a session token for any company and mint
-        real API keys. (admin_api_token is intentionally optional - empty disables
-        the admin endpoints - so it is not enforced here.)
+        Called once at app startup (main.lifespan) and at Lambda cold start
+        (app.handlers.lambda_handler). Two fail-closed checks:
+
+        * `auth_secret` - an unset/dev-default value in production would let anyone
+          forge a session token for any company and mint real API keys.
+        * `worker_queue_url` - without it every parse silently falls back to
+          in-process BackgroundTasks, which Starlette runs *inside* the ASGI cycle.
+          On Lambda that holds the HTTP response open for the whole parse (~22s
+          observed in production on 2026-07-24), so the caller's "async submit"
+          blocks and `parse.completed` fires before the submit response delivers
+          the job_id. A missing queue is an outage of the async contract, not a
+          degraded mode, so refuse to serve rather than degrade silently.
+
+        (admin_api_token is intentionally optional - empty disables the admin
+        endpoints - so it is not enforced here.)
         """
         if not self.is_production:
             return
@@ -396,6 +406,14 @@ class Settings(BaseSettings):
             raise RuntimeError(
                 "Refusing to start in production: AUTH_SECRET is unset or still the "
                 "insecure dev default. Set a strong random value via the environment."
+            )
+        if not self.worker_queue_url:
+            raise RuntimeError(
+                "Refusing to start in production: WORKER_QUEUE_URL is unset, so every "
+                "parse would run in-process and hold the HTTP response open for the "
+                "whole parse. Provision the worker stack "
+                "(scripts/provision_worker.sh) and set WORKER_QUEUE_URL on the "
+                "function - see docs/DEPLOYMENT.md section 5."
             )
 
 
