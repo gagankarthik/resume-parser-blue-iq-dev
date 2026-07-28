@@ -216,6 +216,20 @@ jobs:
           fi
           echo "Health check passed: HTTP $STATUS"
 
+          # A 200 is not enough: the API serves fine with no worker queue, it just
+          # parses on the request thread and holds every response open for the whole
+          # parse. Fail the DEPLOY on that (the service stays up) rather than letting
+          # it pass silently, as it did 2026-07-20 -> 07-24.
+          WORKER=$(python3 -c 'import json,sys; print(json.load(open("body.txt")).get("dependencies",{}).get("worker",""))' 2>/dev/null || echo "")
+          echo "Async dispatch mode: ${WORKER:-unknown}"
+          if [ "$WORKER" != "queue" ]; then
+            echo "::error::API is healthy but async dispatch is '${WORKER:-unknown}', not 'queue'."
+            echo "WORKER_QUEUE_URL is unset on the function, so every parse runs in-process"
+            echo "and blocks its HTTP response for the whole parse."
+            echo "Fix: CONFIRM=1 AWS_REGION=${{ env.AWS_REGION }} ./scripts/provision_worker.sh"
+            exit 1
+          fi
+
       - name: Diagnose on failure - dump Lambda logs + config
         if: failure()
         run: |

@@ -31,7 +31,14 @@ log = get_logger(__name__)
 # event - which calls assert_production_ready() - never fires on Lambda. Enforce the
 # same gate here: a production deploy with an unset/default AUTH_SECRET refuses to
 # boot rather than serving forgeable session tokens. No-op outside production.
-get_settings().assert_production_ready()
+_settings = get_settings()
+_settings.assert_production_ready()
+
+# Degraded-but-serving config (e.g. no worker queue) is logged, not raised: it must
+# not take the function down at cold start. /health reports it and the deploy smoke
+# test fails on it.
+for _warning in _settings.production_config_warnings():
+    log.error("production_config_degraded", detail=_warning)
 
 from mangum import Mangum  # noqa: E402
 
