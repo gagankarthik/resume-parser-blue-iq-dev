@@ -46,9 +46,22 @@ dlq_arn=$(aws sqs get-queue-attributes --queue-url "$dlq_url" --attribute-names 
 log "Queue: $QUEUE"
 queue_url=$(aws sqs get-queue-url --queue-name "$QUEUE" --region "$REGION" --query QueueUrl --output text 2>/dev/null \
   || aws sqs create-queue --queue-name "$QUEUE" --region "$REGION" --query QueueUrl --output text)
-redrive="{\"deadLetterTargetArn\":\"$dlq_arn\",\"maxReceiveCount\":\"$MAX_RECEIVE\"}"
-aws sqs set-queue-attributes --queue-url "$queue_url" --region "$REGION" --attributes \
-  "VisibilityTimeout=$VISIBILITY_TIMEOUT,ReceiveMessageWaitTimeSeconds=20,MessageRetentionPeriod=86400,RedrivePolicy=$redrive"
+# --attributes must be full JSON, not Key=Value shorthand: RedrivePolicy's value is
+# itself a JSON *string*, and the shorthand parser chokes on the embedded quotes
+# ("Expected: '=', received: '\"'"). Build it with the json module so the nested
+# encoding and the quoting are both right.
+attrs=$(VISIBILITY="$VISIBILITY_TIMEOUT" DLQ_ARN="$dlq_arn" MAX_RECEIVE="$MAX_RECEIVE" python3 -c '
+import json, os
+print(json.dumps({
+    "VisibilityTimeout":             os.environ["VISIBILITY"],
+    "ReceiveMessageWaitTimeSeconds": "20",
+    "MessageRetentionPeriod":        "86400",
+    "RedrivePolicy": json.dumps({
+        "deadLetterTargetArn": os.environ["DLQ_ARN"],
+        "maxReceiveCount":     os.environ["MAX_RECEIVE"],
+    }),
+}))')
+aws sqs set-queue-attributes --queue-url "$queue_url" --region "$REGION" --attributes "$attrs"
 queue_arn=$(aws sqs get-queue-attributes --queue-url "$queue_url" --attribute-names QueueArn \
   --region "$REGION" --query Attributes.QueueArn --output text)
 
