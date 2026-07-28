@@ -58,12 +58,36 @@ def test_production_rejects_default_auth_secret():
 
 def test_production_accepts_strong_auth_secret():
     Settings(
-        environment="production", auth_secret="0f3c-strong-random-secret-value"
+        environment="production",
+        auth_secret="0f3c-strong-random-secret-value",
+        worker_queue_url="https://sqs.us-east-2.amazonaws.com/1/resume-parser-worker",
     ).assert_production_ready()  # must not raise
 
 
 def test_development_allows_default_secret():
     Settings(environment="development").assert_production_ready()  # must not raise
+
+
+# -- Fail closed when the async worker queue is missing -------------------------
+#
+# Regression: production ran for days with WORKER_QUEUE_URL unset, so every parse
+# took the BackgroundTasks fallback. Starlette runs those inside the ASGI cycle, so
+# Mangum held the HTTP response open for the whole parse - a 22s "async submit" and
+# a parse.completed webhook that beat its own job_id back to the caller.
+
+def test_production_rejects_missing_worker_queue():
+    s = Settings(
+        environment="production", auth_secret="0f3c-strong-random-secret-value"
+    )
+    with pytest.raises(RuntimeError, match="WORKER_QUEUE_URL"):
+        s.assert_production_ready()
+
+
+def test_development_allows_missing_worker_queue():
+    # In-process BackgroundTasks is the intended local-dev path - never a failure.
+    s = Settings(environment="development")
+    s.assert_production_ready()  # must not raise
+    assert s.use_queue_worker is False
 
 
 def test_lambda_handler_fails_closed_in_production_without_auth_secret():

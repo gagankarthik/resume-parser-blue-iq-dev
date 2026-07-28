@@ -80,7 +80,7 @@ this repo or CI manages them. Secrets are plain Lambda env vars (not SSM). The c
 | `GIG_SPECIALTIES_API_KEY` | GigHealth Partner key (also spelled `GIG_SPECIAILITIES_API_KEY` — both accepted); enables the live city lookup |
 | `AUTH_SECRET` | Signs self-serve session tokens; the app refuses to boot in production on the dev default |
 | `ADMIN_API_TOKEN` | Gates `/admin/*` |
-| `WORKER_QUEUE_URL` | SQS queue the API enqueues onto — **required in production** (see §5) |
+| `WORKER_QUEUE_URL` | SQS queue the API enqueues onto — **required in production**; the app refuses to boot without it (see §5) |
 
 To change runtime config, update the value **on the function** and (for reproducibility) mirror it
 into [`.env.example`](../.env.example). A code redeploy will not apply it.
@@ -100,8 +100,31 @@ API gates this on `WORKER_QUEUE_URL`:
 > queue + DLQ, the Worker Lambda (same image, `worker_lambda.handler` command, its own
 > memory/timeout/reserved concurrency), the SQS → Worker event-source mapping, the Worker's IAM
 > consume permissions and the API's IAM produce permission, and `WORKER_QUEUE_URL` set on the API
-> function. Deploying the enqueue code *before* this is provisioned will silently degrade async
-> parsing (every parse job now runs on this path) to the in-process fallback.
+> function. `scripts/provision_worker.sh` creates exactly these pieces and is idempotent:
+> `CONFIRM=1 AWS_REGION=us-east-2 ./scripts/provision_worker.sh`.
+
+### This already went wrong once — 2026-07-20 → 07-24
+
+The enqueue code shipped before the worker stack existed. `WORKER_QUEUE_URL` was unset and no
+Worker Lambda had been created, so **every production parse ran the in-process fallback**.
+Starlette runs `BackgroundTasks` inside the ASGI cycle, so Mangum could not return until the parse
+finished: `POST /resume/parse` held the connection for ~22s and `parse.completed` reached the
+client ~6s *before* the submit response delivered the `job_id`. Nothing alerted — the API was
+healthy, jobs completed, and only the response latency gave it away. Full write-up:
+[`ocean-blue-webhook-timing-note.md`](./ocean-blue-webhook-timing-note.md).
+
+**Two guards now make this loud instead of silent:**
+
+- `Settings.assert_production_ready()` **refuses to boot** with `ENVIRONMENT=production` and an
+  empty `WORKER_QUEUE_URL` (enforced at Lambda cold start in `app/handlers/lambda_handler.py`,
+  since Mangum runs `lifespan="off"`).
+- `GET /api/v1/health` reports the live dispatch mode as `dependencies.worker`: `"queue"` or
+  `"in-process"`, and returns `degraded` when a production deployment is in-process.
+
+> **Deploy ordering:** because the check is fail-closed, `WORKER_QUEUE_URL` must be present on the
+> function *before* an image containing it reaches production. Provision first, deploy second — the
+> reverse order takes the API down at cold start. The `/health` smoke test in `deploy.yml` catches
+> it, but only after the fact.
 
 The Terraform in `infrastructure/terraform/` (`sqs.tf`, `lambda.tf`, `iam.tf`) is the authoritative
 *description* of this stack — but see the next section on how it must actually be applied.

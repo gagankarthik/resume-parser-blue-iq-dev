@@ -264,6 +264,14 @@ Response (`201`) - **the `hmac_secret` is returned only once; store it now:**
 - Manage with `GET /api/v1/webhooks` and `DELETE /api/v1/webhooks/{webhook_id}`.
 - Available events: `parse.completed`, `parse.failed`, `batch.completed`.
 
+> **The secret belongs to the registration, not to your account.** Registering again — for a
+> new environment, or to re-point an existing one — mints a *different* secret and leaves the
+> previous registration active. Every active registration receives every event it subscribes
+> to, each signed with **its own** secret, so a stale one both keeps receiving parsed candidate
+> data and makes it easy to verify against the wrong secret. There is no rotate endpoint: to
+> change a secret, `DELETE` the registration and create a new one. Run `GET /api/v1/webhooks`
+> whenever signatures fail — more registrations than you expect is the usual cause.
+
 ### Delivery payloads
 
 `parse.completed`:
@@ -317,6 +325,15 @@ function verify(secret, timestamp, rawBody, signature) {
 **Delivery semantics:** retried up to 3 times (≈2 s, 5 s, 10 s) on 5xx/connection errors;
 2xx/4xx are not retried. Respond `2xx` quickly and process asynchronously. Make your
 handler **idempotent** (key on `job_id`) - a delivery may arrive more than once.
+
+> Because 4xx is not retried, a handler that rejects deliveries — a **401 from a signature
+> mismatch** being the common case - **discards those events permanently**. If you verify
+> signatures, alert on rejections rather than only logging them, and keep polling or a
+> reconcile pass as a backstop.
+
+**Ordering:** treat `parse.completed` as able to arrive *before* your own bookkeeping for that
+`job_id` has settled. Persist the `job_id` from the submit response first, and make the handler
+tolerate an unknown `job_id` (upsert, or buffer and retry the lookup) instead of dropping it.
 
 ---
 

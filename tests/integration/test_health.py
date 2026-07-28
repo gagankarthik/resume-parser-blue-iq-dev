@@ -16,3 +16,11 @@ def test_health_returns_200():
     assert "version" in body
     assert "environment" in body
     assert "dependencies" in body
+
+
+def test_health_reports_async_dispatch_mode():
+    """The dispatch path must be verifiable from outside. A deployment with no
+    worker queue parses in-process and holds the HTTP response open for the whole
+    parse; before this was reported, the only symptom was slow submits."""
+    body = client.get("/api/v1/health").json()
+    assert body["dependencies"]["worker"] in {"queue", "in-process"}

@@ -88,7 +88,18 @@ async def health_check() -> HealthResponse:
         _check_s3(settings),
     )
 
-    all_ok  = dynamodb_status == "ok" and s3_status == "ok"
+    # Which dispatch path async parses actually take. "in-process" means
+    # WORKER_QUEUE_URL is unset and parsing runs on the request thread, holding the
+    # HTTP response open for the whole parse - correct for local dev, an outage of
+    # the async contract anywhere else. Surfaced here so the mode is verifiable from
+    # outside instead of only inferable from response latency.
+    worker_status = "queue" if settings.use_queue_worker else "in-process"
+
+    all_ok = (
+        dynamodb_status == "ok"
+        and s3_status == "ok"
+        and (settings.use_queue_worker or not settings.is_production)
+    )
     latency = int((time.monotonic() - start) * 1000)
 
     return HealthResponse(
@@ -96,5 +107,9 @@ async def health_check() -> HealthResponse:
         version=settings.app_version,
         environment=settings.environment,
         latency_ms=latency,
-        dependencies={"dynamodb": dynamodb_status, "s3": s3_status},
+        dependencies={
+            "dynamodb": dynamodb_status,
+            "s3": s3_status,
+            "worker": worker_status,
+        },
     )
