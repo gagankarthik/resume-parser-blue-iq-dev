@@ -159,6 +159,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Fail closed before serving a single request if a prod deploy is missing
     # critical secrets (e.g. the account-token signing key).
     settings.assert_production_ready()
+    # Degraded-but-serving config is logged, never raised - see
+    # Settings.production_config_warnings().
+    for warning in settings.production_config_warnings():
+        log.error("production_config_degraded", detail=warning)
     log.info(
         "startup",
         app=settings.app_name,

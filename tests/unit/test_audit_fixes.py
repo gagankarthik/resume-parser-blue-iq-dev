@@ -68,26 +68,63 @@ def test_development_allows_default_secret():
     Settings(environment="development").assert_production_ready()  # must not raise
 
 
-# -- Fail closed when the async worker queue is missing -------------------------
+# -- A missing worker queue warns; it must never take the service down ----------
 #
-# Regression: production ran for days with WORKER_QUEUE_URL unset, so every parse
-# took the BackgroundTasks fallback. Starlette runs those inside the ASGI cycle, so
-# Mangum held the HTTP response open for the whole parse - a 22s "async submit" and
-# a parse.completed webhook that beat its own job_id back to the caller.
+# Two regressions, in order:
+#   1. Production ran 07-20 -> 07-24 with WORKER_QUEUE_URL unset, so every parse took
+#      the BackgroundTasks fallback. Starlette runs those inside the ASGI cycle, so
+#      Mangum held the HTTP response open for the whole parse - a 22s "async submit"
+#      and a parse.completed webhook that beat its own job_id back to the caller.
+#   2. The first fix raised at cold start. The image reached production before the
+#      env var did, so every request 502'd. Config the deploy cannot carry must not
+#      be able to brick the environment it lands in.
 
-def test_production_rejects_missing_worker_queue():
+def test_missing_worker_queue_warns_but_does_not_raise():
     s = Settings(
         environment="production", auth_secret="0f3c-strong-random-secret-value"
     )
-    with pytest.raises(RuntimeError, match="WORKER_QUEUE_URL"):
-        s.assert_production_ready()
+    s.assert_production_ready()  # must NOT raise - a 502 is worse than a slow parse
+    assert any("WORKER_QUEUE_URL" in w for w in s.production_config_warnings())
+
+
+def test_configured_worker_queue_produces_no_warnings():
+    s = Settings(
+        environment="production",
+        auth_secret="0f3c-strong-random-secret-value",
+        worker_queue_url="https://sqs.us-east-2.amazonaws.com/1/resume-parser-worker",
+    )
+    assert s.production_config_warnings() == []
 
 
 def test_development_allows_missing_worker_queue():
-    # In-process BackgroundTasks is the intended local-dev path - never a failure.
+    # In-process BackgroundTasks is the intended local-dev path - never a failure,
+    # and never a warning.
     s = Settings(environment="development")
     s.assert_production_ready()  # must not raise
     assert s.use_queue_worker is False
+    assert s.production_config_warnings() == []
+
+
+def test_lambda_handler_boots_in_production_without_worker_queue():
+    """The cold-start path must survive a missing queue. This is the exact
+    condition that 502'd production on 2026-07-28."""
+    import os
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.handlers.lambda_handler"],
+        env={
+            **os.environ,
+            "ENVIRONMENT": "production",
+            "AUTH_SECRET": "0f3c-strong-random-secret-value",
+            "WORKER_QUEUE_URL": "",
+        },
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    # ...but it must say so, loudly.
+    assert "production_config_degraded" in (result.stdout + result.stderr)
 
 
 def test_lambda_handler_fails_closed_in_production_without_auth_secret():

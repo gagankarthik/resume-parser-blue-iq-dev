@@ -142,9 +142,11 @@ The service runs as **two container-image Lambda functions** sharing one codebas
 > `BackgroundTasks` *inside* the ASGI cycle, so under Mangum the HTTP response is not returned
 > until the task finishes — a deployed function without a queue turns every "async submit" into a
 > full-length blocking parse (and lets `parse.completed` overtake the submit response). Production
-> ran this way for four days in July 2026; see [`DEPLOYMENT.md`](./DEPLOYMENT.md) §5. The API now
-> refuses to boot in production without `WORKER_QUEUE_URL`, and `GET /api/v1/health` reports the
-> live mode as `dependencies.worker` (`"queue"` | `"in-process"`).
+> ran this way for four days in July 2026; see [`DEPLOYMENT.md`](./DEPLOYMENT.md) §5. A missing
+> `WORKER_QUEUE_URL` in production is now logged as `production_config_degraded` at cold start,
+> reported by `GET /api/v1/health` as `dependencies.worker` (`"queue"` | `"in-process"`, with
+> `status: degraded`), and **fails the deploy** via the smoke test — but it never raises. An
+> earlier fix did raise, and 502'd production when the image landed ahead of the env var.
 
 ---
 

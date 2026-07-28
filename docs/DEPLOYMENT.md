@@ -113,18 +113,27 @@ client ~6s *before* the submit response delivered the `job_id`. Nothing alerted 
 healthy, jobs completed, and only the response latency gave it away. Full write-up:
 [`ocean-blue-webhook-timing-note.md`](./ocean-blue-webhook-timing-note.md).
 
-**Two guards now make this loud instead of silent:**
+### …and the first fix made it worse — 2026-07-28
 
-- `Settings.assert_production_ready()` **refuses to boot** with `ENVIRONMENT=production` and an
-  empty `WORKER_QUEUE_URL` (enforced at Lambda cold start in `app/handlers/lambda_handler.py`,
-  since Mangum runs `lifespan="off"`).
-- `GET /api/v1/health` reports the live dispatch mode as `dependencies.worker`: `"queue"` or
+The remediation for the above raised a `RuntimeError` at cold start when `WORKER_QUEUE_URL` was
+missing. That image merged and deployed **before** the queue was provisioned, so every cold start
+died on the check and the Function URL returned **502 to every request**. Env config that a code
+deploy cannot carry with it must never be able to brick the environment it lands in.
+
+**Three guards now make a missing queue loud without taking the service down:**
+
+- **Cold-start error log** — `Settings.production_config_warnings()` is emitted as
+  `production_config_degraded` at Lambda cold start and at `main.lifespan` startup. It **does not
+  raise.** (`assert_production_ready()` still fails closed on `AUTH_SECRET` — serving forgeable
+  session tokens is worse than not serving at all. A slow parse is not.)
+- **`GET /api/v1/health`** reports the live dispatch mode as `dependencies.worker`: `"queue"` or
   `"in-process"`, and returns `degraded` when a production deployment is in-process.
+- **The deploy fails.** `deploy.yml`'s smoke test asserts `dependencies.worker == "queue"` after
+  the health check passes, so a deploy into an environment without a queue goes red — while the
+  running service stays up.
 
-> **Deploy ordering:** because the check is fail-closed, `WORKER_QUEUE_URL` must be present on the
-> function *before* an image containing it reaches production. Provision first, deploy second — the
-> reverse order takes the API down at cold start. The `/health` smoke test in `deploy.yml` catches
-> it, but only after the fact.
+> **Rule of thumb:** fail the *deploy*, not the *service*. A config gap that only makes the
+> service slow should never be reported as an outage.
 
 The Terraform in `infrastructure/terraform/` (`sqs.tf`, `lambda.tf`, `iam.tf`) is the authoritative
 *description* of this stack — but see the next section on how it must actually be applied.

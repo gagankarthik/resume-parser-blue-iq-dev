@@ -382,23 +382,19 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
     def assert_production_ready(self) -> None:
-        """Refuse to boot a production deployment that is missing critical config.
+        """Refuse to boot a production deployment that is missing critical secrets.
 
         Called once at app startup (main.lifespan) and at Lambda cold start
-        (app.handlers.lambda_handler). Two fail-closed checks:
-
-        * `auth_secret` - an unset/dev-default value in production would let anyone
-          forge a session token for any company and mint real API keys.
-        * `worker_queue_url` - without it every parse silently falls back to
-          in-process BackgroundTasks, which Starlette runs *inside* the ASGI cycle.
-          On Lambda that holds the HTTP response open for the whole parse (~22s
-          observed in production on 2026-07-24), so the caller's "async submit"
-          blocks and `parse.completed` fires before the submit response delivers
-          the job_id. A missing queue is an outage of the async contract, not a
-          degraded mode, so refuse to serve rather than degrade silently.
+        (app.handlers.lambda_handler). The only fail-closed check is the
+        account-token signing secret: an unset/dev-default value in production
+        would let anyone forge a session token for any company and mint real API
+        keys. Serving is *worse* than not serving, so this one raises.
 
         (admin_api_token is intentionally optional - empty disables the admin
         endpoints - so it is not enforced here.)
+
+        A missing `worker_queue_url` is deliberately NOT fatal - see
+        `production_config_warnings()`.
         """
         if not self.is_production:
             return
@@ -407,14 +403,36 @@ class Settings(BaseSettings):
                 "Refusing to start in production: AUTH_SECRET is unset or still the "
                 "insecure dev default. Set a strong random value via the environment."
             )
+
+    def production_config_warnings(self) -> list[str]:
+        """Production misconfigurations that degrade the service without endangering it.
+
+        Returned rather than raised, and surfaced three ways: an error log at cold
+        start, `degraded` on `GET /api/v1/health`, and a failed deploy (the smoke
+        test asserts `dependencies.worker == "queue"`). The deploy fails; the
+        running service does not.
+
+        Why not fail closed: `worker_queue_url` is *environment* config that a code
+        deploy cannot carry with it. Raising on it means any image that reaches an
+        environment before its env var does takes that environment down at cold
+        start - which is exactly what happened to production on 2026-07-28, when
+        the fail-closed version of this check shipped ahead of the queue it
+        required, 502-ing every request. An outage is not an acceptable way to
+        report a config gap that only makes the service slow.
+        """
+        if not self.is_production:
+            return []
+        warnings: list[str] = []
         if not self.worker_queue_url:
-            raise RuntimeError(
-                "Refusing to start in production: WORKER_QUEUE_URL is unset, so every "
-                "parse would run in-process and hold the HTTP response open for the "
-                "whole parse. Provision the worker stack "
-                "(scripts/provision_worker.sh) and set WORKER_QUEUE_URL on the "
-                "function - see docs/DEPLOYMENT.md section 5."
+            warnings.append(
+                "WORKER_QUEUE_URL is unset, so every parse runs in-process via "
+                "BackgroundTasks. Starlette runs those inside the ASGI cycle, so the "
+                "HTTP response is held open for the whole parse (~22s observed on "
+                "2026-07-24) and parse.completed can reach the client before the "
+                "submit response delivers the job_id. Provision the worker stack "
+                "(scripts/provision_worker.sh) - see docs/DEPLOYMENT.md section 5."
             )
+        return warnings
 
 
 @lru_cache

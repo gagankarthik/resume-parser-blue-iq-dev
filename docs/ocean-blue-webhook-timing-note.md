@@ -65,9 +65,9 @@ preceded the submit response **on our clock**, not because of client-side delay.
 ### Fix
 
 Provision the worker stack and point the API at it (`scripts/provision_worker.sh`), which
-restores the intended sub-second submit. To stop this recurring, the API now **refuses to boot
-in production without `WORKER_QUEUE_URL`** rather than silently degrading, and
-`GET /api/v1/health` reports the live dispatch mode:
+restores the intended sub-second submit. To stop this recurring, a missing `WORKER_QUEUE_URL` in
+production is now logged at cold start, **fails the deploy** via the smoke test, and is reported
+by `GET /api/v1/health`:
 
 ```json
 { "status": "ok", "dependencies": { "dynamodb": "ok", "s3": "ok", "worker": "queue" } }
