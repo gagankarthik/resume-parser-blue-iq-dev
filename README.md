@@ -145,7 +145,7 @@ Developed and maintained by **Ocean Blue Solutions**.
 - Contact: **oceanbluesolutions@gmail.com**
 
 **Platform documentation lives in one place:** the
-[Blue-IQ Platform Handbook](../docs/README.md) covers all three surfaces — this API, the customer
+[Blue-IQ Platform Handbook](docs/PLATFORM.md) covers all three surfaces — this API, the customer
 product platform, and the internal UAT console — including environment, deployment, auth and
 operations. Start there.
 
