@@ -24,12 +24,19 @@ def write_audit_log(
     error_code: str = "",
     key_hash: str = "",
     key_prefix: str = "",
+    endpoint: str = "",
 ) -> None:
     """Write an audit record - never stores resume content.
 
     key_hash / key_prefix attribute the job to the API key that produced it, so
     the admin platform can break usage down per key. Both are optional: legacy
     records and any path without an authenticated key simply omit them.
+
+    endpoint is the route template that produced the job (e.g.
+    "POST /resume/parse"), NOT the concrete path - a templated value keeps the
+    cardinality bounded and never puts a job id into the metric key. It is what
+    lets usage be broken down per endpoint; without it every request looks alike
+    once it reaches the log. Optional, so legacy records simply omit it.
     """
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_audit_logs)
@@ -49,6 +56,8 @@ def write_audit_log(
         item["key_hash"] = key_hash
     if key_prefix:
         item["key_prefix"] = key_prefix
+    if endpoint:
+        item["endpoint"] = endpoint
     try:
         table.put_item(Item=item)
     except ClientError as exc:
@@ -59,7 +68,8 @@ def get_audit_logs_for_company(company_id: str, since_iso: str) -> list[dict]:
     """
     Audit records for a company since an ISO timestamp, via the
     company-timestamp-index GSI. Each record carries file_type, status,
-    duration_ms, ocr_used, ai_tokens_used - enough for usage/token rollups.
+    duration_ms, ocr_used, ai_tokens_used and (where written) endpoint - enough
+    for usage, token and per-endpoint rollups.
     """
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_audit_logs)

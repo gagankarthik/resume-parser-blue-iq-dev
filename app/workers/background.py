@@ -40,6 +40,7 @@ async def process_resume_async(
     force_textract: bool = False,
     key_hash: str = "",
     key_prefix: str = "",
+    endpoint: str = "",
 ) -> None:
     """
     Full pipeline for one resume file.
@@ -118,6 +119,7 @@ async def process_resume_async(
                 error_code=error_code,
                 key_hash=key_hash,
                 key_prefix=key_prefix,
+                endpoint=endpoint,
             )
         except Exception as exc:
             log.error("audit_log_failed", job_id=job_id, error=str(exc))

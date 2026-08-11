@@ -27,8 +27,15 @@ def build_async_payload(
     file_size_bytes: int,
     force_textract: bool,
     record: dict,
+    endpoint: str = "",
 ) -> dict:
-    """Assemble the payload handed to the async worker (Lambda or BackgroundTasks)."""
+    """Assemble the payload handed to the async worker (Lambda or BackgroundTasks).
+
+    `endpoint` is the route TEMPLATE that accepted the request (e.g.
+    "POST /resume/parse"), not the concrete path. Templated keeps the cardinality
+    bounded and keeps job ids out of the metric key. It rides through to the
+    audit record so usage can be broken down per endpoint.
+    """
     return {
         "job_id": job_id,
         "company_id": company_id,
@@ -38,6 +45,7 @@ def build_async_payload(
         "force_textract": force_textract,
         "key_hash": record["key_hash"],
         "key_prefix": record.get("key_prefix", ""),
+        "endpoint": endpoint,
     }
 
 

@@ -126,7 +126,7 @@ async def parse_resume(
         await resume_service.dispatch_async(settings, background_tasks,
             resume_service.build_async_payload(
                 job_id=job_id, company_id=company_id, s3_key=s3_key, filename=filename,
-                file_size_bytes=len(content), force_textract=force_textract, record=record,
+                file_size_bytes=len(content), force_textract=force_textract, record=record, endpoint="POST /resume/parse",
             ))
     except Exception:
         log.exception("async_dispatch_failed", job_id=job_id)
@@ -261,6 +261,7 @@ async def parse_uploaded(
             resume_service.build_async_payload(
                 job_id=payload.job_id, company_id=company_id, s3_key=s3_key, filename=filename,
                 file_size_bytes=len(content), force_textract=payload.force_textract, record=record,
+                endpoint="POST /resume/parse-uploaded",
             ))
     except Exception:
         log.exception("async_dispatch_failed", job_id=payload.job_id)
@@ -377,6 +378,7 @@ async def retry_parse(
             resume_service.build_async_payload(
                 job_id=new_job_id, company_id=company_id, s3_key=s3_key, filename=filename,
                 file_size_bytes=len(content), force_textract=force_textract, record=record,
+                endpoint="POST /resume/{job_id}/retry",
             ))
     except Exception:
         log.exception("async_dispatch_failed", job_id=new_job_id)

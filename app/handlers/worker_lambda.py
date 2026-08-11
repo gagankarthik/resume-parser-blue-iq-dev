@@ -20,6 +20,7 @@ Each SQS message body is the async-job payload:
     "force_textract":  false          (optional - skip Tesseract, use Textract)
     "key_hash":        "..."          (optional - attribute usage to the API key)
     "key_prefix":      "rp_live_ab"   (optional - display prefix for the key)
+    "endpoint":        "POST /resume/parse"  (optional - route template, for per-endpoint rollups)
   }
 
 The unified entry point (`app.handlers.lambda_handler`) also routes any non-HTTP
@@ -147,5 +148,6 @@ async def _process_one(payload: dict[str, Any]) -> None:
         force_textract=bool(payload.get("force_textract", False)),
         key_hash=payload.get("key_hash", ""),
         key_prefix=payload.get("key_prefix", ""),
+        endpoint=payload.get("endpoint", ""),
     )
     log.info("worker_job_done", job_id=job_id, batch_id=payload.get("batch_id"))
