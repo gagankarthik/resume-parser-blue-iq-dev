@@ -54,7 +54,7 @@ def _canned(overrides=None):
 
 async def test_orchestrator_assembles_all_sections(monkeypatch):
     monkeypatch.setattr(BaseAgent, "_structured_call", _canned())
-    parsed, tokens, warnings = await orchestrator.parse("résumé text", RuleExtracted())
+    parsed, tokens, warnings = await orchestrator.parse("resume text", RuleExtracted())
 
     assert parsed.personal_info.full_name == "Jane Smith"
     assert parsed.skills == ["ICU"]
@@ -163,7 +163,7 @@ async def test_work_agent_extracts_one_entry_per_role_and_seeds_identity(monkeyp
     ]
     out = await agent.run("text", roles, TokenMeter())
 
-    assert len(out) == 2                       # one entry per facility — not flattened
+    assert len(out) == 2                       # one entry per facility - not flattened
     assert out[0].role == "Travel RN"          # seeded from the structure map, not "Unknown"
     assert out[0].agency_name == "Supplemental Healthcare"
     assert out[0].profession == "RN"

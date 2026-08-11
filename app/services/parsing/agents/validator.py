@@ -26,13 +26,13 @@ from .work import apply_role_boundary
 
 log = get_logger(__name__)
 
-_SYSTEM = f"""You RE-EXTRACT one work-history role from a healthcare résumé — the previous pass had the wrong number of responsibility bullets.
+_SYSTEM = f"""You RE-EXTRACT one work-history role from a healthcare resume - the previous pass had the wrong number of responsibility bullets.
 
 {CORE_RULES}
 
-This role has EXACTLY {{expected}} responsibility bullet(s). Extract all {{expected}} into description[], verbatim, one per item — do NOT add, skip, or merge any. Also return every other field you can find (company, role, dates, location, city/state/zip, employer_phone, profession, specialties, agency_name, shift, charting_system, achievements …) using the same schema, so nothing from the first pass is lost. specialties is a list of OBJECTS each with just a name (e.g. [{{{{"name": "ICU"}}}}]) — fill only `name`.
+This role has EXACTLY {{expected}} responsibility bullet(s). Extract all {{expected}} into description[], verbatim, one per item - do NOT add, skip, or merge any. Also return every other field you can find (company, role, dates, location, city/state/zip, employer_phone, profession, specialties, agency_name, shift, charting_system, achievements ...) using the same schema, so nothing from the first pass is lost. specialties is a list of OBJECTS each with just a name (e.g. [{{{{"name": "ICU"}}}}]) - fill only `name`.
 
-EMBEDDED CITY: if the role has no separate address but its facility NAME contains a real US city/town, set `city` to that place ("Elderwood of Lockport" → "Lockport"); leave `state` null (the system infers it). NEVER mine a state, region, hospital-system, university, or person's name as a city."""
+EMBEDDED CITY: if the role has no separate address but its facility NAME contains a real US city/town, set `city` to that place ("Elderwood of Lockport" -> "Lockport"); leave `state` null (the system infers it). NEVER mine a state, region, hospital-system, university, or person's name as a city."""
 
 
 def _bullets(item: ExperienceItem) -> int:
@@ -137,7 +137,7 @@ class ValidatorAgent(BaseAgent):
         system = _SYSTEM.format(expected=role.bullet_count)
         user = (
             f"Role: {role.company} | {role.title or ''} | "
-            f"{role.start_date or ''}–{role.end_date or ''}\n\n"
+            f"{role.start_date or ''}-{role.end_date or ''}\n\n"
             f"=== RESUME TEXT ===\n{text}\n=== END ===\n\nReturn ONLY this single role."
         )
         item = await self._structured_call(system, user, ExperienceItem, meter, max_tokens=4096)
