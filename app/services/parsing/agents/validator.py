@@ -5,7 +5,11 @@ the StructureAgent found, re-extract that single role with an explicit count.
 Unlike the general-purpose engine this is ported from, we do NOT drop a
 mismatched role - losing a healthcare assignment (and its dates/licence context)
 is worse than keeping a slightly-off bullet list. We keep the better of the two
-extractions (the one closer to the expected count) and flag the residual.
+bullet lists (the one closer to the expected count) and flag the residual.
+
+The re-extraction is MERGED into the first pass, never substituted for it: it is
+authoritative for the duty list only, so a field its narrower prompt omitted
+(specialties, employer_phone, shift ...) survives the correction.
 """
 
 from __future__ import annotations
@@ -33,6 +37,52 @@ EMBEDDED CITY: if the role has no separate address but its facility NAME contain
 
 def _bullets(item: ExperienceItem) -> int:
     return len(item.description)
+
+
+# The re-extraction is authoritative for these and only these: it was re-run
+# precisely to get the duty list right. Every other field stays with the first
+# pass, whose prompt is the wider of the two.
+_REEXTRACT_OWNS = ("description", "achievements")
+
+
+def _is_blank(value: object) -> bool:
+    """True for a field the first pass left genuinely unset (None/""/[]).
+
+    Deliberately excludes False and 0.0: a bool flag or an id-confidence that the
+    first pass set is real data, not a blank to be overwritten.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, list | dict):
+        return not value
+    return False
+
+
+def _merge_reextraction(base: ExperienceItem, res: ExperienceItem) -> ExperienceItem:
+    """Adopt the re-extraction's duty list without discarding the first pass.
+
+    The re-extraction exists ONLY to fix the bullet count, and its prompt is
+    narrower than the WorkAgent's. Swapping the whole item for it silently drops
+    anything the narrower pass happened to omit - specialties, employer_phone,
+    shift, charting_system, bed counts - and no warning fires when the corrected
+    count matches, so the loss is invisible. So: start from `base`, take the
+    re-extracted duty list, and let `res` fill ONLY the fields `base` left blank.
+    """
+    merged = base.model_copy(deep=True)
+    merged.description = list(res.description)
+    if res.achievements:
+        merged.achievements = list(res.achievements)
+
+    for name in type(base).model_fields:
+        if name in _REEXTRACT_OWNS:
+            continue
+        if _is_blank(getattr(merged, name)):
+            candidate = getattr(res, name)
+            if not _is_blank(candidate):
+                setattr(merged, name, candidate)
+    return merged
 
 
 class ValidatorAgent(BaseAgent):
@@ -71,9 +121,11 @@ class ValidatorAgent(BaseAgent):
                     f"(expected {expected} bullets, got {_bullets(work[idx])})."
                 )
                 continue
-            # Keep whichever extraction is closer to the expected bullet count.
+            # Keep whichever extraction is closer to the expected bullet count -
+            # merging, not replacing, so a field the re-extraction omitted is not
+            # silently lost along with the bullet fix (see `_merge_reextraction`).
             if abs(_bullets(res) - expected) < abs(_bullets(work[idx]) - expected):
-                work[idx] = res
+                work[idx] = _merge_reextraction(work[idx], res)
             if _bullets(work[idx]) != expected:
                 warnings.append(
                     f"Role '{work[idx].company}': extracted {_bullets(work[idx])} "

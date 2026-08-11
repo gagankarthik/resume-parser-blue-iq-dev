@@ -144,5 +144,11 @@ Developed and maintained by **Ocean Blue Solutions**.
 - Maintainer: [@gagankarthik](https://github.com/gagankarthik)
 - Contact: **oceanbluesolutions@gmail.com**
 
-For engineering documentation (architecture, deployment, operations, and the rules for changing the
-system safely), see [`docs/`](docs/) — start with [`docs/PROJECT.md`](docs/PROJECT.md).
+**Platform documentation lives in one place:** the
+[Blue-IQ Platform Handbook](../docs/README.md) covers all three surfaces — this API, the customer
+product platform, and the internal UAT console — including environment, deployment, auth and
+operations. Start there.
+
+For backend-specific engineering references (architecture, deployment mechanics, client
+integration, and the rules for changing the system safely), see [`docs/`](docs/) — start with
+[`docs/PROJECT.md`](docs/PROJECT.md).

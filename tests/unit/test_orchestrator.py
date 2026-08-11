@@ -272,6 +272,62 @@ async def test_validator_keeps_closer_extraction_and_warns_on_residual(monkeypat
     assert warnings and "review" in warnings[0]
 
 
+async def test_validator_reextraction_does_not_erase_first_pass_fields(monkeypatch):
+    """A bullet-count fix must not cost us the fields the re-extraction omitted.
+
+    The re-extraction prompt is narrower than the WorkAgent's, so it routinely
+    returns fewer fields. Replacing the whole item with it dropped specialties (and
+    employer_phone/shift/...) silently - and with the corrected count matching, no
+    warning fired to reveal it.
+    """
+    agent = ValidatorAgent()
+
+    async def fake_reextract(text, role, meter):
+        # Correct bullet count, but everything else blank.
+        return ExperienceItem(company="A", role="RN", description=["b1", "b2", "b3"])
+
+    monkeypatch.setattr(agent, "_reextract", fake_reextract)
+    work = [
+        ExperienceItem(
+            company="A", role="RN", description=["b1"],
+            specialties=[{"name": "Family Practice"}, {"name": "Internal Medicine"}],
+            employer_phone="304-287-2120", shift="Nights", charting_system="Epic",
+            beds_in_unit="30",
+        )
+    ]
+    roles = [RoleBoundary(company="A", bullet_count=3)]
+
+    out, warnings = await agent.run(work, roles, "text", TokenMeter())
+
+    assert len(out[0].description) == 3                      # bullet fix applied
+    assert [s.name for s in out[0].specialties] == ["Family Practice", "Internal Medicine"]
+    assert out[0].employer_phone == "304-287-2120"
+    assert out[0].shift == "Nights"
+    assert out[0].charting_system == "Epic"
+    assert out[0].beds_in_unit == "30"
+    assert warnings == []
+
+
+async def test_validator_reextraction_fills_blanks_from_first_pass(monkeypatch):
+    """The merge is a gain, not just a guard: a field the FIRST pass left blank is
+    still backfilled from the re-extraction."""
+    agent = ValidatorAgent()
+
+    async def fake_reextract(text, role, meter):
+        return ExperienceItem(
+            company="A", role="RN", description=["b1", "b2"],
+            specialties=[{"name": "ICU"}], employer_phone="555-0100",
+        )
+
+    monkeypatch.setattr(agent, "_reextract", fake_reextract)
+    work = [ExperienceItem(company="A", role="RN", description=["b1"])]
+    roles = [RoleBoundary(company="A", bullet_count=2)]
+
+    out, _ = await agent.run(work, roles, "text", TokenMeter())
+    assert [s.name for s in out[0].specialties] == ["ICU"]
+    assert out[0].employer_phone == "555-0100"
+
+
 async def test_validator_noop_when_counts_match(monkeypatch):
     agent = ValidatorAgent()
     called = False
