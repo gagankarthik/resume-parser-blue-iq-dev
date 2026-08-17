@@ -5,7 +5,8 @@ application (ATS, candidate portal, internal tooling). The API accepts a resume
 file (PDF, DOCX, or image) and returns clean, structured JSON suitable for
 auto-filling candidate forms.
 
-- **Base URL:** `https://<your-function-url>/` (provided to you with your API key)
+- **Base URL:** `https://api.parsinglab.blue-iq.ai/` — production. Use this host, not a raw
+  `*.lambda-url.*.on.aws` URL: those are implementation detail and are not guaranteed stable.
 - **Auth:** API key in the `X-API-Key` header
 - **Content:** `multipart/form-data` for uploads; JSON for everything else
 - **All endpoints are under** `/api/v1`
@@ -170,7 +171,9 @@ so fetch the result by polling (Section 4) or via a webhook.
 }
 ```
 
-- Statuses: `pending` -> `processing` -> `completed` | `failed`.
+- Statuses: `processing` -> `completed` | `partial` | `failed`. **`processing` is the only
+  non-terminal status** - keep polling while you see it, and treat any status you do not
+  recognise as non-terminal rather than as an end state.
 - On `failed`, `error` contains a description and `data` is `null`.
 - **Results live for 1 hour**, then expire (`404 JOB_NOT_FOUND`). Fetch and persist
   them on your side promptly.

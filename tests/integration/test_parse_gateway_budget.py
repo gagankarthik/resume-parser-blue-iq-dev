@@ -122,6 +122,45 @@ def test_parse_never_parses_on_the_request_path(monkeypatch):
     assert dispatched["job_id"] == body["job_id"]
 
 
+def test_poll_reports_processing_before_the_worker_picks_the_job_up(monkeypatch):
+    """A poll landing in the gap between dispatch and worker pickup must say
+    `processing`, not the internal `pending`.
+
+    Regression: a client polled 140ms after submit, hit that gap, got a status its
+    state machine did not know, and never polled again - so a parse that finished
+    15s later looked stuck forever. `processing` is the single non-terminal status
+    the submit response already promised, so one poll can never end the loop early.
+    """
+    _authenticate(monkeypatch)
+    monkeypatch.setattr(
+        resume.db, "get_job",
+        lambda job_id: {"job_id": job_id, "company_id": "acme-1", "status": "pending"},
+    )
+
+    resp = client.get("/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0",
+                      headers={"X-API-Key": VALID_KEY})
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "processing"
+
+
+def test_poll_keeps_pending_upload_distinct(monkeypatch):
+    """`pending_upload` is the caller's cue that the presigned PUT still has to
+    happen - collapsing it into `processing` would have them poll a job that no
+    worker will ever run."""
+    _authenticate(monkeypatch)
+    monkeypatch.setattr(
+        resume.db, "get_job",
+        lambda job_id: {"job_id": job_id, "company_id": "acme-1", "status": "pending_upload"},
+    )
+
+    resp = client.get("/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0",
+                      headers={"X-API-Key": VALID_KEY})
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "pending_upload"
+
+
 def test_dispatch_failure_surfaces_as_an_error(monkeypatch):
     """If the file cannot be queued to the worker, the caller gets a clear error
     rather than a job that will never complete."""

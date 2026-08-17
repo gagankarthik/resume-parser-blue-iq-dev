@@ -147,7 +147,7 @@ class JobStatusResponse(BaseModel):
     )
 
     job_id:            str                        = Field(..., description="Job identifier")
-    status:            str                        = Field(..., description="pending | processing | completed | partial | failed")
+    status:            str                        = Field(..., description="processing (in flight - keep polling) | completed | partial | failed | pending_upload (presigned upload not done yet)")
     data:              ParsedResumeAI | None   = Field(None, description="Parsed data - set when status is 'completed' or 'partial'")
     confidence:        ConfidenceScores | None = Field(None, description="Confidence scores - set when status is 'completed' or 'partial'")
     skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy - set when status is 'completed' or 'partial'")
