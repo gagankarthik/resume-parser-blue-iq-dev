@@ -21,13 +21,22 @@ from app.db import dynamodb as db
 from app.services.pipeline import PipelineInput, PipelineResult
 from app.services.pipeline import run as run_pipeline
 from app.storage import s3_client
-from app.workers.webhook_sender import deliver_event
+from app.workers.webhook_sender import DELIVERY_BUDGET_SECONDS, deliver_event
 
 log = get_logger(__name__)
 
 _DB_RETRIES    = 3
 _DB_RETRY_WAIT = 1.0   # seconds between DynamoDB retries
-_WEBHOOK_TIMEOUT = 15  # seconds per webhook delivery attempt
+
+# Outer safety net around webhook delivery - NOT the delivery budget itself. It has to
+# cover the sender's whole retry ladder (sleeps + one HTTP timeout per attempt), or it
+# cancels the final attempts and the sender's circuit breaker can never open. Derived
+# from the sender rather than hardcoded so tuning the ladder can't silently re-break it.
+# Delivery happens after the job row is already `completed`, so a poller never waits on
+# this; it only extends the worker invocation, which has 300s (and a 360s SQS visibility
+# timeout) to spend. `deliver_event` fans out to all hooks concurrently, so this bounds
+# the slowest hook, not their sum.
+_WEBHOOK_TIMEOUT = DELIVERY_BUDGET_SECONDS + 15
 
 
 async def process_resume_async(

@@ -25,8 +25,14 @@ from app.db import dynamodb as db
 log = get_logger(__name__)
 
 _RETRY_DELAYS       = [2, 5, 10]          # seconds between attempts
+_HTTP_TIMEOUT       = 10.0                 # seconds per POST attempt
 CIRCUIT_OPEN_AFTER  = 5                    # consecutive failures to open circuit
 CIRCUIT_RESET_AFTER = 300                  # seconds before attempting a dead URL again
+
+# Worst case for one hook: every retry sleeps, and every attempt burns the full HTTP
+# timeout. A caller that bounds delivery (the worker's `_safe_deliver`) MUST allow at
+# least this long, or it cancels the tail of the ladder - see background._WEBHOOK_TIMEOUT.
+DELIVERY_BUDGET_SECONDS = sum(_RETRY_DELAYS) + (len(_RETRY_DELAYS) + 1) * _HTTP_TIMEOUT
 
 # url -> (failure_count, last_failure_epoch)
 _circuit: dict[str, tuple[int, float]] = {}
@@ -89,23 +95,43 @@ async def _deliver_to_hook(hook: dict, event: str, payload: dict) -> None:
         "X-Event":      event,
     }
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for attempt, delay in enumerate([0] + _RETRY_DELAYS):
-            if delay:
-                await asyncio.sleep(delay)
-            try:
-                resp = await client.post(url, content=body, headers=headers)
-                if resp.status_code < 500:
-                    log.info(
-                        "webhook_delivered",
-                        url=url, event_name=event,
-                        status=resp.status_code, attempt=attempt + 1,
-                    )
-                    _record_success(url)
-                    return
-                log.warning("webhook_server_error", url=url, status=resp.status_code)
-            except httpx.RequestError as exc:
-                log.warning("webhook_request_error", url=url, error=str(exc))
+    # A non-5xx reply means "delivered" - including a 4xx. A receiver that rejects
+    # the signature answers 401, so the event is dropped for good; that is why the
+    # status is logged at WARNING, not folded into the success line. It is the only
+    # signal a misconfigured secret leaves on our side.
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+                if delay:
+                    await asyncio.sleep(delay)
+                try:
+                    resp = await client.post(url, content=body, headers=headers)
+                    if resp.status_code < 500:
+                        log.info(
+                            "webhook_delivered",
+                            url=url, event_name=event,
+                            status=resp.status_code, attempt=attempt + 1,
+                        )
+                        if resp.status_code >= 400:
+                            log.warning(
+                                "webhook_rejected_not_retried",
+                                url=url, event_name=event, status=resp.status_code,
+                                hint="4xx is terminal - this event was dropped. A 401 "
+                                     "is almost always a signing-secret mismatch or a "
+                                     "receiver verifying a re-serialized body.",
+                            )
+                        _record_success(url)
+                        return
+                    log.warning("webhook_server_error", url=url, status=resp.status_code)
+                except httpx.RequestError as exc:
+                    log.warning("webhook_request_error", url=url, error=str(exc))
+    except asyncio.CancelledError:
+        # The caller's budget ran out mid-ladder. Record the failure anyway, or a
+        # permanently dead URL never accumulates enough failures to open the circuit
+        # and every later parse pays the full ladder again.
+        _record_failure(url)
+        log.warning("webhook_delivery_cancelled", url=url, event_name=event)
+        raise
 
     _record_failure(url)
     log.error("webhook_all_retries_failed", url=url, event_name=event)

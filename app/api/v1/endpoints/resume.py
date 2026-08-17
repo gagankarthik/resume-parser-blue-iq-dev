@@ -297,7 +297,16 @@ async def get_job_status(
     if not job or job.get("company_id") != company_id:
         raise api_error(404, ErrorCode.JOB_NOT_FOUND, "Job not found")
 
-    status     = job["status"]
+    # "pending" is an internal state: the job row exists but the worker has not
+    # picked the message off the queue yet (a window of ~100-300ms). Report it as
+    # "processing" so a poller sees exactly ONE non-terminal status for a job that
+    # is in flight, matching what the submit response already returned. A client
+    # that polls once inside that window and switches on an unexpected "pending"
+    # otherwise falls out of its state machine and never polls again - which reads
+    # as a job stuck forever even though the parse finished seconds later.
+    # "pending_upload" is NOT collapsed: it is a real state the caller must act on
+    # (the presigned PUT hasn't happened yet).
+    status     = "processing" if job["status"] == "pending" else job["status"]
     raw_result = job.get("result")
     parsed_data: ParsedResumeAI | None   = None
     confidence:  ConfidenceScores | None = None
