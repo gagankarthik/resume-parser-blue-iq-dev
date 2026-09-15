@@ -585,13 +585,6 @@ NURSING_SPECIALTIES: list[str] = [
     "Urgent Care", "Utilization Review", "Vaccination Support", "Wound Care",
 ]
 
-ALLIED_HEALTH_PROFESSIONS: list[str] = [
-    "Behavioral Health", "Dialysis", "Dietary Services", "EMT", "Laboratory",
-    "Medical Assistant", "Paramedic", "Patient Care Technician", "Perfusionist",
-    "Radiology & Cardiology", "Respiratory & Neuro", "Social Services",
-    "Surgical Services", "Therapy & Rehab",
-]
-
 ALLIED_HEALTH_SPECIALTIES: list[str] = [
     # Behavioral Health
     "Behavioral Health Assistant", "Behavioral Health Tech", "Mental Health Tech",

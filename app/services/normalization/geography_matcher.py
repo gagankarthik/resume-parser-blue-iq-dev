@@ -25,9 +25,10 @@ from dataclasses import dataclass
 
 from app.services.normalization.geography_catalog import (
     GeographyCatalog,
+    country_aliases,
     get_catalog,
 )
-from app.services.normalization.healthcare_taxonomy import _match_key
+from app.services.normalization.healthcare_taxonomy import match_key
 
 CONF_EXACT     = 1.0
 CONF_UNMATCHED = 0.0
@@ -61,13 +62,12 @@ def resolve_country(country: str | None, *, catalog: GeographyCatalog | None = N
     cat = catalog or get_catalog()
     text = (country or "").strip()
 
-    rec = cat.country_by_name.get(_match_key(text))
+    rec = cat.country_by_name.get(match_key(text))
     if rec is None:
         rec = cat.country_by_code.get(text.upper())
     if rec is None:
         # Common spelling alias ("USA" -> code "US").
-        from app.services.normalization.geography_catalog import country_aliases
-        code = country_aliases().get(_match_key(text))
+        code = country_aliases().get(match_key(text))
         if code:
             rec = cat.country_by_code.get(code.upper())
     if rec is None:
@@ -93,7 +93,7 @@ def resolve_state(
     cat = catalog or get_catalog()
     text = (state or "").strip()
     code_key = text.upper()
-    name_key = _match_key(text)
+    name_key = match_key(text)
 
     if country_id:
         # Country is known - resolve ONLY within it. Falling back to the flat index

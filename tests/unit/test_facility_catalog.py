@@ -8,7 +8,7 @@ import json
 import pytest
 
 from app.services.normalization import facility_catalog
-from app.services.normalization.healthcare_taxonomy import _match_key
+from app.services.normalization.healthcare_taxonomy import match_key
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +48,7 @@ def test_garbled_json_is_empty(tmp_path):
 def test_default_path_loads_bundled_snapshot():
     cat = facility_catalog.reload(None)
     assert not cat.is_empty
-    rec = cat.by_name_key[_match_key("60th Medical Group - Travis AFB")]
+    rec = cat.by_name_key[match_key("60th Medical Group - Travis AFB")]
     assert rec.id == "3022"
     assert rec.health_system == "Defense Health Agency"
 
@@ -61,7 +61,7 @@ def test_loads_json_envelope_and_builds_index(tmp_path):
     ]})
     cat = facility_catalog.reload(path)
     assert len(cat.records) == 2
-    rec = cat.by_name_key[_match_key("fort sanders regional medical center")]
+    rec = cat.by_name_key[match_key("fort sanders regional medical center")]
     assert rec.id == "2974"
     assert rec.health_system is None
 
@@ -72,7 +72,7 @@ def test_loads_csv(tmp_path):
         "id,name,health_system_id\n7,Mercy Hospital,55\n",
     )
     cat = facility_catalog.reload(path)
-    rec = cat.by_name_key[_match_key("Mercy Hospital")]
+    rec = cat.by_name_key[match_key("Mercy Hospital")]
     assert rec.id == "7"
     assert rec.health_system_id == "55"
 
@@ -83,4 +83,12 @@ def test_duplicate_name_is_first_wins(tmp_path):
         {"id": "2", "name": "Regional Medical Center"},
     ])
     cat = facility_catalog.reload(path)
-    assert cat.by_name_key[_match_key("Regional Medical Center")].id == "1"
+    assert cat.by_name_key[match_key("Regional Medical Center")].id == "1"
+
+
+def test_numeric_health_system_id_coerces_like_the_schema(tmp_path):
+    path = _write(tmp_path, "f.json", [
+        {"id": 3022, "name": "Travis AFB", "health_system_id": 181.0},
+    ])
+    rec = facility_catalog.reload(path).records[0]
+    assert (rec.id, rec.health_system_id) == ("3022", "181")

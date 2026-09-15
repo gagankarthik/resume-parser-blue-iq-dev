@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import re
 from datetime import date as _date
+from typing import Annotated
+
+from pydantic import BeforeValidator
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
 _URL_RE   = re.compile(r"^https?://", re.I)
@@ -166,6 +169,42 @@ def _sanitize_str(v: str | None) -> str | None:
         return None
     v = v.strip()
     return v if v else None
+
+
+def _coerce_catalog_id(v: object) -> str | None:
+    """Coerce a platform catalog id to a trimmed string; blank/None/other -> None.
+
+    Accepts an int, float, or str (a catalog file, a DynamoDB reload) without guessing
+    the platform's id type. A bool is an int subclass, not an id, so it is rejected.
+    """
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, int | float):
+        return str(int(v)) if float(v).is_integer() else str(v)
+    return _sanitize_str(v) if isinstance(v, str) else None
+
+
+def _clamp_unit(v: object, *, fallback: float = 0.0) -> float:
+    """Clamp a 0-1 score, or return ``fallback`` when it cannot be read as a number.
+
+    Structured output does NOT enforce numeric minimum/maximum, so a value off the
+    0-1 scale (e.g. 5) is clamped here rather than raising past the Field ge/le
+    bounds. A bool is an int subclass, not a score, so it takes the fallback.
+    """
+    if isinstance(v, bool) or not isinstance(v, int | float | str):
+        return fallback
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return fallback
+    return min(max(f, 0.0), 1.0)
+
+
+# Field types for system-set catalog ids and 0-1 confidences. The validator runs
+# before type validation and leaves the JSON schema (the OpenAI structured-output
+# contract) exactly as the bare type's.
+CatalogId = Annotated[str | None, BeforeValidator(_coerce_catalog_id)]
+UnitFloat = Annotated[float, BeforeValidator(_clamp_unit)]
 
 
 def _sanitize_yes_no_na(v: str | None) -> str | None:

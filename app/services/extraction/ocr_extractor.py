@@ -10,6 +10,7 @@ Handles: rotated scans, low-contrast images, poor-quality photocopies,
 
 import io
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from typing import Any
 
 import boto3
@@ -173,9 +174,9 @@ def _run_tesseract(images: list[Image.Image]) -> tuple[str, float]:
             output_type=pytesseract.Output.DICT,
         )
         words = [
-            (data["text"][i], int(data["conf"][i]))
-            for i in range(len(data["text"]))
-            if data["text"][i].strip() and int(data["conf"][i]) > 0
+            (text, int(conf))
+            for text, conf in zip(data["text"], data["conf"], strict=False)
+            if text.strip() and int(conf) > 0
         ]
         if words:
             pages.append(" ".join(w for w, _ in words))
@@ -204,9 +205,7 @@ def _run_textract(preprocessed_images: list[Image.Image]) -> str:
     Pages are sent concurrently - they are independent network calls, and a
     serial loop made multi-page scans pay full Textract latency per page.
     """
-    settings = get_settings()
-    client = boto3.client("textract", region_name=settings.aws_region)
-    # Never use LocalStack endpoint for Textract - always real AWS
+    client = _textract_client(get_settings().aws_region)
 
     def _one_page(img: Image.Image) -> str:
         buf = io.BytesIO()
@@ -220,6 +219,17 @@ def _run_textract(preprocessed_images: list[Image.Image]) -> str:
     with ThreadPoolExecutor(max_workers=min(4, len(preprocessed_images))) as pool:
         pages = list(pool.map(_one_page, preprocessed_images))
     return "\n\n".join(pages)
+
+
+@lru_cache(maxsize=4)
+def _textract_client(region: str) -> Any:
+    """Build (once per region) and cache the boto3 Textract client.
+
+    boto3 clients are thread-safe and expensive to construct; caching mirrors the S3
+    client in storage/s3_client.py. Never use the LocalStack endpoint for Textract -
+    always real AWS.
+    """
+    return boto3.client("textract", region_name=region)
 
 
 def _textract_image_bytes(client: Any, image_bytes: bytes) -> str:

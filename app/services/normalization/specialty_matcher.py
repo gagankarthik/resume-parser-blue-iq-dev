@@ -33,13 +33,15 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections.abc import Sequence
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.schemas import ParsedResumeAI, SpecialtyMatch
 from app.services.normalization.healthcare_taxonomy import (
-    _match_key,
     get_specialty_group,
+    match_key,
+    ratio_upper_bound,
     resolve_specialty,
 )
 from app.services.normalization.specialty_catalog import (
@@ -116,7 +118,7 @@ def _candidate_keys(text: str, canonical: str | None) -> list[str]:
     def add(value: str | None) -> None:
         if not value:
             return
-        key = _match_key(value)
+        key = match_key(value)
         if key and key not in keys:
             keys.append(key)
 
@@ -138,14 +140,14 @@ def _candidate_keys(text: str, canonical: str | None) -> list[str]:
     for n in (2, 1):
         if len(words) > n:
             prefix = " ".join(words[:n])
-            if n == 1 and _match_key(prefix) in _GENERIC_LEAD_WORDS:
+            if n == 1 and match_key(prefix) in _GENERIC_LEAD_WORDS:
                 continue
             add(prefix)
     return keys
 
 
 def _lookup(
-    catalog: SpecialtyCatalog, keys: list[str], prof_keys: list[str]
+    catalog: SpecialtyCatalog, keys: list[str], prof_keys: Sequence[str]
 ) -> tuple[SpecialtyRecord, float, str] | None:
     """Run the deterministic tiers over the candidate keys.
 
@@ -163,56 +165,58 @@ def _lookup(
     return None
 
 
-def _in_scope(rec: SpecialtyRecord, prof_set: set[str]) -> bool:
-    """A record is in scope when no profession is known, or their keys overlap."""
-    return not prof_set or bool(set(profession_keys(rec.profession)) & prof_set)
-
-
 def _sorted_tokens(key: str) -> str:
     """Whitespace-tokenize and sort, so word order can't hurt a similarity ratio."""
     return " ".join(sorted(key.split()))
 
 
 def _fuzzy_lookup(
-    catalog: SpecialtyCatalog, keys: list[str], prof_keys: list[str],
+    catalog: SpecialtyCatalog, keys: list[str], prof_keys: Sequence[str],
     *, threshold: float = FUZZY_THRESHOLD,
 ) -> tuple[SpecialtyRecord, float, str] | None:
     """Tier 3.5 - resolve a near-miss spelling/typo by string similarity.
 
     Compares each short, specialty-like candidate against every in-scope catalog
-    record's name and full name, returning the closest above `threshold`. Uses
-    difflib's cheap ratio pre-filters so the scan stays fast, and is scoped to the
-    role's profession so a typo never leaks across professions. Confidence is the
-    similarity itself, capped below the exact tiers (`CONF_FUZZY_MAX`).
+    record's name and full name, returning the closest above `threshold`. Uses the
+    precomputed record keys and difflib's cheap ratio pre-filters so the scan stays
+    fast - a pair whose lengths alone cap the ratio below `threshold` is skipped
+    before a matcher is built - and is scoped to the role's profession so a typo
+    never leaks across professions. Confidence is the similarity itself, capped
+    below the exact tiers (`CONF_FUZZY_MAX`).
     """
     if catalog.is_empty:
         return None
     cands = [k for k in keys if 0 < len(k.split()) <= _FUZZY_MAX_WORDS]
     if not cands:
         return None
-    prof_set = set(prof_keys)
+    prof_set = frozenset(prof_keys)
     # Opt-in: also try a token-SORTED comparison so a pure word-order difference can
     # still clear the threshold. Off by default (unchanged behaviour); see config.
     token_set = get_settings().specialty_fuzzy_token_set
-    sorted_cands = [(c, _sorted_tokens(c)) for c in cands] if token_set else []
+    sorted_cands = {c: _sorted_tokens(c) for c in cands} if token_set else {}
 
     best: tuple[float, SpecialtyRecord, str] | None = None
-    for rec in catalog.records:
-        if not _in_scope(rec, prof_set):
+    for rec, rkeys in zip(catalog.records, catalog.record_keys, strict=True):
+        # In scope when no profession is known, or the profession keys overlap.
+        if prof_set and prof_set.isdisjoint(rkeys.professions):
             continue
-        targets = [(_match_key(rec.name), "name")]
-        if rec.full_name:
-            targets.append((_match_key(rec.full_name), "full_name"))
+        targets = [(rkeys.name_key, "name")]
+        if rkeys.full_key is not None:
+            targets.append((rkeys.full_key, "full_name"))
         for tkey, tier in targets:
             tkey_sorted = _sorted_tokens(tkey) if token_set else ""
             for cand in cands:
-                sm = difflib.SequenceMatcher(None, cand, tkey)
                 ratio = 0.0
-                if sm.real_quick_ratio() >= threshold and sm.quick_ratio() >= threshold:
-                    ratio = sm.ratio()
+                if ratio_upper_bound(cand, tkey) >= threshold:
+                    sm = difflib.SequenceMatcher(None, cand, tkey)
+                    if sm.quick_ratio() >= threshold:
+                        ratio = sm.ratio()
                 if token_set and ratio < 1.0:
-                    cand_sorted = next(s for c, s in sorted_cands if c == cand)
-                    if cand_sorted and tkey_sorted:
+                    cand_sorted = sorted_cands[cand]
+                    # ratio() never exceeds the length bound, so a pair below it
+                    # cannot reach the threshold - skipping it changes nothing.
+                    if (cand_sorted and tkey_sorted
+                            and ratio_upper_bound(cand_sorted, tkey_sorted) >= threshold):
                         ratio = max(ratio, difflib.SequenceMatcher(
                             None, cand_sorted, tkey_sorted).ratio())
                 if ratio >= threshold and (best is None or ratio > best[0]):
@@ -233,7 +237,7 @@ def _plausibility_tokens(text: str | None) -> set[str]:
     """Discriminating tokens of a phrase (stopwords + short words dropped)."""
     if not text:
         return set()
-    words = _match_key(text).replace("/", " ").replace("(", " ").replace(")", " ").split()
+    words = match_key(text).replace("/", " ").replace("(", " ").replace(")", " ").split()
     return {w for w in words if len(w) > 2 and w not in _PLAUSIBILITY_STOPWORDS}
 
 
@@ -255,7 +259,7 @@ def _ai_pick_plausible(phrase: str, rec: SpecialtyRecord) -> bool:
     if {t[:4] for t in p} & {t[:4] for t in target}:
         return True
     return difflib.SequenceMatcher(
-        None, _match_key(phrase), _match_key(rec.name)
+        None, match_key(phrase), match_key(rec.name)
     ).ratio() >= 0.60
 
 
@@ -269,7 +273,7 @@ def _dedupe_matches(matches: list[SpecialtyMatch]) -> list[SpecialtyMatch]:
     best: dict[str, SpecialtyMatch] = {}
     order: list[str] = []
     for m in matches:
-        key = f"id:{m.specialty_id}" if m.specialty_id else f"nm:{_match_key(m.name)}"
+        key = f"id:{m.specialty_id}" if m.specialty_id else f"nm:{match_key(m.name)}"
         cur = best.get(key)
         if cur is None:
             best[key] = m
@@ -289,11 +293,11 @@ def _score_against_record(text: str, rec: SpecialtyRecord) -> tuple[float, str] 
     keys = set(_candidate_keys(text, resolve_specialty(text)))
     if not keys:
         return None
-    if _match_key(rec.name) in keys:
+    if match_key(rec.name) in keys:
         return CONF_NAME, "name"
-    if rec.full_name and _match_key(rec.full_name) in keys:
+    if rec.full_name and match_key(rec.full_name) in keys:
         return CONF_FULL_NAME, "full_name"
-    if any(_match_key(kw) in keys for kw in rec.keywords):
+    if any(match_key(kw) in keys for kw in rec.keywords):
         return CONF_KEYWORD, "keywords"
     return None
 
@@ -311,7 +315,7 @@ def match(raw: str, profession: str | None = None) -> SpecialtyMatch:
     # to the AI tier (capped at 0.70). Cleaning it first lets an exact catalog match
     # resolve deterministically at 1.0 - fixing both the spurious 0.7 confidence and
     # the duplicated text in the payload at the same root.
-    text = _dedup_text(raw)
+    text = _collapse_repeated_phrase(raw)
     if not text:
         return SpecialtyMatch(name="Unknown", raw=raw or None,
                               confidence=CONF_UNMATCHED, matched=False)
@@ -374,8 +378,8 @@ def _matched(rec: SpecialtyRecord, raw: str, confidence: float, tier: str) -> Sp
 _MAX_RAW_WORDS = 8
 
 
-def _dedup_text(text: str | None) -> str:
-    """Collapse whitespace and remove duplicated runs/phrases (no length bound).
+def _collapse_repeated_phrase(text: str | None) -> str:
+    """Collapse whitespace and remove duplicated runs/phrases within ONE string (no length bound).
 
     The extractor occasionally doubles a specialty string or runs it on
     ("Neonatal Intensive Care Unit (NICU) Level III and Level IV Neonatal Care Unit
@@ -405,12 +409,12 @@ def _dedup_text(text: str | None) -> str:
 def _tidy_raw(raw: str | None) -> str | None:
     """Clean an extractor-emitted raw specialty phrase for legible auditing.
 
-    De-duplicates (see `_dedup_text`) then trims a very long trailing tail, so the
-    preserved `raw` stays legible without inventing or reordering content.
+    De-duplicates (see `_collapse_repeated_phrase`) then trims a very long trailing
+    tail, so the preserved `raw` stays legible without inventing or reordering content.
     """
     if not raw:
         return raw
-    text = _dedup_text(raw)
+    text = _collapse_repeated_phrase(raw)
 
     # Bound the length.
     words = text.split()
@@ -484,7 +488,7 @@ async def resolve_unmatched_with_ai(parsed: ParsedResumeAI, *, budget: float) ->
         return 0
 
     shortlist, by_id = _build_shortlist(
-        list(pending), catalog.records, settings.specialty_ai_shortlist_max, prof_scope
+        list(pending), catalog, settings.specialty_ai_shortlist_max, prof_scope
     )
     if not shortlist:
         return 0
@@ -547,7 +551,7 @@ async def resolve_unmatched_with_ai(parsed: ParsedResumeAI, *, budget: float) ->
 
 def _build_shortlist(
     phrases: list[str],
-    records: list[SpecialtyRecord],
+    catalog: SpecialtyCatalog,
     cap: int,
     prof_scope: set[str],
 ) -> tuple[list[str], dict[str, SpecialtyRecord]]:
@@ -561,22 +565,18 @@ def _build_shortlist(
     """
     phrase_tokens: set[str] = set()
     for p in phrases:
-        phrase_tokens.update(_match_key(p).split())
+        phrase_tokens.update(match_key(p).split())
 
-    def shares_word(rec: SpecialtyRecord) -> bool:
-        words = set(_match_key(rec.name).split())
-        if rec.full_name:
-            words.update(_match_key(rec.full_name).split())
-        for kw in rec.keywords:
-            words.update(_match_key(kw).split())
-        return bool(words & phrase_tokens)
-
-    def in_scope(rec: SpecialtyRecord) -> bool:
-        return not prof_scope or bool(set(profession_keys(rec.profession)) & prof_scope)
-
-    scoped_relevant = [r for r in records if shares_word(r) and in_scope(r)]
-    other_relevant = [r for r in records if shares_word(r) and not in_scope(r)]
-    rest = [r for r in records if not shares_word(r)]
+    scoped_relevant: list[SpecialtyRecord] = []
+    other_relevant: list[SpecialtyRecord] = []
+    rest: list[SpecialtyRecord] = []
+    for rec, rkeys in zip(catalog.records, catalog.record_keys, strict=True):
+        if rkeys.words.isdisjoint(phrase_tokens):
+            rest.append(rec)
+        elif not prof_scope or not rkeys.professions.isdisjoint(prof_scope):
+            scoped_relevant.append(rec)
+        else:
+            other_relevant.append(rec)
     chosen = (scoped_relevant + other_relevant + rest)[:cap]
 
     lines = [

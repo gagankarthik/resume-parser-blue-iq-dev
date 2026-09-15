@@ -17,7 +17,7 @@ from app.services.normalization.normalizer import (
     _normalize_date,
     _normalize_skills,
     _refine_location_to_street,
-    _strip_name_credentials,
+    _split_name_credentials,
     cert_expiry_warnings,
     normalize,
     scan_compliance,
@@ -337,20 +337,20 @@ def test_date_unparseable_is_none():
 # -- Name credential stripping -------------------------------------------------
 
 def test_strip_name_comma_credentials():
-    assert _strip_name_credentials("Jane Smith, RN BSN") == "Jane Smith"
+    assert _split_name_credentials("Jane Smith, RN BSN")[0] == "Jane Smith"
 
 
 def test_strip_name_space_credentials():
-    assert _strip_name_credentials("John Doe RN") == "John Doe"
+    assert _split_name_credentials("John Doe RN")[0] == "John Doe"
 
 
 def test_strip_name_keeps_plain_name():
-    assert _strip_name_credentials("Maria Garcia") == "Maria Garcia"
+    assert _split_name_credentials("Maria Garcia")[0] == "Maria Garcia"
 
 
 def test_strip_name_preserves_last_first():
     # "Last, First" must survive - the tail is not credential-like.
-    assert _strip_name_credentials("Smith, Jane") == "Smith, Jane"
+    assert _split_name_credentials("Smith, Jane")[0] == "Smith, Jane"
 
 
 # -- Name credentials are PRESERVED, not just stripped -------------------------

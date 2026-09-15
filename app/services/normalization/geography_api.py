@@ -27,8 +27,6 @@ from __future__ import annotations
 
 from app.services.normalization import gig_api
 
-DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/geographies"
-
 
 def fetch_payload(api_url: str, api_key: str, *, timeout: float = 30.0) -> dict:
     """GET the Gig geographies API and return the decoded JSON envelope.

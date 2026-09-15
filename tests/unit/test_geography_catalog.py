@@ -8,7 +8,7 @@ import json
 import pytest
 
 from app.services.normalization import geography_catalog
-from app.services.normalization.healthcare_taxonomy import _match_key
+from app.services.normalization.healthcare_taxonomy import match_key
 
 
 @pytest.fixture(autouse=True)
@@ -59,10 +59,10 @@ def test_builds_country_and_state_indexes(tmp_path):
     cat = geography_catalog.reload(_write(tmp_path, _SNAPSHOT))
     assert len(cat.countries) == 2
     assert len(cat.states) == 3
-    assert cat.country_by_name[_match_key("United States")].id == "1"
+    assert cat.country_by_name[match_key("United States")].id == "1"
     assert cat.country_by_code["CA"].id == "2"
     # State scoped by country carries the parent country id.
     ny = cat.state_by_country_code[("1", "NY")]
     assert ny.id == "35" and ny.country_id == "1"
-    ab = cat.state_by_country_name[("2", _match_key("Alberta"))]
+    ab = cat.state_by_country_name[("2", match_key("Alberta"))]
     assert ab.id == "57" and ab.statecode == "AB"
