@@ -3,8 +3,9 @@ Batch resume parsing endpoints.
 
 POST /api/v1/resume/batch
   Upload up to MAX_BATCH_SIZE resumes in one request.
-  Files are validated (size + magic bytes) immediately.
-  Valid files -> S3 + async processing (Lambda invoke or BackgroundTasks).
+  Files are validated (empty + size + magic bytes) immediately.
+  Valid files -> S3 + async processing (one SQS message per file, or
+  BackgroundTasks locally).
   Invalid files -> reported in skipped_files, not counted in total.
   Always returns immediately - results arrive via webhook + polling.
 
@@ -20,14 +21,14 @@ from ulid import ULID
 from app.api.dependencies import get_api_key_record
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
-from app.core.exceptions import UnsupportedFileTypeError
-from app.core.file_validator import validate_file
+from app.core.file_validator import check_upload, clamp_filename
 from app.core.logging import get_logger
 from app.db import dynamodb as db
 from app.models.schemas import BatchJob, BatchSkipped, BatchStatusResponse, BatchSubmitResponse
+from app.services.application import job_outcome, resume_service
 from app.storage import s3_client
 from app.workers.batch_processor import process_batch_locally
-from app.workers.dispatch import enqueue_jobs
+from app.workers.dispatch import AsyncJobPayload, enqueue_jobs
 
 router = APIRouter()
 log = get_logger(__name__)
@@ -68,62 +69,49 @@ async def batch_parse(
 
     # Validate every file first - cheap, in-process, no I/O.
     for file in files:
-        filename = file.filename or "upload"
+        filename = clamp_filename(file.filename or "upload")
         content = await file.read()
-
-        if len(content) > settings.max_file_size_bytes:
+        rejection = check_upload(filename, content, settings.max_file_size_bytes)
+        if rejection is not None:
             skipped.append(BatchSkipped(
-                filename=filename,
-                reason=f"File exceeds {settings.max_file_size_mb} MB limit",
+                filename=filename, reason=rejection.detail, error_code=rejection.error_code.value,
             ))
             continue
-
-        try:
-            validate_file(filename, content)
-        except UnsupportedFileTypeError as exc:
-            skipped.append(BatchSkipped(filename=filename, reason=str(exc)))
-            continue
-
         valid.append((filename, content))
 
-    def _stage(filename: str, content: bytes) -> dict | None:
-        """Put one file in S3 and open its job row. Blocking; runs off the loop."""
+    def _stage(filename: str, content: bytes) -> AsyncJobPayload | None:
+        """Open one job row, then put its file in S3. Blocking; runs off the loop."""
         job_id = str(ULID())
         try:
-            s3_key = s3_client.upload_temp_file(job_id, filename, content)
             db.create_job(job_id, company_id, batch_id=batch_id)
+            s3_key = s3_client.upload_temp_file(job_id, filename, content)
         except Exception:
             # One bad file must not sink the whole batch - report it as skipped and
             # let the rest through.
             log.exception("batch_stage_failed", batch_id=batch_id, job_id=job_id)
             return None
-        return {
-            "job_id": job_id,
-            "company_id": company_id,
-            "s3_key": s3_key,
-            "filename": filename,
-            "file_size_bytes": len(content),
-            "batch_id": batch_id,
-            "key_hash": record["key_hash"],
-            "key_prefix": record.get("key_prefix", ""),
-        }
+        return resume_service.build_async_payload(
+            job_id=job_id, company_id=company_id, s3_key=s3_key, filename=filename,
+            file_size_bytes=len(content), force_textract=False, record=record,
+            endpoint="POST /resume/batch", batch_id=batch_id,
+        )
 
     # Stage the accepted files CONCURRENTLY. Staging is two blocking AWS calls per
-    # file (S3 put + DynamoDB put); running them in a sequential loop made submit
+    # file (DynamoDB put + S3 put); running them in a sequential loop made submit
     # time grow linearly with the batch, so a large batch could burn the caller's
     # gateway timeout before the 202 was ever returned. The worker fan-out below was
     # already parallel for exactly this reason - the uploads were not.
-    loop = asyncio.get_running_loop()
     staged = await asyncio.gather(
-        *(loop.run_in_executor(None, _stage, filename, content) for filename, content in valid)
+        *(asyncio.to_thread(_stage, filename, content) for filename, content in valid)
     )
 
-    accepted_jobs: list[dict] = []
-    for (filename, _), job in zip(valid, staged):
+    accepted_jobs: list[AsyncJobPayload] = []
+    for (filename, _), job in zip(valid, staged, strict=True):
         if job is None:
             skipped.append(BatchSkipped(
                 filename=filename,
                 reason="Could not be queued for processing - please retry this file.",
+                error_code=ErrorCode.WORKER_DISPATCH_FAILED.value,
             ))
         else:
             accepted_jobs.append(job)
@@ -148,17 +136,10 @@ async def batch_parse(
         # Enqueue the whole batch onto SQS in chunks of 10 (SendMessageBatch). This
         # is a few blocking boto3 calls even for a 200-file batch, so run it off the
         # event loop to keep the 202 well under the gateway timeout.
-        loop = asyncio.get_running_loop()
-        failed_ids = await loop.run_in_executor(None, enqueue_jobs, settings, accepted_jobs)
+        failed_ids = await asyncio.to_thread(enqueue_jobs, settings, accepted_jobs)
         for job in accepted_jobs:
             if job["job_id"] in failed_ids:
-                # Mark the job failed immediately so the batch status converges
-                # instead of counting a never-queued job as "processing" forever.
-                db.update_job_failed(
-                    job["job_id"],
-                    "Background processing could not be started for this file.",
-                    ErrorCode.WORKER_DISPATCH_FAILED.value,
-                )
+                await _fail_unqueued(job, batch_id)
     else:
         background_tasks.add_task(process_batch_locally, batch_id, accepted_jobs)
 
@@ -172,6 +153,23 @@ async def batch_parse(
         status="processing",
         poll_url=f"/api/v1/resume/batch/{batch_id}",
     )
+
+
+async def _fail_unqueued(job: AsyncJobPayload, batch_id: str) -> None:
+    """Fail a batch job that never reached the queue and count it on the batch.
+
+    Only the job row used to be failed, so the batch kept counting it as
+    `processing` until its TTL and batch.completed never fired.
+    """
+    try:
+        await job_outcome.fail_job(
+            job_id=job["job_id"], company_id=job["company_id"],
+            error=job_outcome.DISPATCH_FAILED, batch_id=batch_id,
+        )
+    except Exception:
+        log.exception("batch_unqueued_job_not_recorded", batch_id=batch_id, job_id=job["job_id"])
+    # No worker will ever read the file - don't leave resume bytes behind.
+    await asyncio.to_thread(s3_client.delete_file, job["s3_key"])
 
 
 @router.get(

@@ -41,11 +41,13 @@ def sign_webhook_payload(secret: str, timestamp: str, body: bytes) -> str:
     return f"sha256={sig}"
 
 
-def verify_webhook_signature(
-    secret: str, timestamp: str, body: bytes, signature: str
-) -> bool:
-    expected = sign_webhook_payload(secret, timestamp, body)
-    return hmac.compare_digest(expected, signature)
+def constant_time_equals(supplied: str, expected: str) -> bool:
+    """Compare secrets in constant time.
+
+    Compares bytes: `hmac.compare_digest` on two str raises TypeError when either
+    holds a non-ASCII character, which turned a garbage token into a 500.
+    """
+    return hmac.compare_digest(supplied.encode(), expected.encode())
 
 
 # -- Account passwords (self-serve signup) -------------------------------------
@@ -87,7 +89,7 @@ def verify_account_token(token: str, secret: str) -> str | None:
         raw, sig = token.split(".")
     except ValueError:
         return None
-    if not hmac.compare_digest(_sign(raw, secret), sig):
+    if not constant_time_equals(sig, _sign(raw, secret)):
         return None
     try:
         payload = json.loads(_unb64(raw))

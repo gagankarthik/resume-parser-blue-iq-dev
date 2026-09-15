@@ -46,7 +46,13 @@ target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = [
+    "E", "F", "I", "UP",
+    "B904",    # raise ... from inside except - keep the cause chain
+    "TRY400",  # log.exception (with traceback) inside except, not log.error
+    "B905",    # zip(..., strict=) - silent truncation hid length mismatches
+    "B033",    # duplicate values in set literals
+]
 ignore = [
     "E501",   # line too long - long prompt strings and Field descriptions are intentional
     "UP042",  # StrEnum from typing - we use enum.StrEnum which IS the preferred Py3.11+ form

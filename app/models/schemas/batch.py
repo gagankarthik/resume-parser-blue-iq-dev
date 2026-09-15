@@ -6,8 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class BatchSkipped(BaseModel):
-    filename:  str = Field(..., description="Original filename")
-    reason:    str = Field(..., description="Why this file was rejected")
+    filename:   str        = Field(..., description="Original filename")
+    reason:     str        = Field(..., description="Why this file was rejected (human-readable)")
+    error_code: str | None = Field(None, description="Machine-readable reason, e.g. NOT_A_RESUME, FILE_TOO_LARGE, UNSUPPORTED_FILE_TYPE, WORKER_DISPATCH_FAILED")
 
 
 class BatchJob(BaseModel):
@@ -25,7 +26,8 @@ class BatchSubmitResponse(BaseModel):
                 "total": 148,
                 "skipped": 2,
                 "skipped_files": [
-                    {"filename": "notes.txt", "reason": "Unsupported file extension '.txt'"},
+                    {"filename": "notes.txt", "reason": "Unsupported file extension '.txt'",
+                     "error_code": "UNSUPPORTED_FILE_TYPE"},
                 ],
                 "jobs": [{"job_id": "01J3K5M2...", "filename": "jane_smith_rn.pdf"}],
                 "job_ids": ["01J3K5M2...", "01J3K5M3..."],

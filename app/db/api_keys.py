@@ -1,6 +1,7 @@
 """API-key records (table: api_keys)."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 from boto3.dynamodb.conditions import Key
 
@@ -19,18 +20,25 @@ def create_api_key(
     key_hash: str,
     key_prefix: str,
     company_id: str,
-) -> None:
+    name: str = "",
+) -> dict:
+    """Store an API key record (hash only - never the raw key) and return it as written.
+
+    `name` is an optional human label; records without one simply omit it.
+    """
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_api_keys)
-    table.put_item(
-        Item={
-            "key_hash": key_hash,
-            "key_prefix": key_prefix,
-            "company_id": company_id,
-            "status": "active",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-    )
+    item: dict[str, Any] = {
+        "key_hash": key_hash,
+        "key_prefix": key_prefix,
+        "company_id": company_id,
+        "status": "active",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    if name:
+        item["name"] = name
+    table.put_item(Item=item)
+    return item
 
 
 def revoke_api_key(key_hash: str) -> None:

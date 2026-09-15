@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
+from app.core import url_validator
 from app.workers import webhook_sender
 
 # -- The published verifier, copied verbatim from CLIENT_INTEGRATION_GUIDE.md §6 ----
@@ -82,7 +83,7 @@ class _Receiver:
 
 @pytest.fixture(autouse=True)
 def _allow_loopback_and_reset(monkeypatch):
-    monkeypatch.setattr(webhook_sender, "validate_webhook_url", lambda url: None)
+    monkeypatch.setattr(url_validator, "_is_public_ip", lambda ip: True)
     # The circuit breaker is process-global; a previous test's failures must not
     # silently skip a later test's delivery.
     webhook_sender._circuit.clear()
@@ -232,7 +233,7 @@ async def test_the_retry_ladder_fits_inside_the_callers_timeout():
     left the circuit breaker permanently shut, unable to open no matter how many
     deliveries failed. The outer budget must cover the whole ladder.
     """
-    from app.workers.background import _WEBHOOK_TIMEOUT
+    from app.services.application.job_outcome import WEBHOOK_TIMEOUT as _WEBHOOK_TIMEOUT
 
     sleeps = sum(webhook_sender._RETRY_DELAYS)
     attempts = len(webhook_sender._RETRY_DELAYS) + 1
@@ -287,7 +288,7 @@ async def test_an_unsafe_url_is_skipped_not_delivered(monkeypatch):
     def _reject(url: str) -> None:
         raise webhook_sender.UnsafeWebhookURLError("resolves to a private address")
 
-    monkeypatch.setattr(webhook_sender, "validate_webhook_url", _reject)
+    monkeypatch.setattr(webhook_sender, "resolve_webhook_url", _reject)
 
     with _Receiver() as rx:
         _register(monkeypatch, {"url": rx.url, "hmac_secret": SECRET})

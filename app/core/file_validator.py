@@ -16,7 +16,9 @@ Supported types and their signatures:
 
 import io
 import zipfile
+from dataclasses import dataclass
 
+from app.core.errors import ErrorCode
 from app.core.exceptions import UnsupportedFileTypeError
 
 _SIGNATURES: dict[str, list[bytes]] = {
@@ -42,6 +44,17 @@ _EXT_TO_TYPE: dict[str, str] = {
 }
 
 _MAX_SNIFF = 12  # bytes needed to read any signature
+
+# Client-supplied filenames are stored on the job row and shown back to the caller.
+MAX_FILENAME_LENGTH = 255
+
+# A DOCX is a ZIP that python-docx inflates part by part into memory, so a 10 MB
+# upload can declare gigabytes. Real resumes unpack to a few MB; the ratio check
+# only applies above a floor so a small, highly compressible XML-only document
+# is never rejected.
+_MAX_DOCX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+_MAX_DOCX_RATIO = 100
+_MAX_DOCX_RATIO_FLOOR_BYTES = 10 * 1024 * 1024
 
 
 def validate_file(filename: str, content: bytes) -> str:
@@ -72,27 +85,88 @@ def validate_file(filename: str, content: bytes) -> str:
 
     # A .docx signature is just the generic ZIP header, so any ZIP (or a zip bomb)
     # renamed .docx passes the magic check. Confirm it's actually an OOXML package
-    # by reading the central directory (no decompression) for the required members.
-    if declared_type == "docx" and not _is_ooxml_docx(content):
-        raise UnsupportedFileTypeError(
-            "File is not a valid DOCX document (missing Word/OOXML structure)."
-        )
+    # of plausible size by reading the central directory (no decompression).
+    if declared_type == "docx":
+        problem = _docx_problem(content)
+        if problem:
+            raise UnsupportedFileTypeError(problem)
 
     return declared_type
 
 
-def _is_ooxml_docx(content: bytes) -> bool:
-    """True when `content` is a ZIP holding the members a real .docx must have.
+def _docx_problem(content: bytes) -> str | None:
+    """Why `content` is not an acceptable .docx, or None when it is.
 
-    Reads only the ZIP central directory (namelist does not decompress), so a
-    malicious/huge archive can't be expanded here.
+    Reads only the ZIP central directory (infolist does not decompress). The sizes
+    there are declared by the file, but zipfile stops inflating a member at its
+    declared size, so the declared totals bound what python-docx can expand.
     """
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
-            names = set(zf.namelist())
+            members = zf.infolist()
     except (zipfile.BadZipFile, OSError):
-        return False
-    return "[Content_Types].xml" in names and any(n.startswith("word/") for n in names)
+        members = []
+    names = {m.filename for m in members}
+    if "[Content_Types].xml" not in names or not any(n.startswith("word/") for n in names):
+        return "File is not a valid DOCX document (missing Word/OOXML structure)."
+
+    unpacked = sum(m.file_size for m in members)
+    packed = max(1, sum(m.compress_size for m in members))
+    if unpacked > _MAX_DOCX_UNCOMPRESSED_BYTES or (
+        unpacked > _MAX_DOCX_RATIO_FLOOR_BYTES and unpacked / packed > _MAX_DOCX_RATIO
+    ):
+        return (
+            f"File is not a valid DOCX document (it expands to {unpacked // (1024 * 1024)} MB "
+            "when unpacked, far beyond any resume)."
+        )
+    return None
+
+
+@dataclass(frozen=True)
+class Rejection:
+    """Why an upload was refused, in the shape every endpoint reports it."""
+
+    status_code: int
+    error_code: ErrorCode
+    detail: str
+
+
+def check_upload(filename: str, content: bytes, max_bytes: int) -> Rejection | None:
+    """Empty, size and type checks shared by every upload path. None means accepted.
+
+    An empty (or whitespace-only) file is NOT_A_RESUME - the code the worker uses
+    for an empty or non-resume document - rather than falling through to the
+    magic-byte check and reading as a wrong file type.
+    """
+    # isspace() scans in place; strip() would copy up to max_bytes just to test emptiness.
+    if not content or content.isspace():
+        return Rejection(422, ErrorCode.NOT_A_RESUME, "The uploaded file is empty.")
+    if len(content) > max_bytes:
+        return Rejection(
+            413, ErrorCode.FILE_TOO_LARGE,
+            f"File size {len(content) // 1024} KB exceeds the {max_bytes // (1024 * 1024)} MB limit",
+        )
+    try:
+        validate_file(filename, content)
+    except UnsupportedFileTypeError as exc:
+        return Rejection(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
+    return None
+
+
+def clamp_filename(filename: str) -> str:
+    """Bound a client-supplied filename, keeping its extension so type checks still see it."""
+    if len(filename) <= MAX_FILENAME_LENGTH:
+        return filename
+    ext = _get_ext(filename)
+    if len(ext) > 16:
+        ext = ""
+    return filename[: MAX_FILENAME_LENGTH - len(ext)] + ext
+
+
+def storage_extension(filename: str) -> str:
+    """The filename's extension when it is a supported type, else "" - safe for a storage key."""
+    ext = _get_ext(filename)
+    return ext if ext in _EXT_TO_TYPE else ""
 
 
 def is_supported_extension(filename: str) -> bool:

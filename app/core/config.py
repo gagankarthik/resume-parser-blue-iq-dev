@@ -9,6 +9,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # so `assert_production_ready()` refuses to boot on it.
 INSECURE_AUTH_SECRET_DEFAULT = "dev-insecure-auth-secret-change-me"
 
+# Below this, ADMIN_API_TOKEN is reported by production_config_warnings() (never fatal).
+MIN_ADMIN_TOKEN_LENGTH = 32
+
 
 class Settings(BaseSettings):
     # extra="ignore": an unrecognized env var must never crash the whole service
@@ -31,11 +34,10 @@ class Settings(BaseSettings):
         default="us-east-2",
         validation_alias=AliasChoices("aws_region", "aws_region_name"),
     )
-    aws_access_key_id: str = ""
-    aws_secret_access_key: str = ""
+    # Credentials are NOT settings: boto3 reads AWS_ACCESS_KEY_ID etc. from the
+    # environment (or the Lambda role) itself.
     dynamodb_endpoint_url: str = ""  # empty = real AWS
     s3_endpoint_url: str = ""        # empty = real AWS
-    textract_endpoint_url: str = ""  # always real AWS Textract
 
     # OCR
     # When True, the OCR path skips Tesseract entirely and goes straight to AWS
@@ -207,6 +209,12 @@ class Settings(BaseSettings):
     # Set to 0 to always use multi-agent (when enabled).
     multi_agent_min_chars: int = 1000
 
+    # Resume gate (app/services/parsing/resume_gate.py). Before the AI parse, one
+    # small LLM call checks the document is actually a resume and fails the job
+    # with NOT_A_RESUME when it confidently is not. The empty-document check always
+    # runs; this switch only turns off the model call.
+    enable_resume_classifier: bool = True
+
     # Specialty -> ID matching
     # Path to the specialty reference catalog (JSON list, or CSV) of
     # {id, specialty, full_name, keywords[], group?, profession?} used to map each
@@ -333,10 +341,6 @@ class Settings(BaseSettings):
     # server-side proxy, so it does not rely on CORS at all.
     cors_allowed_origins: str = ""
 
-    # Webhooks
-    webhook_timeout_seconds: int = 10
-    webhook_max_retries: int = 3
-
     # Batch processing
     max_batch_size: int = 200           # maximum files per batch request
     max_concurrent_jobs: int = 5        # concurrent pipeline runs (local dev semaphore)
@@ -431,6 +435,12 @@ class Settings(BaseSettings):
                 "2026-07-24) and parse.completed can reach the client before the "
                 "submit response delivers the job_id. Provision the worker stack "
                 "(scripts/provision_worker.sh) - see docs/DEPLOYMENT.md section 5."
+            )
+        if self.admin_api_token and len(self.admin_api_token) < MIN_ADMIN_TOKEN_LENGTH:
+            warnings.append(
+                f"ADMIN_API_TOKEN is shorter than {MIN_ADMIN_TOKEN_LENGTH} characters. It "
+                "gates company onboarding and API-key issuance for every tenant; set a "
+                "long random value (e.g. `openssl rand -hex 32`)."
             )
         return warnings
 

@@ -29,16 +29,17 @@ POST /api/v1/resume/{job_id}/feedback
   Stored for model improvement. Accepted asynchronously (HTTP 202).
 """
 
+import asyncio
 from datetime import UTC, datetime
 
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from ulid import ULID
 
 from app.api.dependencies import get_api_key_record
 from app.core.config import get_settings
 from app.core.errors import ErrorCode, api_error
-from app.core.exceptions import UnsupportedFileTypeError
-from app.core.file_validator import is_supported_extension, validate_file
+from app.core.file_validator import Rejection, check_upload, clamp_filename, is_supported_extension
 from app.core.logging import get_logger
 from app.db import dynamodb as db
 from app.models.schemas import (
@@ -62,23 +63,24 @@ from app.storage import s3_client
 router = APIRouter()
 log = get_logger(__name__)
 
+_DISPATCH_FAILED_DETAIL = "Could not queue the resume for parsing. Please retry."
 
-async def _validate_file(file: UploadFile, settings) -> tuple[bytes, str]:
-    """Read, size-check, and magic-byte validate the uploaded file."""
+
+def _raise_rejection(rejection: Rejection | None) -> None:
+    if rejection is not None:
+        raise api_error(rejection.status_code, rejection.error_code, rejection.detail)
+
+
+async def _read_upload(file: UploadFile, settings) -> tuple[bytes, str]:
+    """Read the multipart file and run the shared empty/size/type checks."""
     content  = await file.read()
-    filename = file.filename or "upload"
-
-    if len(content) > settings.max_file_size_bytes:
-        raise api_error(
-            413, ErrorCode.FILE_TOO_LARGE,
-            f"File size {len(content) // 1024} KB exceeds the {settings.max_file_size_mb} MB limit",
-        )
-    try:
-        validate_file(filename, content)
-    except UnsupportedFileTypeError as exc:
-        raise api_error(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
-
+    filename = clamp_filename(file.filename or "upload")
+    _raise_rejection(check_upload(filename, content, settings.max_file_size_bytes))
     return content, filename
+
+
+def _is_missing_object(exc: ClientError) -> bool:
+    return exc.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound")
 
 
 # -- Single-file parse ---------------------------------------------------------
@@ -111,7 +113,7 @@ async def parse_resume(
     company_id = record["company_id"]
     job_id     = str(ULID())
 
-    content, filename = await _validate_file(file, settings)
+    content, filename = await _read_upload(file, settings)
     log.info("parse_request", job_id=job_id, company_id=company_id,
              size_bytes=len(content), force_textract=force_textract)
 
@@ -120,20 +122,15 @@ async def parse_resume(
     # caller never blocks and never trips a gateway timeout - whatever the file's
     # size or type. The worker runs the complete pipeline (digital or OCR) and stores
     # the result for the poll endpoint.
-    s3_key = s3_client.upload_temp_file(job_id, filename, content)
-    db.create_job(job_id, company_id)
     try:
-        await resume_service.dispatch_async(settings, background_tasks,
-            resume_service.build_async_payload(
-                job_id=job_id, company_id=company_id, s3_key=s3_key, filename=filename,
-                file_size_bytes=len(content), force_textract=force_textract, record=record, endpoint="POST /resume/parse",
-            ))
-    except Exception:
-        log.exception("async_dispatch_failed", job_id=job_id)
-        raise api_error(
-            503, ErrorCode.WORKER_DISPATCH_FAILED,
-            "Could not queue the resume for parsing. Please retry.",
+        await resume_service.submit(
+            settings, background_tasks,
+            job_id=job_id, company_id=company_id, filename=filename,
+            file_size_bytes=len(content), force_textract=force_textract, record=record,
+            endpoint="POST /resume/parse", content=content,
         )
+    except resume_service.DispatchFailedError:
+        raise api_error(503, ErrorCode.WORKER_DISPATCH_FAILED, _DISPATCH_FAILED_DETAIL) from None
     return ParseResponse(job_id=job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{job_id}")
 
@@ -221,25 +218,30 @@ async def parse_uploaded(
     filename = job.get("filename", "upload")
 
     try:
-        content = s3_client.download_file(s3_key)
-    except Exception:
+        content = await asyncio.to_thread(s3_client.download_file, s3_key)
+    except ClientError as exc:
+        if not _is_missing_object(exc):
+            log.exception("upload_read_failed", job_id=payload.job_id)
+            raise api_error(
+                503, ErrorCode.SERVICE_UNAVAILABLE,
+                "The uploaded file could not be read right now. Please retry.",
+            ) from None
         raise api_error(
             422, ErrorCode.UPLOAD_NOT_FOUND,
             "No uploaded file found for this job - complete the upload first",
-        )
-
-    # Validate the downloaded bytes (size + magic bytes) before processing.
-    if len(content) > settings.max_file_size_bytes:
-        s3_client.delete_file(s3_key)
+        ) from None
+    except BotoCoreError:
+        log.exception("upload_read_failed", job_id=payload.job_id)
         raise api_error(
-            413, ErrorCode.FILE_TOO_LARGE,
-            f"File size {len(content) // 1024} KB exceeds the {settings.max_file_size_mb} MB limit",
-        )
-    try:
-        validate_file(filename, content)
-    except UnsupportedFileTypeError as exc:
-        s3_client.delete_file(s3_key)
-        raise api_error(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
+            503, ErrorCode.SERVICE_UNAVAILABLE,
+            "The uploaded file could not be read right now. Please retry.",
+        ) from None
+
+    # Validate the downloaded bytes (empty + size + magic bytes) before processing.
+    rejection = check_upload(filename, content, settings.max_file_size_bytes)
+    if rejection is not None:
+        await asyncio.to_thread(s3_client.delete_file, s3_key)
+        _raise_rejection(rejection)
 
     # Atomically claim the job (pending_upload -> processing) so two concurrent
     # parse-uploaded calls for the same job_id can't both dispatch; the loser gets a
@@ -257,18 +259,20 @@ async def parse_uploaded(
     # worker (which downloads and deletes it) and return a poll URL. Nothing parses
     # on the request path. Leave the job "processing" for the worker to finish.
     try:
-        await resume_service.dispatch_async(settings, background_tasks,
-            resume_service.build_async_payload(
-                job_id=payload.job_id, company_id=company_id, s3_key=s3_key, filename=filename,
-                file_size_bytes=len(content), force_textract=payload.force_textract, record=record,
-                endpoint="POST /resume/parse-uploaded",
-            ))
-    except Exception:
-        log.exception("async_dispatch_failed", job_id=payload.job_id)
+        await resume_service.submit(
+            settings, background_tasks,
+            job_id=payload.job_id, company_id=company_id, filename=filename,
+            file_size_bytes=len(content), force_textract=payload.force_textract,
+            record=record, endpoint="POST /resume/parse-uploaded", s3_key=s3_key,
+        )
+    except resume_service.DispatchFailedError:
+        # The claim is spent and the file is gone, so retrying this job_id can only
+        # 409 - the client needs a fresh upload.
         raise api_error(
             503, ErrorCode.WORKER_DISPATCH_FAILED,
-            "Could not queue the resume for parsing. Please retry.",
-        )
+            "Could not queue the resume for parsing. This upload can no longer be used - "
+            "request a new upload URL and upload the file again.",
+        ) from None
     return ParseResponse(job_id=payload.job_id, status="processing",
                          poll_url=f"/api/v1/resume/job/{payload.job_id}")
 
@@ -282,7 +286,8 @@ async def parse_uploaded(
     description=(
         "Check the status of an asynchronous parse job. "
         "Returns `processing` until done, then `completed` with parsed data "
-        "or `failed` with an error description. "
+        "or `failed` with an `error` description and a machine-readable `error_code` "
+        "(`NOT_A_RESUME` when the file was empty or was not a resume). "
         "Results are retained for 1 hour after completion."
     ),
     tags=["Resume"],
@@ -315,17 +320,22 @@ async def get_job_status(
     warnings: list[str] = []
 
     if raw_result and status in ("completed", "partial"):
-        parsed_data = ParsedResumeAI.model_validate(raw_result.get("data", {}))
-        confidence  = ConfidenceScores.model_validate(raw_result.get("confidence", {}))
-        skills_validation = validate_skills(parsed_data)
         partial  = bool(raw_result.get("partial", False))
         warnings = list(raw_result.get("warnings", []))
+        # A result too large for DynamoDB is stored as a stub with data=None and a
+        # warning (jobs.update_job_completed). Validating None as a resume used to
+        # 500 every poll of that job; report the stub's warning instead.
+        if raw_result.get("data") is not None:
+            parsed_data = ParsedResumeAI.model_validate(raw_result["data"])
+            confidence  = ConfidenceScores.model_validate(raw_result.get("confidence") or {})
+            skills_validation = validate_skills(parsed_data)
 
     return JobStatusResponse(
         job_id=job_id, status=status, data=parsed_data,
         confidence=confidence, skills_validation=skills_validation,
         partial=partial, warnings=warnings,
         error=job.get("error"),
+        error_code=job.get("error_code") or None,
     )
 
 
@@ -364,37 +374,33 @@ async def retry_parse(
         raise api_error(404, ErrorCode.JOB_NOT_FOUND,
                         "Original job not found or does not belong to this account")
 
-    # Enforce retry limit
-    retry_count = int(original.get("retry_count", 0)) + 1
-    if retry_count > settings.max_retry_count:
+    content, filename = await _read_upload(file, settings)
+
+    # Count the retry on the ORIGINAL row, atomically, before anything is staged -
+    # the limit used to be read but never written, so it never tripped.
+    retry_count = await asyncio.to_thread(db.claim_retry, job_id, settings.max_retry_count)
+    if retry_count is None:
         raise api_error(
             422, ErrorCode.RETRY_LIMIT_REACHED,
             f"Maximum {settings.max_retry_count} retries allowed per job",
         )
 
-    content, filename = await _validate_file(file, settings)
     new_job_id = str(ULID())
-
     log.info("retry_request", original_job_id=job_id, new_job_id=new_job_id,
              company_id=company_id, retry_count=retry_count)
 
     # Create retry job linked to original, then run the same uniform async flow as
     # /resume/parse: dispatch to the full-budget worker and return a poll URL.
-    db.create_job(new_job_id, company_id, retried_from=job_id, retry_count=retry_count)
-    s3_key = s3_client.upload_temp_file(new_job_id, filename, content)
     try:
-        await resume_service.dispatch_async(settings, background_tasks,
-            resume_service.build_async_payload(
-                job_id=new_job_id, company_id=company_id, s3_key=s3_key, filename=filename,
-                file_size_bytes=len(content), force_textract=force_textract, record=record,
-                endpoint="POST /resume/{job_id}/retry",
-            ))
-    except Exception:
-        log.exception("async_dispatch_failed", job_id=new_job_id)
-        raise api_error(
-            503, ErrorCode.WORKER_DISPATCH_FAILED,
-            "Could not queue the resume for parsing. Please retry.",
+        await resume_service.submit(
+            settings, background_tasks,
+            job_id=new_job_id, company_id=company_id, filename=filename,
+            file_size_bytes=len(content), force_textract=force_textract, record=record,
+            endpoint="POST /resume/{job_id}/retry", content=content,
+            retried_from=job_id, retry_count=retry_count,
         )
+    except resume_service.DispatchFailedError:
+        raise api_error(503, ErrorCode.WORKER_DISPATCH_FAILED, _DISPATCH_FAILED_DETAIL) from None
     return RetryResponse(
         job_id=new_job_id, original_job_id=job_id, retry_count=retry_count,
         status="processing", poll_url=f"/api/v1/resume/job/{new_job_id}",

@@ -8,34 +8,44 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.file_validator import MAX_FILENAME_LENGTH
 from app.models.schemas.analysis import ConfidenceScores, SkillsValidation
 from app.models.schemas.resume import ParsedResumeAI
 from app.models.schemas.validators import _URL_RE
 
+# Every webhook event the service emits - the one list for both webhook routes.
+WEBHOOK_EVENTS: frozenset[str] = frozenset({"parse.completed", "parse.failed", "batch.completed"})
+
+# Submit responses never carry a parse result: every parse is asynchronous, so the
+# result fields below are always empty there. Kept (deprecated) so existing clients
+# that read them keep deserializing.
+_SUBMIT_RESULT_DEPRECATED = (
+    "Deprecated: never set on a submit response - every parse is asynchronous. "
+    "Poll `poll_url` (GET /resume/job/{job_id}) for "
+)
+
 
 class ParseResponse(BaseModel):
-    """Response for POST /api/v1/resume/parse"""
+    """Response for POST /api/v1/resume/parse and /resume/parse-uploaded"""
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
-                "status": "completed",
-                "data": {"personal_info": {}, "experience": [], "education": [], "skills": []},
-                "confidence": {"overall": 0.91, "personal_info": 0.96, "experience": 0.88, "education": 0.90, "skills": 1.0},
-                "poll_url": None,
+                "status": "processing",
+                "poll_url": "/api/v1/resume/job/01J3K5M2N4P6Q8R0S2T4U6V8W0",
             }
         }
     )
 
     job_id:            str                        = Field(..., description="Unique job identifier (ULID)")
-    status:            str                        = Field(..., description="'completed' (clean) or 'partial' (degraded - see `partial`/`warnings`) for sync jobs; 'processing' for async (OCR) jobs")
-    data:              ParsedResumeAI | None   = Field(None, description="Parsed resume data - present when status is 'completed' or 'partial'")
-    confidence:        ConfidenceScores | None = Field(None, description="Per-section confidence scores - present when status is 'completed' or 'partial'")
-    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy - present when status is 'completed' or 'partial'")
-    partial:           bool                       = Field(False, description="True when parsing degraded - `data` holds only what could be recovered (e.g. contact anchors) and needs human review. See `warnings`.")
-    warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing (e.g. AI parse failed and a partial record was returned). Empty on a clean parse.")
-    poll_url:          str | None              = Field(None, description="Polling URL - present when status is 'processing'")
+    status:            str                        = Field(..., description="Always 'processing' - the file is queued on the async worker; poll `poll_url` for the result")
+    data:              ParsedResumeAI | None   = Field(None, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "the parsed data.")
+    confidence:        ConfidenceScores | None = Field(None, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "confidence scores.")
+    skills_validation: SkillsValidation | None = Field(None, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "skills validation.")
+    partial:           bool                       = Field(False, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "`partial`. Always false here.")
+    warnings:          list[str]                  = Field(default_factory=list, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "parse warnings. Always empty here.")
+    poll_url:          str | None              = Field(None, description="Polling URL for this job")
 
 
 class UploadUrlRequest(BaseModel):
@@ -47,6 +57,7 @@ class UploadUrlRequest(BaseModel):
 
     filename: str = Field(
         ...,
+        max_length=MAX_FILENAME_LENGTH,
         description="Original filename including extension (.pdf, .docx, .rtf, .png, .jpg, .jpeg, .tiff, .webp)",
         examples=["jane_smith_rn.pdf"],
     )
@@ -74,12 +85,12 @@ class UploadUrlResponse(BaseModel):
                 "job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
                 "upload_url": "https://resume-parser-blue-iq-temp.s3.amazonaws.com/",
                 "fields": {
-                    "key": "temp/01J3K5M2N4P6Q8R0S2T4U6V8W0/jane_smith_rn.pdf",
+                    "key": "temp/01J3K5M2N4P6Q8R0S2T4U6V8W0/source.pdf",
                     "x-amz-server-side-encryption": "AES256",
                     "policy": "<base64-policy>",
                     "x-amz-signature": "<signature>",
                 },
-                "s3_key": "temp/01J3K5M2N4P6Q8R0S2T4U6V8W0/jane_smith_rn.pdf",
+                "s3_key": "temp/01J3K5M2N4P6Q8R0S2T4U6V8W0/source.pdf",
                 "max_file_size_mb": 10,
                 "expires_in_seconds": 900,
                 "parse_url": "/api/v1/resume/parse-uploaded",
@@ -112,14 +123,14 @@ class ParseUploadedRequest(BaseModel):
                     "file needs (scanned PDF/image, or a digital PDF with a broken "
                     "text layer). Higher accuracy on hard scans, higher cost.",
     )
+    # Marked deprecated through the JSON schema, not Field(deprecated=True): FastAPI
+    # re-wraps request-body fields, where pydantic ignores that flag and warns.
     async_only: bool = Field(
         False,
-        description="Never parse synchronously: return a `job_id` + `poll_url` "
-                    "immediately and run the full parse on the async worker. Use this "
-                    "when your own gateway cannot hold a request open long enough for "
-                    "a complete parse (a proxy or serverless host with a short request "
-                    "timeout) - blocking there would cost you a 504 with no data. "
-                    "Costs one poll round-trip; never returns a partial.",
+        json_schema_extra={"deprecated": True},
+        description="Deprecated and ignored: every parse is asynchronous, so this "
+                    "endpoint always returns a `job_id` + `poll_url` immediately. "
+                    "Accepted only so existing clients that send it keep working.",
     )
 
     @field_validator("job_id")
@@ -148,12 +159,13 @@ class JobStatusResponse(BaseModel):
 
     job_id:            str                        = Field(..., description="Job identifier")
     status:            str                        = Field(..., description="processing (in flight - keep polling) | completed | partial | failed | pending_upload (presigned upload not done yet)")
-    data:              ParsedResumeAI | None   = Field(None, description="Parsed data - set when status is 'completed' or 'partial'")
+    data:              ParsedResumeAI | None   = Field(None, description="Parsed data - set when status is 'completed' or 'partial' (null when the result was too large to store; see `warnings`)")
     confidence:        ConfidenceScores | None = Field(None, description="Confidence scores - set when status is 'completed' or 'partial'")
     skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy - set when status is 'completed' or 'partial'")
     partial:           bool                       = Field(False, description="True when parsing degraded - `data` holds only what could be recovered and needs human review. See `warnings`.")
     warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing. Empty on a clean parse.")
     error:             str | None              = Field(None, description="Error description - set when status is 'failed'")
+    error_code:        str | None              = Field(None, description="Machine-readable error code - set when status is 'failed'. NOT_A_RESUME means the file was empty or was not a resume; retrying the same file will not help.")
 
 
 class WebhookCreateRequest(BaseModel):
@@ -184,10 +196,9 @@ class WebhookCreateRequest(BaseModel):
     @field_validator("events")
     @classmethod
     def validate_events(cls, v: list[str]) -> list[str]:
-        valid = {"parse.completed", "parse.failed", "batch.completed"}
-        invalid = set(v) - valid
+        invalid = set(v) - WEBHOOK_EVENTS
         if invalid:
-            raise ValueError(f"Invalid events: {sorted(invalid)}. Valid: {sorted(valid)}")
+            raise ValueError(f"Invalid events: {sorted(invalid)}. Valid: {sorted(WEBHOOK_EVENTS)}")
         return v
 
 
@@ -243,10 +254,8 @@ class RetryResponse(BaseModel):
                 "job_id": "01J3K5M3N5P7Q9R1S3T5U7V9W1",
                 "original_job_id": "01J3K5M2N4P6Q8R0S2T4U6V8W0",
                 "retry_count": 1,
-                "status": "completed",
-                "data": None,
-                "confidence": None,
-                "poll_url": None,
+                "status": "processing",
+                "poll_url": "/api/v1/resume/job/01J3K5M3N5P7Q9R1S3T5U7V9W1",
             }
         }
     )
@@ -254,11 +263,10 @@ class RetryResponse(BaseModel):
     job_id:            str                        = Field(..., description="New job ID for this retry attempt")
     original_job_id:   str                        = Field(..., description="The job ID that was retried")
     retry_count:       int                        = Field(..., description="How many times this job has been retried (1 = first retry)")
-    status:            str                        = Field(..., description="completed | partial | processing")
-    data:              ParsedResumeAI | None   = Field(None, description="Parsed data - set when status is completed or partial")
-    confidence:        ConfidenceScores | None = Field(None, description="Confidence scores - set when status is completed or partial")
-    skills_validation: SkillsValidation | None = Field(None, description="Skills validated against the healthcare taxonomy - set when status is completed or partial")
-    partial:           bool                       = Field(False, description="True when parsing degraded - `data` holds only what could be recovered and needs human review. See `warnings`.")
-    warnings:          list[str]                  = Field(default_factory=list, description="Non-fatal issues detected during parsing. Empty on a clean parse.")
-    poll_url:          str | None              = Field(None, description="Polling URL - set for async retries")
-
+    status:            str                        = Field(..., description="Always 'processing' - poll `poll_url` for the result")
+    data:              ParsedResumeAI | None   = Field(None, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "the parsed data.")
+    confidence:        ConfidenceScores | None = Field(None, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "confidence scores.")
+    skills_validation: SkillsValidation | None = Field(None, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "skills validation.")
+    partial:           bool                       = Field(False, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "`partial`. Always false here.")
+    warnings:          list[str]                  = Field(default_factory=list, deprecated=True, description=_SUBMIT_RESULT_DEPRECATED + "parse warnings. Always empty here.")
+    poll_url:          str | None              = Field(None, description="Polling URL for the retry job")

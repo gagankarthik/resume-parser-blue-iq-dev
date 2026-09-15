@@ -8,7 +8,6 @@ API key cache:
   Cache is per-process; Lambda cold starts naturally clear it.
 """
 
-import hmac
 import time
 
 from fastapi import Depends
@@ -19,6 +18,7 @@ from app.core.errors import ErrorCode, api_error
 from app.core.logging import get_logger
 from app.core.rate_limit import check as check_rate_limit
 from app.core.security import (
+    constant_time_equals,
     hash_api_key,
     key_display_prefix,
     validate_key_format,
@@ -41,6 +41,11 @@ def get_current_account(authorization: str = Depends(_bearer_scheme)) -> str:
     company_id = verify_account_token(token, get_settings().auth_secret)
     if not company_id:
         raise api_error(401, ErrorCode.INVALID_API_KEY, "Invalid or expired session")
+    # Same gate as the API-key path: a session issued before an admin deactivated
+    # the company must not keep minting and revoking its keys for the token's week.
+    if not _company_is_active(company_id):
+        log.warning("auth_account_deactivated", company_id=company_id)
+        raise api_error(403, ErrorCode.ACCOUNT_DEACTIVATED, "This account has been deactivated")
     return company_id
 
 
@@ -142,6 +147,6 @@ def require_admin(token: str = Depends(_admin_token_scheme)) -> None:
     if not expected:
         # No token configured -> admin surface is disabled.
         raise api_error(403, ErrorCode.REVOKED_API_KEY, "Admin API is not enabled")
-    if not token or not hmac.compare_digest(token, expected):
+    if not token or not constant_time_equals(token, expected):
         log.warning("admin_auth_failed")
         raise api_error(401, ErrorCode.INVALID_API_KEY, "Invalid admin token")

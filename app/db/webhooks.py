@@ -14,20 +14,21 @@ def create_webhook(
     url: str,
     hmac_secret: str,
     events: list[str],
-) -> None:
+) -> dict:
+    """Store a webhook subscription and return the record exactly as written."""
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_webhooks)
-    table.put_item(
-        Item={
-            "company_id": company_id,
-            "webhook_id": webhook_id,
-            "url": url,
-            "hmac_secret": hmac_secret,
-            "events": events,
-            "status": "active",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-    )
+    item = {
+        "company_id": company_id,
+        "webhook_id": webhook_id,
+        "url": url,
+        "hmac_secret": hmac_secret,
+        "events": events,
+        "status": "active",
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    table.put_item(Item=item)
+    return item
 
 
 def list_webhooks(company_id: str) -> list[dict]:

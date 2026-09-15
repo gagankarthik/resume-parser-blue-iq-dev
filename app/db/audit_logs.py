@@ -60,8 +60,8 @@ def write_audit_log(
         item["endpoint"] = endpoint
     try:
         table.put_item(Item=item)
-    except ClientError as exc:
-        log.error("audit_log_write_failed", job_id=job_id, error=str(exc))
+    except ClientError:
+        log.exception("audit_log_write_failed", job_id=job_id)
 
 
 def get_audit_logs_for_company(company_id: str, since_iso: str) -> list[dict]:

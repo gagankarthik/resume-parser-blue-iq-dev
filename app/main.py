@@ -2,14 +2,25 @@
 FastAPI application factory.
 
 Middleware stack (outermost -> innermost):
-  1. RequestLoggingMiddleware  - logs every request with duration + request_id
-  2. SecurityHeadersMiddleware - X-Request-ID, security headers, HSTS
-  3. CORSMiddleware
+  1. ServerErrorMiddleware    - Starlette's own last resort
+  2. CORSMiddleware
+  3. RequestContextMiddleware - request id, 413 guard, security headers,
+                                request log, 500 for unhandled exceptions
+  4. ExceptionMiddleware      - Starlette's; runs the handlers registered below
+
+RequestContextMiddleware sits inside CORS on purpose: everything it sends - a 413,
+the 500 for an unhandled exception - passes back out through CORS and carries the
+Access-Control-* headers, as it did before. CORS answers preflight requests itself,
+so those are neither logged nor given security headers (also as before).
+
+`add_middleware` inserts at the front of the stack, so the LAST one added is the
+outermost; the order of the calls in create_app() is the reverse of the list above.
 
 Error handlers:
   All exceptions -> consistent {"error": {"status_code", "error_code", "detail"}} envelope.
 """
 
+import re
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -20,18 +31,14 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.datastructures import MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.v1.router import router
 from app.core.config import get_settings
-from app.core.errors import ErrorCode, get_hint
-from app.core.exceptions import (
-    ExtractionError,
-    FileValidationError,
-    OCRError,
-    ResumeParserError,
-)
+from app.core.errors import ErrorCode, get_hint, public_error
+from app.core.exceptions import ResumeParserError
 from app.core.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
@@ -39,50 +46,104 @@ log = get_logger(__name__)
 
 # -- Middleware ----------------------------------------------------------------
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-        request.state.request_id = request_id   # accessible to error handlers
+# A client-supplied X-Request-ID is echoed into response headers and every log line
+# of the request, so only a short, plain value is trusted; anything else is replaced.
+_REQUEST_ID_RE = re.compile(r"[A-Za-z0-9._:-]{1,128}")
+
+
+def _request_id(supplied: str | None) -> str:
+    if supplied and _REQUEST_ID_RE.fullmatch(supplied):
+        return supplied
+    return str(uuid.uuid4())
+
+
+class RequestContextMiddleware:
+    """Request id, body-size guard, security headers, request log, last-resort 500.
+
+    A plain ASGI middleware rather than BaseHTTPMiddleware: it wraps `send`, so the
+    headers land on every response it passes through - including the 500 it builds
+    itself - and its `finally` logs every request, whatever happened inside.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
+        request_id = _request_id(request.headers.get("x-request-id"))
+        request.state.request_id = request_id   # read by the error envelope
         structlog.contextvars.bind_contextvars(request_id=request_id)
-
         settings = get_settings()
+        started = time.monotonic()
+        status = 500
+        response_started = False
 
-        # Reject an over-sized body from its declared Content-Length BEFORE it is
-        # read into memory - defense-in-depth above each endpoint's file-size check.
-        # The batch route carries many files, so it gets a larger ceiling than the
-        # single-file cap (which would otherwise 413 a valid multi-file batch).
-        max_bytes = settings.max_request_bytes
-        if request.method == "POST" and request.url.path.rstrip("/").endswith("/resume/batch"):
-            max_bytes = settings.max_batch_request_bytes
-        oversized = _content_length_exceeds(request, max_bytes)
-        if oversized is not None:
-            structlog.contextvars.unbind_contextvars("request_id")
-            return oversized
+        async def send_with_headers(message: Message) -> None:
+            nonlocal status, response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+                status = message["status"]
+                headers = MutableHeaders(scope=message)
+                headers["X-Request-ID"]           = request_id
+                headers["X-Content-Type-Options"] = "nosniff"
+                headers["X-Frame-Options"]        = "DENY"
+                headers["Referrer-Policy"]        = "strict-origin-when-cross-origin"
+                if settings.is_production:
+                    # Docs (Swagger UI, which needs a CDN) are disabled in production, so a
+                    # lock-down CSP is safe here and would only break the dev docs page.
+                    headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+                    headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            await send(message)
 
-        response = await call_next(request)
-
-        response.headers["X-Request-ID"]           = request_id
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"]        = "DENY"
-        response.headers["Referrer-Policy"]        = "strict-origin-when-cross-origin"
-
-        if settings.is_production:
-            # Docs (Swagger UI, which needs a CDN) are disabled in production, so a
-            # lock-down CSP is safe here and would only break the dev docs page.
-            response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
-            response.headers["Strict-Transport-Security"] = (
-                "max-age=31536000; includeSubDomains"
+        try:
+            oversized = _content_length_exceeds(request, _max_body_bytes(request, settings))
+            if oversized is not None:
+                await oversized(scope, receive, send_with_headers)
+            else:
+                await self.app(scope, receive, send_with_headers)
+        except Exception:
+            log.exception("unhandled_error")
+            if response_started:
+                raise   # too late to send an error response; the server closes the connection
+            response = JSONResponse(
+                status_code=500,
+                content=_error_body(
+                    500, str(ErrorCode.INTERNAL_ERROR), "An unexpected error occurred", request,
+                ),
             )
+            await response(scope, receive, send_with_headers)
+        finally:
+            log.info(
+                "request",
+                method=request.method,
+                path=request.url.path,
+                status=status,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                # Redact query params that might carry sensitive data
+                has_query=bool(scope.get("query_string")),
+            )
+            structlog.contextvars.unbind_contextvars("request_id")
 
-        structlog.contextvars.unbind_contextvars("request_id")
-        return response
+
+def _max_body_bytes(request: Request, settings) -> int:
+    # The batch route carries many files, so it gets a larger ceiling than the
+    # single-file cap (which would otherwise 413 a valid multi-file batch).
+    if request.method == "POST" and request.url.path.rstrip("/").endswith("/resume/batch"):
+        return settings.max_batch_request_bytes
+    return settings.max_request_bytes
 
 
 def _content_length_exceeds(request: Request, max_bytes: int) -> JSONResponse | None:
     """Return a 413 response when the request's Content-Length exceeds `max_bytes`.
 
-    Returns None when there is no Content-Length (e.g. chunked) or it is within
-    the limit - those bodies are still bounded by each endpoint's own size check.
+    Rejects an over-sized body from its declared length BEFORE it is read into
+    memory - defense-in-depth above each endpoint's file-size check. Returns None
+    when there is no Content-Length (e.g. chunked) or it is within the limit -
+    those bodies are still bounded by each endpoint's own size check.
     """
     raw = request.headers.get("content-length")
     if raw is None:
@@ -104,27 +165,6 @@ def _content_length_exceeds(request: Request, max_bytes: int) -> JSONResponse | 
     )
 
 
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Log every request: method, path, status, duration - no body content."""
-
-    async def dispatch(self, request: Request, call_next):
-        start = time.monotonic()
-        response = await call_next(request)
-        duration_ms = int((time.monotonic() - start) * 1000)
-
-        log.info(
-            "request",
-            method=request.method,
-            path=request.url.path,
-            status=response.status_code,
-            duration_ms=duration_ms,
-            request_id=response.headers.get("X-Request-ID", ""),
-            # Redact query params that might carry sensitive data
-            has_query=bool(request.url.query),
-        )
-        return response
-
-
 # -- Error envelope ------------------------------------------------------------
 
 def _error_body(
@@ -144,8 +184,7 @@ def _error_body(
             "error_code":  error_code,
             "detail":      detail,
             "hint":        hint or get_hint(error_code),
-            "request_id":  getattr(request.state, "request_id", None)
-                           or request.headers.get("X-Request-ID", ""),
+            "request_id":  getattr(request.state, "request_id", ""),
         }
     }
 
@@ -192,7 +231,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Middleware - outermost first.
     # CORS is handled here (single source of truth); the Lambda Function URL does
     # NOT also set CORS, which would double the Access-Control-* headers.
     #
@@ -205,8 +243,9 @@ def create_app() -> FastAPI:
     else:
         cors_origins = []
 
-    app.add_middleware(RequestLoggingMiddleware)
-    app.add_middleware(SecurityHeadersMiddleware)
+    # Added innermost-first (see the module docstring): CORS ends up outside the
+    # request-context middleware.
+    app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
@@ -218,6 +257,8 @@ def create_app() -> FastAPI:
     app.include_router(router)
 
     # -- Unified error handlers ------------------------------------------------
+    # Unhandled exceptions are turned into the 500 envelope by
+    # RequestContextMiddleware, so the response still carries X-Request-ID and CORS.
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -255,39 +296,19 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ResumeParserError)
     async def domain_error_handler(request: Request, exc: ResumeParserError) -> JSONResponse:
-        log.warning("domain_error", error_type=type(exc).__name__, error=str(exc))
-        # These are client-input problems (an unreadable/encrypted PDF, a scan OCR
-        # can't decode, a spoofed type), not server faults - surface them as 4xx so
-        # callers know retrying the same file won't help, rather than a blanket 500.
-        if isinstance(exc, OCRError):
-            status, code = 422, ErrorCode.OCR_FAILED
-        elif isinstance(exc, ExtractionError):
-            status, code = 422, ErrorCode.EXTRACTION_FAILED
-        elif isinstance(exc, FileValidationError):
-            status, code = 415, ErrorCode.UNSUPPORTED_FILE_TYPE
+        # Client-input problems (an unreadable/encrypted PDF, a scan OCR can't
+        # decode, a spoofed type) surface as 4xx so callers know retrying the same
+        # file won't help. The mapping - and what text is safe to return - lives in
+        # public_error(), shared with the worker's failed jobs and parse.failed.
+        failure = public_error(exc)
+        if failure.status_code >= 500:
+            log.error("domain_error", error_type=type(exc).__name__, exc_info=exc)
         else:
-            status, code = 500, ErrorCode.PARSE_FAILED
+            log.warning("domain_error", error_type=type(exc).__name__,
+                        error_code=failure.error_code.value)
         return JSONResponse(
-            status_code=status,
-            content=_error_body(
-                status, type(exc).__name__,
-                "Resume processing failed. See the X-Request-ID header for support tickets."
-                if status >= 500 else str(exc),
-                request,
-                hint=get_hint(str(code)),
-            ),
-        )
-
-    @app.exception_handler(Exception)
-    async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        log.error("unhandled_error", error_type=type(exc).__name__, error=str(exc))
-        return JSONResponse(
-            status_code=500,
-            content=_error_body(
-                500, str(ErrorCode.INTERNAL_ERROR),
-                "An unexpected error occurred",
-                request,
-            ),
+            status_code=failure.status_code,
+            content=_error_body(failure.status_code, failure.error_code.value, failure.detail, request),
         )
 
     return app

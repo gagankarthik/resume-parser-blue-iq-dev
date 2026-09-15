@@ -3,13 +3,9 @@
 import time
 from datetime import UTC, datetime
 
-from botocore.exceptions import ClientError
-
 from app.core.config import get_settings
-from app.core.logging import get_logger
 from app.db._client import _get_dynamodb
 
-log = get_logger(__name__)
 
 def _batch_table(settings=None):
     if settings is None:
@@ -51,43 +47,39 @@ def increment_batch_counter(batch_id: str, field: str) -> bool:
     Atomically increment 'completed' or 'failed' counter.
     Returns True when all files in the batch are done (completed + failed == total),
     which signals the caller to fire the batch.completed webhook.
+
+    A failed write raises. It used to be logged and reported as "not done", which
+    hid a lost count behind a batch that simply never completed.
     """
     table = _batch_table()
-    try:
-        resp = table.update_item(
-            Key={"batch_id": batch_id},
-            UpdateExpression="ADD #f :one",
-            ExpressionAttributeNames={"#f": field},
-            ExpressionAttributeValues={":one": 1},
-            ReturnValues="ALL_NEW",
-        )
-        item = resp.get("Attributes", {})
-        total = int(item.get("total", 0))
-        completed = int(item.get("completed", 0))
-        failed = int(item.get("failed", 0))
-        done = completed + failed
+    resp = table.update_item(
+        Key={"batch_id": batch_id},
+        UpdateExpression="ADD #f :one",
+        ExpressionAttributeNames={"#f": field},
+        ExpressionAttributeValues={":one": 1},
+        ReturnValues="ALL_NEW",
+    )
+    item = resp.get("Attributes", {})
+    total = int(item.get("total", 0))
+    completed = int(item.get("completed", 0))
+    failed = int(item.get("failed", 0))
 
-        if done >= total and total > 0:
-            # Finalize status
-            if failed == 0:
-                final_status = "completed"
-            elif completed == 0:
-                final_status = "failed"
-            else:
-                final_status = "partial"
-
-            table.update_item(
-                Key={"batch_id": batch_id},
-                UpdateExpression="SET #s = :s, completed_at = :t",
-                ExpressionAttributeNames={"#s": "status"},
-                ExpressionAttributeValues={
-                    ":s": final_status,
-                    ":t": datetime.now(UTC).isoformat(),
-                },
-            )
-            return True  # batch is finished
+    if total <= 0 or completed + failed < total:
         return False
 
-    except ClientError as exc:
-        log.error("batch_counter_update_failed", batch_id=batch_id, error=str(exc))
-        return False
+    if failed == 0:
+        final_status = "completed"
+    elif completed == 0:
+        final_status = "failed"
+    else:
+        final_status = "partial"
+    table.update_item(
+        Key={"batch_id": batch_id},
+        UpdateExpression="SET #s = :s, completed_at = :t",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={
+            ":s": final_status,
+            ":t": datetime.now(UTC).isoformat(),
+        },
+    )
+    return True  # batch is finished
