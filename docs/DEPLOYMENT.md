@@ -51,7 +51,7 @@ Worker), so every deploy and rollback updates both to keep them on one code vers
 
 ## 3. OpenAI
 
-Every model call — the single-shot parser, all orchestrator agents, and the specialty-AI tier —
+Every model call — the resume gate, the single-shot parser, all orchestrator agents, and the specialty-AI tier —
 runs through one shared executor, `app/services/llm/client.py::structured_parse`.
 
 - **Model:** `gpt-4.1-mini` (structured outputs), deterministic decoding (`temperature=0`, fixed
@@ -64,6 +64,10 @@ runs through one shared executor, `app/services/llm/client.py::structured_parse`
 - **Backpressure:** the Worker's reserved concurrency and the SQS event-source mapping's
   `maximum_concurrency` bound concurrent OpenAI calls during a batch burst; an opt-in per-process
   token-bucket (`LLM_RATE_LIMIT_RPM`) smooths the per-role fan-out.
+- **Resume gate:** one small extra call per parse (first 6K characters) rejects a document that is
+  not a resume with `NOT_A_RESUME`. It fails open on any model error. Turn it off with
+  `ENABLE_RESUME_CLASSIFIER=false` on the Worker function; the empty-document check stays on
+  regardless.
 
 All OpenAI/resilience settings are documented in [`.env.example`](../.env.example).
 

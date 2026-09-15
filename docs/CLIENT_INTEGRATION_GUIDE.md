@@ -77,6 +77,12 @@ X-API-Key: rp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 Files are validated by **magic bytes**, not just extension - a renamed file is rejected.
 
+**Resumes only.** An empty upload is rejected on the request with `422 NOT_A_RESUME`. After the
+text is extracted, the worker also checks that the document actually is a resume: an empty
+document (a blank page, an image with no text) or a different kind of document (a job
+description, cover letter, invoice, contract...) fails the job with the same code,
+`NOT_A_RESUME`. See [Errors](#9-errors).
+
 ### One response mode — always asynchronous
 
 **Every file follows the same path, chosen automatically:** the request is accepted, the
@@ -130,7 +136,7 @@ then parse by reference. Three steps:
 {
   "job_id": "01J3K5...",
   "upload_url": "https://...s3.amazonaws.com/",
-  "fields": { "key": "temp/01J3.../jane_smith_rn.pdf", "x-amz-server-side-encryption": "AES256", "policy": "...", "x-amz-signature": "..." },
+  "fields": { "key": "temp/01J3.../source.pdf", "x-amz-server-side-encryption": "AES256", "policy": "...", "x-amz-signature": "..." },
   "max_file_size_mb": 10,
   "expires_in_seconds": 900,
   "parse_url": "/api/v1/resume/parse-uploaded"
@@ -154,6 +160,9 @@ The response is identical to `/resume/parse` — `status: "processing"` with a `
 so fetch the result by polling (Section 4) or via a webhook.
 
 > The upload URL expires after `expires_in_seconds` (15 min). After that, request a new one.
+>
+> If the upload never completed, parse-uploaded answers `422 UPLOAD_NOT_FOUND`. If storage is
+> briefly unavailable it answers `503 SERVICE_UNAVAILABLE`: request a new upload URL and try again.
 
 ---
 
@@ -167,14 +176,20 @@ so fetch the result by polling (Section 4) or via a webhook.
   "status": "completed",
   "data": { "...": "..." },
   "confidence": { "...": "..." },
-  "error": null
+  "error": null,
+  "error_code": null
 }
 ```
 
 - Statuses: `processing` -> `completed` | `partial` | `failed`. **`processing` is the only
   non-terminal status** - keep polling while you see it, and treat any status you do not
   recognise as non-terminal rather than as an end state.
-- On `failed`, `error` contains a description and `data` is `null`.
+- On `failed`, `data` is `null`, `error` describes what went wrong, and `error_code` is the
+  machine-readable reason to branch on - e.g. `NOT_A_RESUME` when the file was empty or was not
+  a resume (retrying the same file will not help). A failed job's `error_code` is one of
+  `NOT_A_RESUME`, `EXTRACTION_FAILED`, `OCR_FAILED`, `UNSUPPORTED_FILE_TYPE`, `PARSE_TIMEOUT`,
+  `PARSE_FAILED` or `WORKER_DISPATCH_FAILED`. `error` is written for people and never contains
+  internal system details (the same `error` and `error_code` arrive in `parse.failed`).
 - **Results live for 1 hour**, then expire (`404 JOB_NOT_FOUND`). Fetch and persist
   them on your side promptly.
 - Suggested polling: every 2-3 s, with a ~2 min ceiling. Prefer webhooks for scale.
@@ -228,7 +243,9 @@ matched back to the file it came from:
 ```
 
 (`job_ids` is the same IDs without the filenames, kept for existing integrations.)
-Invalid files are listed in `skipped_files` and do not count toward `total`. All files
+Invalid files (wrong type, too large, or empty) are listed in `skipped_files`, each with a
+human-readable `reason` and a machine-readable `error_code` (e.g. `NOT_A_RESUME`,
+`FILE_TOO_LARGE`), and do not count toward `total`. All files
 process asynchronously - track via per-file `parse.completed` webhooks and the
 `batch.completed` webhook, or poll:
 
@@ -283,7 +300,7 @@ Response (`201`) - **the `hmac_secret` is returned only once; store it now:**
 ```
 `parse.failed`:
 ```json
-{ "event": "parse.failed", "job_id": "01J3...", "error": "OCR failed: ..." }
+{ "event": "parse.failed", "job_id": "01J3...", "error": "The document is not a resume (it looks like a job description).", "error_code": "NOT_A_RESUME" }
 ```
 `batch.completed`:
 ```json
@@ -350,6 +367,17 @@ There are no request-rate limits on the API. Please still upload responsibly
 ## 8. Output schema
 
 `data` (present on `completed`). All fields are nullable - missing info is `null`, not omitted.
+
+The record is cleaned before it is returned:
+
+- **No duplicates.** A role, degree, certification, licence, reference, skill, language, award,
+  or duty bullet that the resume lists more than once appears once. Repeats are merged, so a
+  value only one copy had is kept. Entries that differ on an identifying detail (dates, licence
+  number) are separate entries and both stay - e.g. two contracts at the same hospital, or a BLS
+  renewal.
+- **Spelling.** Clear typos in ordinary words and clinical terms are corrected ("Registerd Nurse"
+  -> "Registered Nurse"). Names of people, employers, schools and places, emails, URLs, and
+  licence/credential numbers are always kept exactly as written.
 
 ```json
 {
@@ -480,9 +508,16 @@ All errors share one envelope:
 | 403 | `REVOKED_API_KEY` |
 | 404 | `JOB_NOT_FOUND`, `BATCH_NOT_FOUND`, `WEBHOOK_NOT_FOUND` |
 | 413 | `FILE_TOO_LARGE` |
-| 415 | `UNSUPPORTED_FILE_TYPE`, `CORRUPTED_FILE` |
-| 422 | `VALIDATION_ERROR`, `BATCH_TOO_LARGE`, `EMPTY_BATCH`, `RETRY_LIMIT_REACHED` |
+| 415 | `UNSUPPORTED_FILE_TYPE` |
+| 422 | `NOT_A_RESUME`, `VALIDATION_ERROR`, `BATCH_TOO_LARGE`, `EMPTY_BATCH`, `RETRY_LIMIT_REACHED` |
 | 500 | `PARSE_FAILED`, `EXTRACTION_FAILED`, `OCR_FAILED`, `INTERNAL_ERROR` |
+| 503 | `SERVICE_UNAVAILABLE`, `WORKER_DISPATCH_FAILED` |
+
+**`NOT_A_RESUME`** is one code for two cases: the file is empty, or it is not a resume (a job
+description, cover letter, invoice, contract...). An empty (0-byte) upload is rejected on the
+request itself with HTTP 422. Anything else is checked after its text is extracted, so it
+arrives as a `failed` job: the poll response carries `"error_code": "NOT_A_RESUME"` and so does
+the `parse.failed` webhook. Retrying the same file will not help; upload the candidate's resume.
 
 For transient `5xx`, retry with exponential backoff. For `4xx`, fix the request.
 
@@ -512,7 +547,8 @@ def parse_resume(path: str) -> dict:
         if jr["status"] == "completed":
             return jr["data"]
         if jr["status"] == "failed":
-            raise RuntimeError(jr["error"])
+            # error_code is machine-readable: NOT_A_RESUME = empty file or not a resume
+            raise RuntimeError(f'{jr["error_code"]}: {jr["error"]}')
     raise TimeoutError("parse did not finish in time")
 
 print(parse_resume("resume.pdf"))
@@ -536,7 +572,8 @@ async function parseResume(file /* Blob/File */) {
     await new Promise((r) => setTimeout(r, 2000));
     const jr = await (await fetch(`${BASE}/resume/job/${jobId}`, { headers: HEADERS })).json();
     if (jr.status === "completed") return jr.data;
-    if (jr.status === "failed") throw new Error(jr.error);
+    // error_code is machine-readable: NOT_A_RESUME = empty file or not a resume
+    if (jr.status === "failed") throw new Error(`${jr.error_code}: ${jr.error}`);
   }
   throw new Error("parse did not finish in time");
 }
@@ -573,6 +610,7 @@ async function parseResume(file /* Blob/File */) {
 - [ ] Make webhook handling idempotent (key on `job_id`)
 - [ ] Persist results within the 1-hour window
 - [ ] Surface `error.hint` to users; log `error.request_id` for support
+- [ ] Handle `NOT_A_RESUME` (submit response, `failed` poll, or `parse.failed`): ask the user for the candidate's resume; do not auto-retry the same file
 - [ ] Keep uploads under 10 MB (and under ~6 MB while the API is fronted by a Lambda Function URL)
 
 Questions or higher limits: contact us with your `request_id` where relevant.

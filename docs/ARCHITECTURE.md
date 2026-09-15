@@ -166,6 +166,10 @@ A single orchestrator (`app/services/pipeline.py`) runs every stage on the worke
  3. Clean             Unicode-safe: strips control chars, preserves
         |             international names (é, ñ, Arabic, CJK), fixes ligatures
         v
+ 3b.Resume gate       Empty text (< 5 words) or not a resume -> job fails NOT_A_RESUME
+        |             before any AI parse budget is spent. One small LLM call on the
+        |             first 6K chars; rejects only when confident, fails open on error.
+        v
  4. Rule anchors      Regex: email, phone, LinkedIn / GitHub / portfolio URLs
         |             - passed to AI as ground truth (anti-hallucination)
         v
@@ -182,6 +186,8 @@ A single orchestrator (`app/services/pipeline.py`) runs every stage on the worke
         |
  8. Normalize         Skills, degrees, dates, healthcare specialties
         |             (e.g. "Sr Dev" -> "Senior Developer", "MSc" -> "Master of Science")
+        |             + duplicate merge: repeated roles, degrees, certs, licences, bullets
+        |             and list items collapse into one entry, values from both kept
         v
  8b.Specialty match   Per-role specialties -> catalog id + confidence (tiered:
         |             name / full-name / keyword, then a batched AI shortlist pick;
@@ -224,6 +230,8 @@ A **hybrid rule-based + AI** approach:
 | Anchor injection | Contact facts come from regex, not the model - eliminates hallucination |
 | Section-scoped prompting | Lower token count, better locality, lower cost |
 | `temperature = 0` | Deterministic, reproducible parses |
+| Resume gate | A small up-front classification call rejects empty / non-resume documents (`NOT_A_RESUME`) before the parse spends tokens |
+| Spelling + no-repeat rules | Every prompt corrects clear typos (never names, places, or numbers) and never emits an entry twice; a deterministic merge in normalization backs this up |
 | Single automatic retry | Recovers transient failures without user impact |
 | Confidence scoring | Surfaces uncertain fields for human review |
 
@@ -280,7 +288,7 @@ Point-in-time recovery is enabled on the durable tables (`api_keys`, `jobs`, `we
 
 | Data | Where | Lifetime |
 |---|---|---|
-| Raw resume file | S3 `temp/{job_id}/{filename}`, SSE-AES256 | Deleted in `finally` block immediately after processing |
+| Raw resume file | S3 `temp/{job_id}/source{ext}`, SSE-AES256 (the original filename is never part of the key, so it never reaches logs) | Deleted in `finally` block immediately after processing |
 | Parsed result | DynamoDB `jobs` | 1 hour (TTL), then auto-deleted - retrieved via the poll endpoint or webhook |
 | Audit log | DynamoDB `audit_logs` | 90 days - **metadata only** (`job_id`, `company_id`, `file_type`, `file_size_bytes`, `status`, `duration_ms`, `ocr_used`, `ai_tokens_used`, `error_code`). **No content, no PII.** |
 | **Feedback (original + corrected parse)** | DynamoDB `feedback` | **90 days (`feedback_retention_days`) - CONTAINS CANDIDATE PII.** Written only when a caller submits corrections to `POST /resume/{job_id}/feedback`. This is the only store of parsed resume content in the system. |
@@ -310,6 +318,7 @@ Automatic retry (AI: 1x) - OCR fallback (Tesseract -> Textract)
      |
      v
 Job marked  failed  ->  parse.failed webhook  +  status via poll endpoint
+                         (both carry error + error_code, e.g. NOT_A_RESUME)
      |
      v
 Client retry endpoint  (POST /resume/{job_id}/retry, up to MAX_RETRY_COUNT)
@@ -362,6 +371,10 @@ request path):
   "warnings": []
 }
 ```
+
+A failed job returns `status: "failed"`, `data: null`, a human-readable `error`, and a
+machine-readable `error_code`. `NOT_A_RESUME` is one code for an empty document and for a document
+that is not a resume; a 0-byte upload gets it straight from the submit request as HTTP 422.
 
 ---
 

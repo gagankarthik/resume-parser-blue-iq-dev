@@ -54,6 +54,10 @@ failure. **A change that breaks one of these is a regression, no matter what the
 1. **Never return nothing.** A hard resume degrades through a ladder - multi-agent -> single-shot
    -> deterministic floor - but the caller always receives a structured record. The floor
    (`heuristic_parser`) cannot time out and cannot be empty.
+   The one deliberate exception is a file that is not a resume at all: an empty document or the
+   wrong kind of document fails fast with `NOT_A_RESUME` (`parsing/resume_gate.py`) instead of
+   returning a hollow record that reads as a success. The gate fails open - a model error never
+   rejects a document.
 2. **Never return a silent partial.** If the parse degraded, `partial=True` and a human-readable
    warning says so. A degraded record that *looks* complete is worse than an honest failure.
 3. **Never fabricate.** Regex-extracted contact anchors are passed to the LLM as ground truth.
@@ -117,11 +121,12 @@ Client --HTTPS--> CloudFront (60s origin read timeout) --> API Lambda (Function 
 | Classify | `extraction/classifier.py` | File type -> extraction strategy |
 | Extract | `extraction/{pdf,docx,rtf,ocr}_extractor.py` | Bytes -> text. PyMuPDF is layout-aware; a garbled CID text layer falls back to OCR |
 | Clean | `pipeline._clean_text` | Unicode-safe scrub. Preserves international names |
+| Resume gate | `parsing/resume_gate.py` | Empty text or not a resume -> `NotAResumeError` (`NOT_A_RESUME`) before any parse budget is spent |
 | Anchors | `parsing/rule_parser.py` | Regex email/phone/URLs -> fed to the LLM as ground truth |
 | Sections | `parsing/section_detector.py` | Header segmentation |
 | **Parse** | `parsing/orchestrator.py` - `ai_parser.py` - `heuristic_parser.py` | The three-tier ladder. See below |
 | Validate | `models/schemas/resume.py` | Pydantic v2 enforcement |
-| Normalize | `normalization/normalizer.py` | Degrees, dates, credentials, geography/facility IDs, compliance |
+| Normalize | `normalization/normalizer.py` | Degrees, dates, credentials, geography/facility IDs, compliance, duplicate merge |
 | Catalog match | `normalization/specialty_matcher.py` - `city_resolver.py` | Free text -> GigHealth IDs |
 | Score | `scoring/confidence_scorer.py` | Per-section + overall 0-1 confidence |
 
@@ -140,7 +145,7 @@ single-shot fallback.
 
 ### The shared LLM executor (`services/llm/`)
 
-Every LLM call - single-shot, all the orchestrator agents, and the specialty-AI tier - goes
+Every LLM call - the resume gate, single-shot, all the orchestrator agents, and the specialty-AI tier - goes
 through **one** function, `llm.client.structured_parse`, so the resilience policy is defined
 once instead of drifting across call sites. It wraps a provider call with:
 
@@ -154,6 +159,8 @@ once instead of drifting across call sites. It wraps a provider call with:
   `gpt-4.1-mini` only). Same model + params → no accuracy shift, so it needs no separate
   benchmark; a cross-*vendor* fallback would and is intentionally not wired. A content error
   (repetition-loop, empty output, 400) does **not** fall over - the same model would fail identically.
+  It counts as the provider answering, so it also closes a half-open breaker; a probe cancelled by
+  a stage timeout is released rather than holding the breaker open for the container's lifetime.
 - **A token-bucket RPM limiter** ahead of the fan-out (per process, opt-in). The cross-instance
   backpressure lever in production is the SQS event-source mapping's `maximum_concurrency` +
   Lambda reserved concurrency (see §5 diagram), which a per-process bucket cannot replace.
@@ -168,6 +175,7 @@ essential for warm Lambda reuse.
 
 | Agent | Stage | Job |
 |---|---|---|
+| `ResumeGateAgent` | pre-parse | Is this a resume? One small call on the first 6K chars; rejects only at confidence >= 0.8 and fails open. Off with `ENABLE_RESUME_CLASSIFIER=false` |
 | `StructureAgent` | 1, sequential | Map every role + exact bullet count; decompose travel/agency umbrellas per facility |
 | `PersonalInfoAgent` | 2, parallel | Name, post-nominals, headline, address, phones, summary |
 | `WorkExperienceAgent` | 2 | **One LLM call per role**, told the expected bullet count |
@@ -176,6 +184,13 @@ essential for warm Lambda reuse.
 | `SupplementalAgent` | 2 | References, awards, publications, languages |
 | `ValidatorAgent` | 3, sequential | Re-extract any role whose bullet count ≠ the map |
 | `SpecialtyMatchAgent` | post | Tier-4 batched specialty -> catalog ID |
+
+Every extraction prompt shares `agents/prompts.py::CORE_RULES` (the single-shot prompt in
+`ai_parser.py` mirrors it). Besides no-fabrication and date precision, it tells the model to fix
+clear typos in ordinary words and clinical terms - never in names, places, emails, URLs or
+numbers - and never to emit the same entry twice. Repeats that still get through are merged
+deterministically by `normalizer._dedup_history` / `_dedup_credentials`, which fill blanks from
+the copy rather than drop it.
 
 ### The catalogs (`services/normalization/`)
 
@@ -260,8 +275,8 @@ Recorded here because stale docs cost more than no docs.
   counter, **disabled by default**. It does not survive a cold start and does not coordinate
   across concurrent Lambdas.
 - **7 DynamoDB tables**, not 6. Default model is `gpt-4.1-mini`, not GPT-4o.
-- **Region is `us-east-2`.** The `Makefile` says `us-east-1` and targets Lambda function names
-  that do not exist. Do not trust it.
+- **Region is `us-east-2`.** The `Makefile` has no deploy targets any more (they defaulted to
+  `us-east-1` and named Lambda functions that never existed); CI owns deploys.
 - **Terraform does not manage production.** `infrastructure/terraform/` has **never been
   applied** - its state bucket does not exist. Every live resource was created outside it, and
   Terraform holds no state for any of them. The config *describes* the stack; it does not
@@ -281,6 +296,6 @@ Recorded here because stale docs cost more than no docs.
   Terraform note in §8. A redeploy will not pick up a new secret, and neither will an apply.
 - **Rollback:** `rollback.yml` (`workflow_dispatch`) -> verify tag in ECR -> update -> smoke test.
   Shares a concurrency group with deploy so the two cannot race.
-- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **575 passing**.
+- **Quality gate:** ruff + mypy + `pytest --cov-fail-under=70`. Current: **745 passing**.
 - **Local:** `docker-compose up` (LocalStack: S3 + DynamoDB). Note `Dockerfile` is dev-only -
   `Dockerfile.lambda` is what ships.

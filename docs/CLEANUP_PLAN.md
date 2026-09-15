@@ -172,9 +172,9 @@ Each of these is a place where a future fix will get applied to one copy and not
 
 | # | Duplication | Locations |
 |---|---|---|
-| C1 | `_slug()` + `_public()` byte-for-byte identical; company-creation body near-identical | `admin.py:52,61,72` / `auth.py:58,63,80` |
-| C2 | **Webhook CRUD implemented twice** - same validation, same SSRF guard, same secret-once semantics | `webhooks.py` (API-key scoped) / `admin.py:356-414` (admin scoped) |
-| C3 | API-key issuance implemented twice | `admin.py:174-191` / `account.py:47-58` |
+| C1 | ✅ PARTLY DONE. `_slug()` is now one `services/application/companies.new_company_id`. The two `_public()` serializers are no longer identical - admin returns `active_key_count`, the account one fills defaults - and merging them would change response shapes, so they stay separate on purpose | `admin.py` / `auth.py` |
+| C2 | ✅ DONE. Webhook registration (validation, SSRF guard, secret-once) is one `services/application/webhooks.register_webhook`, used by both routes | `webhooks.py` / `admin.py` |
+| C3 | ✅ DONE. API-key issuance is one `services/application/companies.issue_api_key`, used by both routes | `admin.py` / `account.py` |
 | C4 | **Extraction rules prompt maintained twice** - the single-shot prompt restates the certification/licence classification rules nearly verbatim against the per-agent versions. `prompts.py:3-4` *explicitly acknowledges the drift risk*; shared `CORE_RULES` covers only part of it | `parsing/ai_parser.py:90-173` / `agents/prompts.py` + `agents/*.py` |
 
 C4 is the dangerous one: prompt drift between the sync path (single-shot) and the async path
