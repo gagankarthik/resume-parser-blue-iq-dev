@@ -20,7 +20,6 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import TypeVar, cast
 
 from pydantic import BaseModel
 
@@ -30,8 +29,6 @@ from app.services.llm.client import structured_parse
 from app.services.refinement import store as refinement_store
 
 log = get_logger(__name__)
-
-_MODEL = TypeVar("_MODEL", bound=BaseModel)
 
 # Per-event-loop concurrency gate, rebuilt when the running loop changes (see the
 # module docstring - warm Lambda worker reuse).
@@ -107,16 +104,16 @@ class BaseAgent:
     # (structure, work, validator) leave it False so they always use the primary model.
     FAST_TIER: bool = False
 
-    async def _structured_call(
+    async def _structured_call[M: BaseModel](
         self,
         system: str,
         user: str,
-        response_format: type[_MODEL],
+        response_format: type[M],
         meter: TokenMeter,
         *,
         max_tokens: int | None = None,
         model: str | None = None,
-    ) -> _MODEL:
+    ) -> M:
         """Run one structured-output call, recording usage into `meter`.
 
         Delegates the provider call + resilience (retry/backoff, circuit breaker,
@@ -169,4 +166,4 @@ class BaseAgent:
             self.name, tokens, prompt=prompt_tok, completion=completion_tok,
             cached=cached_tok, ms=elapsed_ms,
         )
-        return cast(_MODEL, result.parsed)
+        return result.parsed

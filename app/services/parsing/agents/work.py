@@ -110,7 +110,7 @@ class WorkExperienceAgent(BaseAgent):
                 *[self._extract_one(text, roles[i], meter) for i in retry],
                 return_exceptions=True,
             )
-            for idx, res in zip(retry, again):
+            for idx, res in zip(retry, again, strict=True):
                 if not isinstance(res, Exception):
                     results[idx] = res
 

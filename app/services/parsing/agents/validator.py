@@ -26,11 +26,17 @@ from .work import apply_role_boundary
 
 log = get_logger(__name__)
 
-_SYSTEM = f"""You RE-EXTRACT one work-history role from a healthcare resume - the previous pass had the wrong number of responsibility bullets.
+def _system(expected: int) -> str:
+    """The re-extraction system prompt for a role with `expected` bullets.
+
+    Interpolated, never `str.format`ted: CORE_RULES is shared plain text, and a
+    literal brace added to it would make `.format` raise on every re-extraction.
+    """
+    return f"""You RE-EXTRACT one work-history role from a healthcare resume - the previous pass had the wrong number of responsibility bullets.
 
 {CORE_RULES}
 
-This role has EXACTLY {{expected}} responsibility bullet(s). Extract all {{expected}} into description[], verbatim, one per item - do NOT add, skip, or merge any. Also return every other field you can find (company, role, dates, location, city/state/zip, employer_phone, profession, specialties, agency_name, shift, charting_system, achievements ...) using the same schema, so nothing from the first pass is lost. specialties is a list of OBJECTS each with just a name (e.g. [{{{{"name": "ICU"}}}}]) - fill only `name`.
+This role has EXACTLY {expected} responsibility bullet(s). Extract all {expected} into description[], verbatim, one per item - do NOT add, skip, or merge any. Also return every other field you can find (company, role, dates, location, city/state/zip, employer_phone, profession, specialties, agency_name, shift, charting_system, achievements ...) using the same schema, so nothing from the first pass is lost. specialties is a list of OBJECTS each with just a name (e.g. [{{"name": "ICU"}}]) - fill only `name`.
 
 EMBEDDED CITY: if the role has no separate address but its facility NAME contains a real US city/town, set `city` to that place ("Elderwood of Lockport" -> "Lockport"); leave `state` null (the system infers it). NEVER mine a state, region, hospital-system, university, or person's name as a city."""
 
@@ -113,7 +119,7 @@ class ValidatorAgent(BaseAgent):
             return_exceptions=True,
         )
 
-        for (idx, role), res in zip(mismatches, results):
+        for (idx, role), res in zip(mismatches, results, strict=True):
             expected = role.bullet_count
             if isinstance(res, Exception) or res is None:
                 warnings.append(
@@ -134,7 +140,7 @@ class ValidatorAgent(BaseAgent):
         return work, warnings
 
     async def _reextract(self, text: str, role: RoleBoundary, meter: TokenMeter) -> ExperienceItem:
-        system = _SYSTEM.format(expected=role.bullet_count)
+        system = _system(role.bullet_count)
         user = (
             f"Role: {role.company} | {role.title or ''} | "
             f"{role.start_date or ''}-{role.end_date or ''}\n\n"

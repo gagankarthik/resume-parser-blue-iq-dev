@@ -54,11 +54,8 @@ _YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 
 def extract(content: bytes) -> str:
     try:
-        doc = fitz.open(stream=content, filetype="pdf")
-        pages: list[str] = []
-        for page in doc:
-            pages.append(_extract_page(page))
-        doc.close()
+        with fitz.open(stream=content, filetype="pdf") as doc:  # closed on error too
+            pages = [_extract_page(page) for page in doc]
         return "\n\n".join(p for p in pages if p.strip())
     except Exception as exc:
         raise ExtractionError(f"PDF extraction failed: {exc}") from exc

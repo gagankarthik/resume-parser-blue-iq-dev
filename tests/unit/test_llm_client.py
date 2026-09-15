@@ -145,3 +145,77 @@ async def test_non_retryable_400_no_fallback(base_settings, monkeypatch):
     with pytest.raises(AIParsingError):
         await _call()
     assert "azure" not in calls
+
+
+async def test_transient_then_length_loop_is_content_error_no_fallback(base_settings, monkeypatch):
+    # A 429 spends the first attempt, then the loop-break penalties spend the rest.
+    # The attempt loop ends on a repetition loop - a content error - so it must
+    # neither count against the breaker nor fall over to the same model on Azure.
+    monkeypatch.setattr(base_settings, "llm_max_retries", 3)
+    monkeypatch.setattr(base_settings, "llm_circuit_breaker_enabled", True)
+    monkeypatch.setattr(base_settings, "llm_circuit_fail_threshold", 1)
+    monkeypatch.setattr(client, "backoff_delay", lambda *a, **k: 0.0)
+    _enable_azure(monkeypatch, base_settings)
+    calls = _script_raw(monkeypatch, {
+        "openai": [_rate_limit(), _length_error(), _length_error()],
+        "azure":  [_resp()],
+    })
+    with pytest.raises(AIParsingError):
+        await _call()
+    assert calls["openai"] == 3
+    assert "azure" not in calls
+    assert client._get_breaker("openai").is_open is False
+
+
+def _open_primary_breaker(monkeypatch, s):
+    """Open the primary breaker with one failure and move the clock past its reset
+    window, so the next call is the single half-open probe."""
+    from app.services.llm import resilience
+
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(resilience, "_now", lambda: clock["t"])
+    monkeypatch.setattr(s, "llm_circuit_breaker_enabled", True)
+    monkeypatch.setattr(s, "llm_circuit_fail_threshold", 1)
+    monkeypatch.setattr(s, "llm_circuit_reset_seconds", 30)
+    client.reset_state()
+    client._get_breaker("openai").record_failure()
+    clock["t"] += 31
+
+
+async def test_content_error_probe_closes_the_breaker(base_settings, monkeypatch):
+    # The half-open probe got an answer (a 400): the provider is up. The breaker
+    # must close, not stay half-open forever and degrade every later parse.
+    _open_primary_breaker(monkeypatch, base_settings)
+    req = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    bad = BadRequestError("bad", response=httpx.Response(400, request=req), body=None)
+    calls = _script_raw(monkeypatch, {"openai": [bad, _resp()]})
+
+    with pytest.raises(AIParsingError):
+        await _call()                      # the probe: a content error
+    result = await _call()                 # provider is healthy - the call goes through
+    assert result.provider == "openai"
+    assert calls["openai"] == 2
+
+
+async def test_cancelled_probe_releases_the_breaker(base_settings, monkeypatch):
+    # A probe cancelled by the caller's deadline (the resume gate's wait_for, an
+    # orchestrator stage timeout) resolved nothing. The next call must be allowed
+    # to probe again instead of the breaker short-circuiting for the process's life.
+    import asyncio
+
+    _open_primary_breaker(monkeypatch, base_settings)
+    calls = {"n": 0}
+
+    async def fake_raw(prov, system, user, response_format, max_tokens, penalty, semaphore, settings):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            await asyncio.sleep(10)        # hangs until the caller cancels it
+        return _resp()
+
+    monkeypatch.setattr(client, "_raw_call", fake_raw)
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(_call(), timeout=0.05)
+    result = await _call()
+    assert result.provider == "openai"
+    assert calls["n"] == 2

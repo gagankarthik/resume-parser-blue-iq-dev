@@ -7,11 +7,13 @@ Validation order:
   3. PDF text density check (digital vs scanned)
 
 Strategy:
-  PDF with extractable text  -> pdf_extractor (sync)
-  PDF with no/little text    -> ocr_extractor (async - Tesseract -> Textract)
-  DOCX                       -> docx_extractor (sync)
-  RTF                        -> rtf_extractor (sync)
-  Image (PNG/JPG/TIFF/WEBP)  -> ocr_extractor (async)
+  PDF with extractable text  -> pdf_extractor
+  PDF with no/little text    -> ocr_extractor (Tesseract -> Textract)
+  DOCX                       -> docx_extractor
+  RTF                        -> rtf_extractor
+  Image (PNG/JPG/TIFF/WEBP)  -> ocr_extractor
+
+`classify` blocks (it opens a PDF to measure its text layer): call it off the event loop.
 """
 
 from enum import Enum
@@ -31,34 +33,36 @@ class ExtractionStrategy(str, Enum):
     OCR  = "ocr"
 
 
-def classify(filename: str, content: bytes) -> tuple[ExtractionStrategy, bool]:
+def classify(filename: str, content: bytes) -> ExtractionStrategy:
     """
     Validate and classify the file.
-    Returns (strategy, needs_async).
     Raises UnsupportedFileTypeError for unknown/spoofed files.
     """
     file_type = validate_file(filename, content)   # raises on invalid
 
     if file_type == "docx":
-        return ExtractionStrategy.DOCX, False
+        return ExtractionStrategy.DOCX
 
     if file_type == "rtf":
-        return ExtractionStrategy.RTF, False
+        return ExtractionStrategy.RTF
 
     if file_type == "pdf":
         return _classify_pdf(content)
 
-    # png / jpeg / tiff / webp -> OCR, requires async
-    return ExtractionStrategy.OCR, True
+    # png / jpeg / tiff / webp -> OCR
+    return ExtractionStrategy.OCR
 
 
-def _classify_pdf(content: bytes) -> tuple[ExtractionStrategy, bool]:
+def _classify_pdf(content: bytes) -> ExtractionStrategy:
     try:
-        doc = fitz.open(stream=content, filetype="pdf")
-        total_text = "".join(page.get_text() for page in doc)
-        doc.close()
-        if len(total_text.strip()) >= _PDF_TEXT_THRESHOLD:
-            return ExtractionStrategy.PDF, False
-        return ExtractionStrategy.OCR, True
-    except Exception:
-        return ExtractionStrategy.OCR, True
+        with fitz.open(stream=content, filetype="pdf") as doc:
+            # Only whether the text layer clears the threshold matters, so stop at the
+            # first page that gets it there - pdf_extractor reads every page next.
+            text = ""
+            for page in doc:
+                text += page.get_text()
+                if len(text.strip()) >= _PDF_TEXT_THRESHOLD:
+                    return ExtractionStrategy.PDF
+        return ExtractionStrategy.OCR
+    except Exception:  # noqa: BLE001 - a PDF PyMuPDF cannot open or read may still be a readable scan; let OCR try
+        return ExtractionStrategy.OCR

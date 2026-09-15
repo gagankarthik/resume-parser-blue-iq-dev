@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.schemas import _coerce_list, _sanitize_str
+from app.models.schemas import _coerce_list
+from app.models.schemas.validators import CatalogId, UnitFloat
 
 from .base import BaseAgent, TokenMeter
 
@@ -48,32 +49,13 @@ clinical specialty/unit, and return its exact id. Rules:
 
 class SpecialtyAIMatch(BaseModel):
     raw:          str        = Field(..., description="The unmatched specialty phrase, echoed verbatim")
-    specialty_id: str | None = Field(None, description="Chosen catalog id from CANDIDATES, or null if none fits")
-    confidence:   float      = Field(0.0, description="0.0–1.0 certainty the id is correct; 0.0 when null")
+    specialty_id: CatalogId  = Field(None, description="Chosen catalog id from CANDIDATES, or null if none fits")
+    confidence:   UnitFloat  = Field(0.0, description="0.0–1.0 certainty the id is correct; 0.0 when null")
 
     @field_validator("raw", mode="before")
     @classmethod
     def _req_raw(cls, v: object) -> str:
         return v.strip() if isinstance(v, str) and v.strip() else ""
-
-    @field_validator("specialty_id", mode="before")
-    @classmethod
-    def _opt_id(cls, v: object) -> str | None:
-        if v is None or isinstance(v, bool):
-            return None
-        if isinstance(v, int | float):
-            return str(int(v)) if float(v).is_integer() else str(v)
-        return _sanitize_str(str(v)) if isinstance(v, str) else None
-
-    @field_validator("confidence", mode="before")
-    @classmethod
-    def _clamp(cls, v: object) -> float:
-        if isinstance(v, bool) or not isinstance(v, int | float | str):
-            return 0.0
-        try:
-            return min(max(float(v), 0.0), 1.0)
-        except (TypeError, ValueError):
-            return 0.0
 
 
 class SpecialtyAIResult(BaseModel):

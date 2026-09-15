@@ -30,7 +30,7 @@ from typing import Any
 from openai import AsyncAzureOpenAI, AsyncOpenAI, LengthFinishReasonError
 from pydantic import BaseModel
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.exceptions import AIParsingError
 from app.core.logging import get_logger
 from app.services.llm.resilience import (
@@ -50,10 +50,10 @@ LOOP_BREAK_PENALTIES = (0.3, 0.6)
 
 
 @dataclass
-class LLMResult:
+class LLMResult[M: BaseModel]:
     """What a successful structured call returns to the caller."""
 
-    parsed: BaseModel
+    parsed: M             # an instance of the call's `response_format`
     usage: Any            # resp.usage (may be None) - caller extracts token counts
     provider: str         # "openai" | "azure" (which one served it)
 
@@ -160,7 +160,7 @@ async def structured_parse[M: BaseModel](
     max_tokens: int,
     label: str,
     semaphore: asyncio.Semaphore | None = None,
-) -> LLMResult:
+) -> LLMResult[M]:
     """Run one structured-output call with full resilience.
 
     Tries each provider (primary, then Azure fallback) whose breaker is closed;
@@ -170,7 +170,8 @@ async def structured_parse[M: BaseModel](
     error occurs - the signal for the caller to degrade.
     """
     providers = _providers(model)
-    assert _bucket is not None
+    bucket = _bucket
+    assert bucket is not None  # set by _providers/_ensure_loop
     last_exc: BaseException | None = None
     skipped_open = 0
 
@@ -179,12 +180,15 @@ async def structured_parse[M: BaseModel](
             skipped_open += 1
             log.warning("llm_circuit_open", provider=prov.name, label=label)
             continue
+        probing = prov.breaker.is_open  # admitted while open: this call is the half-open probe
         try:
-            result = await _call_provider(prov, system, user, response_format,
+            result = await _call_provider(prov, bucket, system, user, response_format,
                                           max_tokens, label, semaphore)
         except _ContentError as exc:
-            # Provider is healthy - do not count against the breaker, and do not try
-            # a same-model fallback (it would fail identically).
+            # The provider ANSWERED, so it is healthy: that is a success for the
+            # breaker (it closes a half-open probe), and a same-model fallback would
+            # fail identically, so do not try one.
+            prov.breaker.record_success()
             raise AIParsingError(str(exc)) from (exc.__cause__ or exc)
         except _TransientExhausted as exc:
             prov.breaker.record_failure()
@@ -195,6 +199,13 @@ async def structured_parse[M: BaseModel](
         else:
             prov.breaker.record_success()
             return result
+        finally:
+            # A probe cancelled by its caller's deadline (the resume gate's wait_for,
+            # an orchestrator stage timeout) records no verdict. Without this it held
+            # the breaker open for the life of the warm container and every parse
+            # degraded to the rule floor.
+            if probing:
+                prov.breaker.release_probe()
 
     if skipped_open and last_exc is None:
         raise AIParsingError(f"[{label}] LLM circuit open; degrading without a call")
@@ -203,19 +214,20 @@ async def structured_parse[M: BaseModel](
 
 async def _call_provider[M: BaseModel](
     prov: _Provider,
+    bucket: TokenBucket,
     system: str,
     user: str,
     response_format: type[M],
     max_tokens: int,
     label: str,
     semaphore: asyncio.Semaphore | None,
-) -> LLMResult:
+) -> LLMResult[M]:
     """One provider's attempt loop. Raises `_ContentError` or `_TransientExhausted`."""
     s = get_settings()
     penalty = 0.0
 
     for attempt in range(s.llm_max_retries):
-        await _bucket.acquire()  # type: ignore[union-attr]  # set by _providers/_ensure_loop
+        await bucket.acquire()
         try:
             resp = await _raw_call(prov, system, user, response_format,
                                    max_tokens, penalty, semaphore, s)
@@ -256,8 +268,13 @@ async def _call_provider[M: BaseModel](
             raise _ContentError(f"[{label}] empty structured output")
         return LLMResult(parsed=parsed, usage=resp.usage, provider=prov.name)
 
-    # Only reachable if the final attempt was a (rare) length-loop `continue`.
-    raise _TransientExhausted()
+    # Only a length-loop `continue` can end the final attempt, so reaching here means
+    # the loop-break penalties ran out: a content error, like the raise above. (A
+    # transient fault earlier in the loop does not make it one - that used to count
+    # against the breaker and fail over to a same-model Azure that loops identically.)
+    if penalty:
+        raise _ContentError(f"[{label}] hit the token ceiling (repetition loop) with penalty {penalty}")
+    raise _TransientExhausted()  # llm_max_retries <= 0: no attempt was made
 
 
 async def _raw_call[M: BaseModel](
@@ -268,7 +285,7 @@ async def _raw_call[M: BaseModel](
     max_tokens: int,
     penalty: float,
     semaphore: asyncio.Semaphore | None,
-    settings: Any,
+    settings: Settings,
 ):
     """The actual provider call, optionally under the shared concurrency semaphore."""
     async def _do():

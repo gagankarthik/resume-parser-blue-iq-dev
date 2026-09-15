@@ -160,3 +160,33 @@ def test_the_clock_is_monotonic_not_wall_clock():
     """A parse must not be lengthened or shortened by an NTP step mid-run."""
     b = ParseBudget.for_async()
     assert b.started <= time.monotonic()
+
+
+# -- Resume gate ---------------------------------------------------------------
+
+def test_resume_gate_gets_its_full_cap_on_a_fresh_budget():
+    assert ParseBudget.for_async().for_resume_gate() == bud.RESUME_GATE_TIMEOUT
+
+
+def test_resume_gate_never_tips_the_orchestrator_out_of_reach():
+    """The gate runs BEFORE the ladder. After a slow OCR pass that left the
+    orchestrator just affordable, a full gate window would silently demote the
+    parse to single-shot - so it only gets the slack above that threshold."""
+    threshold = bud.FALLBACK_RESERVE + bud.MIN_ORCHESTRATOR_WINDOW
+    b = _spent(ParseBudget.for_async(), bud.TOTAL_BUDGET - threshold - 5)  # 5s of slack
+    window = b.for_resume_gate()
+    assert 0 < window <= 5.5
+    assert _spent(b, window).remaining() >= threshold - 0.5
+
+
+def test_resume_gate_keeps_a_full_single_shot_window_once_the_orchestrator_is_out():
+    b = _spent(ParseBudget.for_async(), bud.TOTAL_BUDGET - bud.TIMEOUT_AI_PARSE - 5)
+    assert b.can_afford_orchestrator() is False
+    window = b.for_resume_gate()
+    assert 0 < window <= 5.5
+
+
+def test_resume_gate_is_skipped_on_a_spent_budget():
+    """Non-positive means skip the model check - the gate fails open, so skipping it
+    never fails a parse."""
+    assert _spent(ParseBudget.for_async(), bud.TOTAL_BUDGET).for_resume_gate() <= 0

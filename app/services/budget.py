@@ -39,6 +39,10 @@ TIMEOUT_ORCHESTRATOR = 130
 # timeout is 300s, so the binding constraint is the total budget below, not this.
 TIMEOUT_AI_PARSE = 90
 
+# The resume gate: one small yes/no classification call ahead of the ladder. It
+# fails open, so a slow provider must not hold the whole parse behind it.
+RESUME_GATE_TIMEOUT = 15.0
+
 # -- Wall-clock budget ---------------------------------------------------------
 
 # Overall soft budget for one resume. Every AI step is capped by the time left
@@ -114,6 +118,23 @@ class ParseBudget:
         """Cap one extraction step. The worker keeps the full per-step cap - the
         wall budget is generous enough that extraction never needs clamping."""
         return cap
+
+    # -- Resume gate -----------------------------------------------------------
+
+    def for_resume_gate(self) -> float:
+        """The resume gate's window. Non-positive means skip the model check - the
+        gate fails open, so skipping it never fails a parse.
+
+        The gate runs BEFORE the ladder, so its seconds come straight out of it. As a
+        private 15s constant the budget could not see, a gate after a slow OCR pass
+        could tip `can_afford_orchestrator()` to False and silently demote the parse
+        to single-shot. So it only gets the slack above what the next rung needs: the
+        orchestrator threshold while that is affordable, else a full single-shot."""
+        needed = (
+            FALLBACK_RESERVE + MIN_ORCHESTRATOR_WINDOW
+            if self.can_afford_orchestrator() else TIMEOUT_AI_PARSE
+        )
+        return min(RESUME_GATE_TIMEOUT, self.remaining() - needed)
 
     # -- AI parse: orchestrator ------------------------------------------------
 
