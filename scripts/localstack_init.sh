@@ -7,7 +7,7 @@ ENDPOINT="http://localhost:4566"
 REGION="us-east-1"
 
 echo "==> Creating S3 bucket..."
-awslocal s3 mb s3://resume-parser-temp --region $REGION || true
+awslocal s3 mb s3://resume-parser-blue-iq-temp --region $REGION || true
 
 echo "==> Creating DynamoDB tables..."
 

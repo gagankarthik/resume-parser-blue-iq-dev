@@ -56,11 +56,11 @@ build:
 # CI OWNS DEPLOYS. There is deliberately no `deploy-lambda` target here.
 #
 # The old push-lambda/deploy-lambda targets called update-function-code on
-# `resume-parser-api` and `resume-parser-worker` — neither function has ever
-# existed (the real one is `resume-parser-production-api`, and there is no
-# separate worker; the API self-invokes). They also defaulted to us-east-1 while
-# the stack lives in us-east-2. Running them did nothing good and could touch the
-# wrong account, so they are gone rather than repaired.
+# `resume-parser-api` and `resume-parser-worker` — function names that never
+# matched the deployed stack (the API is `resume-parser-production-api`; the SQS
+# worker is provisioned by scripts/provision_worker.sh). They also defaulted to
+# us-east-1 while the stack lives in us-east-2. Running them did nothing good and
+# could touch the wrong account, so they are gone rather than repaired.
 #
 #   Deploy:   push to main   → .github/workflows/deploy.yml
 #   Rollback: workflow_dispatch → .github/workflows/rollback.yml

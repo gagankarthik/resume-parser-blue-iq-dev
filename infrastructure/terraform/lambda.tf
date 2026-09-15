@@ -13,7 +13,7 @@ locals {
     DYNAMODB_TABLE_FEEDBACK   = aws_dynamodb_table.feedback.name
     S3_BUCKET_NAME            = aws_s3_bucket.temp.bucket
     OPENAI_MODEL              = var.openai_model
-    OPENAI_MAX_TOKENS         = "4096"
+    OPENAI_MAX_TOKENS         = "16384" # matches the code default; a small ceiling truncates dense resumes
     MAX_FILE_SIZE_MB          = "10" # NOTE: Function URL still caps requests at ~6 MB at the edge
     MAX_BATCH_SIZE            = tostring(var.max_batch_size)
     MAX_CONCURRENT_JOBS       = "5" # local-dev batch semaphore only
