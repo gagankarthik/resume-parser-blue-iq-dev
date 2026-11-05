@@ -46,6 +46,7 @@ resource "aws_cloudwatch_log_group" "api" {
 
 resource "aws_lambda_function" "api" {
   function_name = "${local.name_prefix}-api"
+  description   = "GigHealth resume parser API: accepts resume uploads, queues parse jobs, serves job status and results."
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
   image_uri     = var.ecr_image_uri
@@ -111,6 +112,7 @@ resource "aws_cloudwatch_log_group" "worker" {
 
 resource "aws_lambda_function" "worker" {
   function_name = "${local.name_prefix}-worker"
+  description   = "GigHealth resume parser worker: pulls jobs from SQS, extracts and parses resumes with OpenAI, sends webhooks."
   role          = aws_iam_role.worker_exec.arn
   package_type  = "Image"
   image_uri     = var.ecr_image_uri
