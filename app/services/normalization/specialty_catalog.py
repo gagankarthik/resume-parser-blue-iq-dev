@@ -5,7 +5,7 @@ The platform delivers a catalog of clinical specialties, each with an id, the
 canonical specialty name, an optional fuller name, and search keywords. This
 module loads that catalog from `settings.specialty_catalog_path` (JSON list, or a
 CSV with the same columns) and exposes punctuation/case-insensitive lookup indexes
-keyed off `healthcare_taxonomy._match_key`, so the specialty matcher can resolve a
+keyed off `healthcare_taxonomy.match_key`, so the specialty matcher can resolve a
 resume specialty string to a catalog id without enumerating every spelling.
 
 Design:
@@ -26,16 +26,19 @@ Expected record shape (per specialty), extra keys ignored::
 
 from __future__ import annotations
 
-import csv
-import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from functools import lru_cache
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.services.normalization.healthcare_taxonomy import _match_key
+from app.models.schemas.validators import _coerce_catalog_id
+from app.services.normalization._catalog_io import load_rows
+from app.services.normalization.healthcare_taxonomy import match_key
 
 log = get_logger(__name__)
+
+_ENVELOPE_KEYS = ("specialties", "records", "data", "items")
 
 
 @dataclass(frozen=True)
@@ -54,10 +57,21 @@ class SpecialtyRecord:
     category_id:   str | None = None
 
 
+@dataclass(frozen=True)
+class RecordKeys:
+    """A record's match keys, computed once at load (aligned with `records`)."""
+
+    name_key:     str
+    full_key:     str | None          # None when the record has no full name
+    keyword_keys: tuple[str, ...]
+    professions:  frozenset[str]      # profession_keys(record.profession)
+    words:        frozenset[str]      # every word of the name / full name / keywords
+
+
 # Resumes spell professions out ("Registered Nurse"), but the platform catalog
 # keys them by short code ("RN"). Map the common full titles / abbreviations to the
 # catalog's profession key(s) so scoped matching (and the AI-tier profession guard)
-# line up. Keys are already _match_key-normalized (lowercase; "&"->"and"; slash kept).
+# line up. Keys are already match_key-normalized (lowercase; "&"->"and"; slash kept).
 _PROFESSION_ALIASES: dict[str, tuple[str, ...]] = {
     # Nursing
     "registered nurse": ("rn",),
@@ -100,7 +114,8 @@ _PROFESSION_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
-def profession_keys(profession: str | None) -> list[str]:
+@lru_cache(maxsize=1024)
+def profession_keys(profession: str | None) -> tuple[str, ...]:
     """Lookup keys a profession string can match on.
 
     The platform names some professions as a pair ("LPN/ LVN"); split those so a
@@ -108,10 +123,12 @@ def profession_keys(profession: str | None) -> list[str]:
     also spell titles out ("Registered Nurse") where the catalog uses codes ("RN"),
     so common titles/abbreviations are aliased to the catalog key(s). Returns the
     full key first, then each slash-separated part, then any aliased catalog keys.
+    Cached (a tuple, so a caller cannot mutate the cached value): the matcher asks
+    for the same few professions on every role.
     """
     if not profession or not profession.strip():
-        return []
-    full = _match_key(profession)
+        return ()
+    full = match_key(profession)
     keys = [full]
     for part in full.split("/"):
         part = part.strip()
@@ -121,7 +138,7 @@ def profession_keys(profession: str | None) -> list[str]:
         for alias in _PROFESSION_ALIASES.get(k, ()):
             if alias not in keys:
                 keys.append(alias)
-    return keys
+    return tuple(keys)
 
 
 @dataclass
@@ -132,9 +149,12 @@ class SpecialtyCatalog:
     wins) and a profession-scoped one keyed ``(profession_key, value_key)``. The
     same specialty NAME maps to a different id per profession, so a role with a
     known credential resolves via the scoped index first, then falls back to flat.
+    ``record_keys`` holds each record's precomputed match keys (aligned with
+    ``records``) for the matcher's fuzzy and AI-shortlist scans.
     """
 
     records:        list[SpecialtyRecord]   = field(default_factory=list)
+    record_keys:    list[RecordKeys]        = field(default_factory=list)
     by_name_key:    dict[str, SpecialtyRecord] = field(default_factory=dict)
     by_full_key:    dict[str, SpecialtyRecord] = field(default_factory=dict)
     by_keyword_key: dict[str, SpecialtyRecord] = field(default_factory=dict)
@@ -161,7 +181,7 @@ class SpecialtyCatalog:
         index: dict[str, SpecialtyRecord],
         prof_index: dict[tuple[str, str], SpecialtyRecord],
         value_key: str,
-        prof_lookup_keys: list[str],
+        prof_lookup_keys: Sequence[str],
     ) -> SpecialtyRecord | None:
         """Prefer a profession-scoped hit, else the flat (first-wins) hit."""
         for pk in prof_lookup_keys:
@@ -193,41 +213,13 @@ def reload(path: str | None = None) -> SpecialtyCatalog:
 
 
 def _load(path: str | None) -> SpecialtyCatalog:
-    if not path:
-        log.info("specialty_catalog_unset")
+    rows = load_rows(path, "specialty", _ENVELOPE_KEYS)
+    if rows is None:
         return SpecialtyCatalog()
-
-    p = Path(path)
-    if not p.is_file():
-        log.warning("specialty_catalog_missing", path=str(p))
-        return SpecialtyCatalog()
-
-    try:
-        rows = _read_rows(p)
-    except Exception as exc:  # never let a bad catalog break parsing
-        log.warning("specialty_catalog_load_failed", path=str(p), error=str(exc))
-        return SpecialtyCatalog()
-
     records = [r for row in rows if (r := _to_record(row)) is not None]
     catalog = _build_indexes(records)
-    log.info("specialty_catalog_loaded", path=str(p), count=len(records))
+    log.info("specialty_catalog_loaded", path=path, count=len(records))
     return catalog
-
-
-def _read_rows(p: Path) -> list[dict]:
-    """Parse the catalog file into a list of raw dict rows (JSON or CSV)."""
-    text = p.read_text(encoding="utf-8-sig")
-    if p.suffix.lower() == ".csv":
-        return list(csv.DictReader(text.splitlines()))
-
-    data = json.loads(text)
-    # Accept either a bare list or a {"specialties": [...]} envelope.
-    if isinstance(data, dict):
-        for key in ("specialties", "records", "data", "items"):
-            if isinstance(data.get(key), list):
-                return data[key]
-        return []
-    return data if isinstance(data, list) else []
 
 
 def _to_record(row: object) -> SpecialtyRecord | None:
@@ -261,19 +253,11 @@ def _to_record(row: object) -> SpecialtyRecord | None:
         group=group.strip() if isinstance(group, str) and group.strip() else None,
         keywords=keywords,
         profession=profession.strip() if isinstance(profession, str) and profession.strip() else None,
-        profession_id=_clean_id(row.get("profession_id")),
-        group_id=_clean_id(row.get("group_id")),
+        profession_id=_coerce_catalog_id(row.get("profession_id")),
+        group_id=_coerce_catalog_id(row.get("group_id")),
         category=(c.strip() if isinstance(c := row.get("category"), str) and c.strip() else None),
-        category_id=_clean_id(row.get("category_id")),
+        category_id=_coerce_catalog_id(row.get("category_id")),
     )
-
-
-def _clean_id(raw: object) -> str | None:
-    """Coerce a catalog id to a trimmed string, or None when absent/blank."""
-    if raw is None or isinstance(raw, bool):
-        return None
-    text = str(raw).strip()
-    return text or None
 
 
 # Name prefixes that mark a MORE-SPECIFIC variant of a base specialty. Several
@@ -288,7 +272,7 @@ _SPECIFICITY_PREFIXES: frozenset[str] = frozenset({
 
 
 def _is_base_name(name: str) -> bool:
-    parts = _match_key(name).split()
+    parts = match_key(name).split()
     return not (parts and parts[0] in _SPECIFICITY_PREFIXES)
 
 
@@ -323,11 +307,20 @@ def _build_indexes(records: list[SpecialtyRecord]) -> SpecialtyCatalog:
         if cur is None or _prefer(rec, cur):
             index[key] = rec
 
+    record_keys: list[RecordKeys] = []
+
     for rec in records:
-        name_key = _match_key(rec.name)
-        full_key = _match_key(rec.full_name) if rec.full_name else None
-        keyword_keys = [_match_key(kw) for kw in rec.keywords]
+        name_key = match_key(rec.name)
+        full_key = match_key(rec.full_name) if rec.full_name else None
+        keyword_keys = tuple(match_key(kw) for kw in rec.keywords)
         prof_keys = profession_keys(rec.profession)
+        words = {*name_key.split(), *(full_key.split() if full_key is not None else ())}
+        for kk in keyword_keys:
+            words.update(kk.split())
+        record_keys.append(RecordKeys(
+            name_key=name_key, full_key=full_key, keyword_keys=keyword_keys,
+            professions=frozenset(prof_keys), words=frozenset(words),
+        ))
 
         # A specialty NAME is the strongest signal - keep it first-wins so a curated
         # earlier row isn't reordered. Full names and keywords are frequently shared
@@ -352,6 +345,7 @@ def _build_indexes(records: list[SpecialtyRecord]) -> SpecialtyCatalog:
 
     return SpecialtyCatalog(
         records=records,
+        record_keys=record_keys,
         by_name_key=by_name,
         by_full_key=by_full,
         by_keyword_key=by_keyword,

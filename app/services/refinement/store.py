@@ -7,17 +7,22 @@ code change.
 
 Design constraints (this is on the parse hot path):
   * NEVER fail a parse. Any DynamoDB error -> treat as "no rules" and log.
-  * NEVER add a DynamoDB read per LLM call. The active rule set for the scope is
-    loaded once and cached in-process for `refinement_cache_ttl_seconds`; a warm
-    container serves thousands of agent calls from that single snapshot. A closed
-    proposal takes effect within one TTL window (or immediately after an admin
-    mutation calls `invalidate()`).
+  * NEVER touch DynamoDB from `augment_system`. It runs inside every agent call, on
+    the event loop, and boto3 blocks (60s default timeouts): one slow query there
+    would stall every asyncio deadline in the parse. Instead `refresh()` is awaited
+    once at the start of a parse (`pipeline.run`); it loads the rule set in a worker
+    thread when the in-process snapshot is missing or older than
+    `refinement_cache_ttl_seconds`. `augment_system` only reads that snapshot, so a
+    warm container serves thousands of agent calls from one query. A closed proposal
+    takes effect within one TTL window (or on the next parse after an admin mutation
+    calls `invalidate()`).
   * Be a no-op unless `refinement_enabled` AND an approved pack exists, so default
     behaviour is byte-identical to before this feature.
 """
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 from app.core.config import get_settings
@@ -57,16 +62,27 @@ def _load_scope(scope: str) -> dict[str, list[str]]:
     }
 
 
+async def refresh() -> None:
+    """Reload the scope's active rules if the snapshot is missing or expired.
+
+    The query runs in a worker thread, never on the event loop. Never raises.
+    """
+    settings = get_settings()
+    if not settings.refinement_enabled:
+        return
+    scope = settings.refinement_scope
+    if scope in _cache and time.monotonic() < _expiry.get(scope, 0.0):
+        return
+    _cache[scope] = await asyncio.to_thread(_load_scope, scope)
+    _expiry[scope] = time.monotonic() + settings.refinement_cache_ttl_seconds
+
+
 def _rules_for(agent_name: str) -> list[str]:
     settings = get_settings()
     if not settings.refinement_enabled:
         return []
-    scope = settings.refinement_scope
-    now = time.monotonic()
-    if scope not in _cache or now >= _expiry.get(scope, 0.0):
-        _cache[scope] = _load_scope(scope)
-        _expiry[scope] = now + settings.refinement_cache_ttl_seconds
-    return _cache[scope].get(agent_name, [])
+    # Whatever `refresh()` last loaded, even past its TTL - never a query here.
+    return _cache.get(settings.refinement_scope, {}).get(agent_name, [])
 
 
 def augment_system(agent_name: str, system: str) -> str:

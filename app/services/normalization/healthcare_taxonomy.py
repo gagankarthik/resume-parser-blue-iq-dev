@@ -10,8 +10,8 @@ here (imported into this namespace) so existing
 Provides:
   resolve_specialty / normalize_specialty - raw string -> canonical name
   get_specialty_group                     - canonical specialty -> group label
-  expand_profession                       - credential abbrev -> full name
-  _match_key                              - punctuation/whitespace-insensitive key
+  match_key                               - punctuation/whitespace-insensitive key
+  ratio_upper_bound                       - difflib's length-only similarity bound
 """
 
 import re
@@ -32,7 +32,7 @@ from app.services.normalization.taxonomy_data import (
 # each spelling.
 
 
-def _match_key(s: str) -> str:
+def match_key(s: str) -> str:
     """Punctuation/whitespace-insensitive lookup key for a specialty string.
 
     Hyphens and whitespace are treated as the same separator, so "Med-Surg",
@@ -50,11 +50,22 @@ def _match_key(s: str) -> str:
     return s.strip()
 
 
-_SPECIALTY_BY_KEY:   dict[str, str] = {_match_key(s): s for s in ALL_SPECIALTIES}
-_ABBREV_BY_KEY:      dict[str, str] = {_match_key(k): v for k, v in SPECIALTY_ABBREVIATIONS.items()}
-_PROF_ABBREV_BY_KEY: dict[str, str] = {_match_key(k): v for k, v in PROFESSION_ABBREVIATIONS.items()}
-_PROF_NAME_BY_KEY:   dict[str, str] = {_match_key(v): v for v in PROFESSION_ABBREVIATIONS.values()}
-_GROUP_BY_KEY:       dict[str, str] = {_match_key(k): g for k, g in SPECIALTY_GROUPS.items()}
+def ratio_upper_bound(a: str, b: str) -> float:
+    """Upper bound on ``difflib.SequenceMatcher(None, a, b).ratio()`` from lengths alone.
+
+    Identical to ``SequenceMatcher.real_quick_ratio()`` (same expression, same float),
+    so a fuzzy scan can skip a pair below its floor before paying to build a matcher -
+    without changing which pairs survive.
+    """
+    la, lb = len(a), len(b)
+    return 2.0 * min(la, lb) / (la + lb) if la + lb else 1.0
+
+
+_SPECIALTY_BY_KEY:   dict[str, str] = {match_key(s): s for s in ALL_SPECIALTIES}
+_ABBREV_BY_KEY:      dict[str, str] = {match_key(k): v for k, v in SPECIALTY_ABBREVIATIONS.items()}
+_PROF_ABBREV_BY_KEY: dict[str, str] = {match_key(k): v for k, v in PROFESSION_ABBREVIATIONS.items()}
+_PROF_NAME_BY_KEY:   dict[str, str] = {match_key(v): v for v in PROFESSION_ABBREVIATIONS.values()}
+_GROUP_BY_KEY:       dict[str, str] = {match_key(k): g for k, g in SPECIALTY_GROUPS.items()}
 
 
 def resolve_specialty(raw: str) -> str | None:
@@ -75,7 +86,7 @@ def resolve_specialty(raw: str) -> str | None:
     if not raw or not raw.strip():
         return None
 
-    key = _match_key(raw)
+    key = match_key(raw)
     if key in _SPECIALTY_BY_KEY:
         return _SPECIALTY_BY_KEY[key]
     if key in _ABBREV_BY_KEY:
@@ -88,10 +99,10 @@ def resolve_specialty(raw: str) -> str | None:
     # Credential-prefix expansion: a single leading token, then a separator.
     m = re.match(r"^\s*([A-Za-z]+)\s*[-–/]\s*(.+)$", raw)
     if m:
-        head_key = _match_key(m.group(1))
+        head_key = match_key(m.group(1))
         expanded = _PROF_ABBREV_BY_KEY.get(head_key) or _ABBREV_BY_KEY.get(head_key)
         if expanded:
-            candidate = _match_key(f"{expanded}-{m.group(2)}")
+            candidate = match_key(f"{expanded}-{m.group(2)}")
             if candidate in _SPECIALTY_BY_KEY:
                 return _SPECIALTY_BY_KEY[candidate]
 
@@ -102,12 +113,7 @@ def get_specialty_group(specialty: str) -> str | None:
     """Return the group label for a specialty name (punctuation-insensitive)."""
     if specialty in SPECIALTY_GROUPS:
         return SPECIALTY_GROUPS[specialty]
-    return _GROUP_BY_KEY.get(_match_key(specialty))
-
-
-def expand_profession(abbrev: str) -> str:
-    """Expand a credential abbreviation to full name, or return as-is."""
-    return PROFESSION_ABBREVIATIONS.get(abbrev.lower().strip(), abbrev)
+    return _GROUP_BY_KEY.get(match_key(specialty))
 
 
 def normalize_specialty(raw: str) -> str:

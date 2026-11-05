@@ -1,5 +1,6 @@
 """Hot-path applicator: append approved rules, cache, and degrade safely."""
 
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -24,13 +25,14 @@ def _clear_cache():
     store.invalidate()
 
 
-def test_no_rules_returns_system_unchanged(monkeypatch):
+async def test_no_rules_returns_system_unchanged(monkeypatch):
     monkeypatch.setattr(store, "get_settings", lambda: _settings())
     monkeypatch.setattr(store.instructions_db, "list_for_scope", lambda scope: [])
+    await store.refresh()
     assert store.augment_system("PersonalInfoAgent", "SYSTEM") == "SYSTEM"
 
 
-def test_active_rules_are_appended(monkeypatch):
+async def test_active_rules_are_appended(monkeypatch):
     monkeypatch.setattr(store, "get_settings", lambda: _settings())
     monkeypatch.setattr(
         store.instructions_db, "list_for_scope",
@@ -39,6 +41,7 @@ def test_active_rules_are_appended(monkeypatch):
             "rules": ["Strip credential suffixes from full_name.", "Keep email verbatim."],
         }],
     )
+    await store.refresh()
     out = store.augment_system("PersonalInfoAgent", "SYSTEM")
     assert "SYSTEM" in out
     assert "LEARNED RULES" in out
@@ -48,7 +51,7 @@ def test_active_rules_are_appended(monkeypatch):
     assert store.augment_system("WorkExperienceAgent", "S2") == "S2"
 
 
-def test_pending_and_disabled_rules_are_not_applied(monkeypatch):
+async def test_pending_and_disabled_rules_are_not_applied(monkeypatch):
     monkeypatch.setattr(store, "get_settings", lambda: _settings())
     monkeypatch.setattr(
         store.instructions_db, "list_for_scope",
@@ -57,11 +60,12 @@ def test_pending_and_disabled_rules_are_not_applied(monkeypatch):
             {"agent": "B", "status": "disabled", "rules": ["r2"]},
         ],
     )
+    await store.refresh()
     assert store.augment_system("A", "S") == "S"
     assert store.augment_system("B", "S") == "S"
 
 
-def test_disabled_feature_is_a_noop(monkeypatch):
+async def test_disabled_feature_is_a_noop(monkeypatch):
     called = {"n": 0}
 
     def _list(scope):
@@ -70,11 +74,12 @@ def test_disabled_feature_is_a_noop(monkeypatch):
 
     monkeypatch.setattr(store, "get_settings", lambda: _settings(refinement_enabled=False))
     monkeypatch.setattr(store.instructions_db, "list_for_scope", _list)
+    await store.refresh()
     assert store.augment_system("PersonalInfoAgent", "SYSTEM") == "SYSTEM"
     assert called["n"] == 0  # never even hits the DB when disabled
 
 
-def test_snapshot_is_cached_within_ttl(monkeypatch):
+async def test_snapshot_is_cached_within_ttl(monkeypatch):
     calls = {"n": 0}
 
     def _list(scope):
@@ -85,19 +90,53 @@ def test_snapshot_is_cached_within_ttl(monkeypatch):
     monkeypatch.setattr(store.instructions_db, "list_for_scope", _list)
 
     for _ in range(5):
+        await store.refresh()
         store.augment_system("PersonalInfoAgent", "S")
     assert calls["n"] == 1  # one load, then served from cache
 
     store.invalidate()
-    store.augment_system("PersonalInfoAgent", "S")
+    await store.refresh()
     assert calls["n"] == 2  # reloads after invalidation
 
 
-def test_db_error_degrades_to_no_rules(monkeypatch):
+async def test_db_error_degrades_to_no_rules(monkeypatch):
     def _boom(scope):
         raise RuntimeError("dynamo down")
 
     monkeypatch.setattr(store, "get_settings", lambda: _settings())
     monkeypatch.setattr(store.instructions_db, "list_for_scope", _boom)
     # Must never raise on the parse hot path.
+    await store.refresh()
     assert store.augment_system("PersonalInfoAgent", "SYSTEM") == "SYSTEM"
+
+
+async def test_augment_system_never_queries_the_db(monkeypatch):
+    """augment_system runs inside every agent call, on the event loop. A DynamoDB
+    query there (boto3 is blocking, 60s default timeouts) stalls every asyncio
+    deadline in the parse, so it serves only the snapshot `refresh()` loaded."""
+    calls = {"n": 0}
+
+    def _list(scope):
+        calls["n"] += 1
+        return [{"agent": "PersonalInfoAgent", "status": "active", "rules": ["r"]}]
+
+    monkeypatch.setattr(store, "get_settings", lambda: _settings())
+    monkeypatch.setattr(store.instructions_db, "list_for_scope", _list)
+    for _ in range(3):
+        assert store.augment_system("PersonalInfoAgent", "SYSTEM") == "SYSTEM"
+    assert calls["n"] == 0
+
+
+async def test_refresh_loads_off_the_event_loop(monkeypatch):
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+
+    def _list(scope):
+        seen.append(threading.get_ident())
+        return [{"agent": "PersonalInfoAgent", "status": "active", "rules": ["r"]}]
+
+    monkeypatch.setattr(store, "get_settings", lambda: _settings())
+    monkeypatch.setattr(store.instructions_db, "list_for_scope", _list)
+    await store.refresh()
+    assert seen and seen[0] != loop_thread
+    assert "LEARNED RULES" in store.augment_system("PersonalInfoAgent", "SYSTEM")

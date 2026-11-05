@@ -122,10 +122,10 @@ def claim_upload_job(job_id: str) -> bool:
 def mark_batch_counted(job_id: str) -> bool:
     """Atomically claim the batch-counter increment for this job.
 
-    Returns True the first time, False if already counted. An async-Lambda
-    ("Event") invocation that is retried after a hard timeout/OOM would otherwise
-    re-run the pipeline and increment the batch's completed/failed counters a
-    second time (inflating them past `total` and re-firing batch.completed).
+    Returns True the first time, False if already counted. SQS delivers at least
+    once: a message redelivered after a hard timeout/OOM would otherwise re-run the
+    bookkeeping and increment the batch's completed/failed counters a second time
+    (inflating them past `total` and re-firing batch.completed).
     """
     settings = get_settings()
     table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
@@ -141,6 +141,35 @@ def mark_batch_counted(job_id: str) -> bool:
         if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
             return False
         raise
+
+
+def claim_retry(job_id: str, max_retries: int) -> int | None:
+    """Atomically count one retry against `job_id`.
+
+    Returns the job's new retry count, or None when it has already been retried
+    `max_retries` times. The retry endpoint used to read `retry_count` and add one
+    without ever writing it back, so every retry saw a fresh count and the limit
+    never tripped. A retry job carries its own count forward, so retrying a retry
+    is bounded by the same limit.
+    """
+    settings = get_settings()
+    table = _get_dynamodb(settings).Table(settings.dynamodb_table_jobs)
+    try:
+        resp = table.update_item(
+            Key={"job_id": job_id},
+            UpdateExpression="ADD retry_count :one",
+            ConditionExpression=(
+                "attribute_exists(job_id) AND "
+                "(attribute_not_exists(retry_count) OR retry_count < :max)"
+            ),
+            ExpressionAttributeValues={":one": 1, ":max": max_retries},
+            ReturnValues="UPDATED_NEW",
+        )
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return None
+        raise
+    return int(resp["Attributes"]["retry_count"])
 
 
 def _dynamo_safe(value: dict) -> dict:

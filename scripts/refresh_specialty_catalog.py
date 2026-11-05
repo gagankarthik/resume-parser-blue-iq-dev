@@ -4,7 +4,7 @@ Regenerate the bundled specialty catalog snapshot from the GigHealth API.
 
     python -m scripts.refresh_specialty_catalog          # uses env / settings
     python -m scripts.refresh_specialty_catalog --dry-run
-    GIG_SPECIAILITIES_API_KEY=... python -m scripts.refresh_specialty_catalog
+    GIG_SPECIALTIES_API_KEY=... python -m scripts.refresh_specialty_catalog
 
 Fetches the platform's specialty taxonomy, flattens it into the flat catalog rows
 the matcher consumes (id, specialty, full_name, group, profession, keywords[]) with
@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     api_key = settings.gig_specialties_api_key
     if not api_key:
         print(
-            "ERROR: no API key. Set GIG_SPECIAILITIES_API_KEY in .env or the "
+            "ERROR: no API key. Set GIG_SPECIALTIES_API_KEY in .env or the "
             "environment.",
             file=sys.stderr,
         )

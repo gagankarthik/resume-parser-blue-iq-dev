@@ -1,6 +1,7 @@
 import io
 import zipfile
 
+import fitz
 import pytest
 
 from app.core.exceptions import UnsupportedFileTypeError
@@ -16,10 +17,19 @@ def _minimal_docx() -> bytes:
     return buf.getvalue()
 
 
+def _pdf(*pages: str) -> bytes:
+    doc = fitz.open()
+    for text in pages:
+        page = doc.new_page()
+        if text:
+            page.insert_text((72, 72), text)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
 def test_docx_classified_as_docx():
-    strategy, needs_async = classify("resume.docx", _minimal_docx())
-    assert strategy == ExtractionStrategy.DOCX
-    assert needs_async is False
+    assert classify("resume.docx", _minimal_docx()) == ExtractionStrategy.DOCX
 
 
 def test_fake_docx_zip_rejected():
@@ -30,9 +40,7 @@ def test_fake_docx_zip_rejected():
 
 
 def test_rtf_classified_as_rtf():
-    strategy, needs_async = classify("resume.rtf", b"{\\rtf1\\ansi Hello}")
-    assert strategy == ExtractionStrategy.RTF
-    assert needs_async is False
+    assert classify("resume.rtf", b"{\\rtf1\\ansi Hello}") == ExtractionStrategy.RTF
 
 
 def test_rtf_extension_with_wrong_content_raises():
@@ -46,6 +54,14 @@ def test_unsupported_extension_raises():
 
 
 def test_image_classified_as_ocr():
-    strategy, needs_async = classify("resume.png", b"\x89PNG\r\n\x1a\n")
-    assert strategy == ExtractionStrategy.OCR
-    assert needs_async is True
+    assert classify("resume.png", b"\x89PNG\r\n\x1a\n") == ExtractionStrategy.OCR
+
+
+def test_pdf_with_a_text_layer_is_digital_even_when_split_across_pages():
+    line = "Registered Nurse, Intensive Care Unit, Mercy Hospital"  # ~55 chars per page
+    assert classify("resume.pdf", _pdf(line)) == ExtractionStrategy.OCR
+    assert classify("resume.pdf", _pdf(line, line)) == ExtractionStrategy.PDF
+
+
+def test_pdf_without_a_text_layer_goes_to_ocr():
+    assert classify("resume.pdf", _pdf("", "")) == ExtractionStrategy.OCR

@@ -13,7 +13,7 @@ locals {
     DYNAMODB_TABLE_FEEDBACK   = aws_dynamodb_table.feedback.name
     S3_BUCKET_NAME            = aws_s3_bucket.temp.bucket
     OPENAI_MODEL              = var.openai_model
-    OPENAI_MAX_TOKENS         = "4096"
+    OPENAI_MAX_TOKENS         = "16384" # matches the code default; a small ceiling truncates dense resumes
     MAX_FILE_SIZE_MB          = "10" # NOTE: Function URL still caps requests at ~6 MB at the edge
     MAX_BATCH_SIZE            = tostring(var.max_batch_size)
     MAX_CONCURRENT_JOBS       = "5" # local-dev batch semaphore only
@@ -46,6 +46,7 @@ resource "aws_cloudwatch_log_group" "api" {
 
 resource "aws_lambda_function" "api" {
   function_name = "${local.name_prefix}-api"
+  description   = "GigHealth resume parser API: accepts resume uploads, queues parse jobs, serves job status and results."
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
   image_uri     = var.ecr_image_uri
@@ -111,6 +112,7 @@ resource "aws_cloudwatch_log_group" "worker" {
 
 resource "aws_lambda_function" "worker" {
   function_name = "${local.name_prefix}-worker"
+  description   = "GigHealth resume parser worker: pulls jobs from SQS, extracts and parses resumes with OpenAI, sends webhooks."
   role          = aws_iam_role.worker_exec.arn
   package_type  = "Image"
   image_uri     = var.ecr_image_uri

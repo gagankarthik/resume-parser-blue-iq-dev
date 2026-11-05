@@ -282,9 +282,15 @@ def _extract_certifications(text: str) -> list[CertificationItem]:
 
 
 # -- Entry point ---------------------------------------------------------------
-def parse(text: str, anchors: RuleExtracted) -> ParsedResumeAI:
-    """Best-effort deterministic parse. Never raises, never invents data."""
-    sections = section_detector.detect(text)
+def parse(
+    text: str, anchors: RuleExtracted, sections: dict[str, str] | None = None
+) -> ParsedResumeAI:
+    """Best-effort deterministic parse. Never raises, never invents data.
+
+    `sections` is `section_detector.detect(text)`, when the caller already has it.
+    """
+    if sections is None:
+        sections = section_detector.detect(text)
 
     header = sections.get("header", "")
     if not header and "full_text" in sections:

@@ -11,6 +11,8 @@ permission and an exhausted quota need three completely different fixes, and use
 be one indistinguishable empty list.
 """
 
+import contextlib
+
 import httpx
 import pytest
 
@@ -164,3 +166,26 @@ async def test_transport_error_is_classified_not_leaked():
         with pytest.raises(gig_api.GigApiError) as exc:
             await gig_api.get_async(c, "http://x/cities", "k")
     assert exc.value.kind == "transport"
+
+
+# -- Exception mechanics ------------------------------------------------------
+
+async def test_error_propagates_through_context_managers():
+    """contextlib assigns ``__traceback__`` on the way out. A frozen-dataclass exception
+    refused that assignment and surfaced as FrozenInstanceError instead of itself."""
+    @contextlib.contextmanager
+    def sync_cm():
+        yield
+
+    @contextlib.asynccontextmanager
+    async def async_cm():
+        yield
+
+    with pytest.raises(gig_api.GigApiError) as exc:
+        with sync_cm():
+            raise gig_api.GigApiError("auth", 401, "bad key")
+    assert (exc.value.kind, exc.value.status, exc.value.message) == ("auth", 401, "bad key")
+
+    with pytest.raises(gig_api.GigApiError):
+        async with async_cm():
+            raise gig_api.GigApiError("forbidden", 403, "no permission")

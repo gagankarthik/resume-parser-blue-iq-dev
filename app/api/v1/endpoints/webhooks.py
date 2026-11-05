@@ -8,21 +8,18 @@ DELETE /webhooks/{id} - remove a webhook
 Webhooks are scoped to the company derived from the API key.
 """
 
-from datetime import UTC, datetime
+import asyncio
 
 from fastapi import APIRouter, Depends
-from ulid import ULID
 
 from app.api.dependencies import get_api_key_record
 from app.core.errors import ErrorCode, api_error
-from app.core.security import generate_webhook_secret
-from app.core.url_validator import UnsafeWebhookURLError, validate_webhook_url
+from app.core.url_validator import UnsafeWebhookURLError
 from app.db import dynamodb as db
 from app.models.schemas import WebhookCreateRequest, WebhookResponse
+from app.services.application.webhooks import register_webhook
 
 router = APIRouter()
-
-_VALID_EVENTS = {"parse.completed", "parse.failed", "batch.completed"}
 
 
 @router.post(
@@ -38,30 +35,20 @@ async def create_webhook(
 ) -> WebhookResponse:
     company_id: str = record["company_id"]
 
-    # SSRF guard: scheme + DNS resolution must be public (https-only in prod).
+    # SSRF guard (scheme + public DNS, https-only in prod) runs inside
+    # register_webhook; DNS resolution blocks, so off the event loop.
     try:
-        validate_webhook_url(payload.url)
+        hook = await asyncio.to_thread(register_webhook, company_id, payload.url, payload.events)
     except UnsafeWebhookURLError as exc:
-        raise api_error(422, ErrorCode.INVALID_REQUEST, str(exc))
-
-    webhook_id = str(ULID())
-    secret     = generate_webhook_secret()
-
-    db.create_webhook(
-        webhook_id=webhook_id,
-        company_id=company_id,
-        url=payload.url,
-        hmac_secret=secret,
-        events=payload.events,
-    )
+        raise api_error(422, ErrorCode.INVALID_REQUEST, str(exc)) from exc
 
     return WebhookResponse(
-        webhook_id=webhook_id,
-        url=payload.url,
-        events=payload.events,
-        hmac_secret=secret,
-        status="active",
-        created_at=datetime.now(UTC).isoformat(),
+        webhook_id=hook["webhook_id"],
+        url=hook["url"],
+        events=hook["events"],
+        hmac_secret=hook["hmac_secret"],
+        status=hook["status"],
+        created_at=hook["created_at"],
     )
 
 

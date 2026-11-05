@@ -28,7 +28,7 @@ def _sqs_event(*jobs, message_ids=None):
     return {
         "Records": [
             {"eventSource": "aws:sqs", "messageId": mid, "body": json.dumps(job)}
-            for mid, job in zip(ids, jobs)
+            for mid, job in zip(ids, jobs, strict=True)
         ]
     }
 

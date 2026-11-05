@@ -9,13 +9,24 @@ from functools import lru_cache
 from typing import Any
 
 import boto3
+from botocore.config import Config
 
 from app.core.config import get_settings
+
+# botocore's defaults are a 60s connect and 60s read timeout plus retries, so one
+# hung call could eat a request's gateway window or a parse's whole budget. Every
+# DynamoDB operation here is a single-item read/write or a small query that answers
+# in milliseconds; these bounds only cut off a dead connection.
+_DYNAMODB_CONFIG = Config(
+    connect_timeout=2,
+    read_timeout=5,
+    retries={"total_max_attempts": 3, "mode": "standard"},
+)
 
 
 @lru_cache(maxsize=4)
 def _get_dynamodb_resource(region: str, endpoint_url: str) -> Any:
-    kwargs: dict[str, Any] = {"region_name": region}
+    kwargs: dict[str, Any] = {"region_name": region, "config": _DYNAMODB_CONFIG}
     if endpoint_url:
         kwargs["endpoint_url"] = endpoint_url
     return boto3.resource("dynamodb", **kwargs)

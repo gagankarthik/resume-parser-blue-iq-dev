@@ -8,7 +8,7 @@ import json
 import pytest
 
 from app.services.normalization import specialty_catalog
-from app.services.normalization.healthcare_taxonomy import _match_key
+from app.services.normalization.healthcare_taxonomy import match_key
 
 
 @pytest.fixture(autouse=True)
@@ -39,8 +39,8 @@ def test_default_path_loads_bundled_snapshot():
     cat = specialty_catalog.reload(None)
     assert not cat.is_empty
     # Same specialty name carries a different id per profession (RN vs CNA ICU).
-    rn_icu = cat.by_prof_name_key[("rn", _match_key("ICU"))]
-    cna_icu = cat.by_prof_name_key[("cna", _match_key("ICU"))]
+    rn_icu = cat.by_prof_name_key[("rn", match_key("ICU"))]
+    cna_icu = cat.by_prof_name_key[("cna", match_key("ICU"))]
     assert rn_icu.id != cna_icu.id
 
 
@@ -67,9 +67,9 @@ def test_loads_json_list_and_builds_indexes(tmp_path):
     rec = cat.records[0]
     assert rec.id == "1042"
     assert rec.keywords == ("floor nursing", "ms/tele")
-    assert cat.by_name_key[_match_key("Medical Surgical")] is rec
-    assert cat.by_full_key[_match_key("Medical Surgical / Telemetry")] is rec
-    assert cat.by_keyword_key[_match_key("ms/tele")] is rec
+    assert cat.by_name_key[match_key("Medical Surgical")] is rec
+    assert cat.by_full_key[match_key("Medical Surgical / Telemetry")] is rec
+    assert cat.by_keyword_key[match_key("ms/tele")] is rec
 
 
 def test_int_id_and_envelope_and_missing_fields(tmp_path):
@@ -93,7 +93,7 @@ def test_loads_csv(tmp_path):
     cat = specialty_catalog.reload(path)
     assert len(cat.records) == 1
     assert cat.records[0].keywords == ("floor nursing", "ms tele")
-    assert cat.by_keyword_key[_match_key("ms tele")].id == "1042"
+    assert cat.by_keyword_key[match_key("ms tele")].id == "1042"
 
 
 def test_profession_id_mapping(tmp_path):
@@ -111,3 +111,14 @@ def test_profession_id_mapping(tmp_path):
     assert cat.profession_id_for("LPN") == "16"               # slash-split part
     assert cat.profession_id_for("Astronaut") is None
     specialty_catalog.reload("")
+
+
+def test_numeric_ids_coerce_like_the_schema(tmp_path):
+    """A JSON number id is stored the way the schema stores it ("1", not "1.0"), so a
+    catalog id and the same id on a reloaded record compare equal."""
+    path = _write(tmp_path, "c.json", [
+        {"id": 56, "specialty": "ICU", "profession": "RN", "profession_id": 1.0,
+         "group_id": 7, "category_id": True},
+    ])
+    rec = specialty_catalog.reload(path).records[0]
+    assert (rec.id, rec.profession_id, rec.group_id, rec.category_id) == ("56", "1", "7", None)

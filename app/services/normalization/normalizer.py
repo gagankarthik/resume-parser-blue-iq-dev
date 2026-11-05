@@ -11,6 +11,9 @@ Covers:
 """
 
 import re
+from collections.abc import Callable
+
+from pydantic import BaseModel
 
 from app.models.schemas import (
     CertificationItem,
@@ -118,6 +121,7 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
             exp.employment_type = _detect_employment_type(exp)
     for edu in parsed.education:
         edu.tier = _education_tier(edu.degree)
+    _dedup_history(parsed)                     # before gap/date checks, so a repeat isn't flagged twice
     _flag_employment_gaps(parsed)              # gap_warning on real jobs only
     _flag_impossible_date_ranges(parsed)       # note a role whose end precedes its start
     _clean_credential_buckets(parsed)
@@ -125,6 +129,7 @@ def normalize(parsed: ParsedResumeAI) -> ParsedResumeAI:
         lic.name = _fix_credential_case(lic.name)
         if lic.license_type:
             lic.license_type = _fix_credential_case(lic.license_type)
+    _dedup_credentials(parsed)                 # after bucketing + case fixes, so keys compare cleanly
     _normalize_extraction_notes(parsed)
     return parsed
 
@@ -332,12 +337,11 @@ def _normalize_personal(personal: PersonalInfo) -> None:
         # post-nominals like "RN, BSN" are never silently lost. Merge with any
         # credentials the model already supplied (case-insensitive dedup, order
         # preserved: model-supplied first, then newly recovered).
-        recovered = _extract_name_credentials(personal.full_name)
+        personal.full_name, recovered = _split_name_credentials(personal.full_name)
         if recovered:
             personal.credentials = _dedup_preserve_order(
                 [*personal.credentials, *recovered]
             )
-        personal.full_name = _strip_name_credentials(personal.full_name)
     elif personal.credentials:
         personal.credentials = _dedup_preserve_order(personal.credentials)
     personal.credentials = [_fix_credential_case(c) for c in personal.credentials]
@@ -355,12 +359,171 @@ def _dedup_preserve_order(values: list[str]) -> list[str]:
     return result
 
 
-def _extract_name_credentials(name: str) -> list[str]:
-    """Return the trailing credential tokens of a name, in original case.
+# -- Duplicate entries ---------------------------------------------------------
+# The section agents read the same text independently, and resumes repeat
+# themselves (a role under both "Experience" and "Travel Assignments", a cert in two
+# sections, a bullet copied onto a second page). Collapse true duplicates here by
+# MERGING: the kept entry picks up any field only the repeat had, so no extracted
+# value is lost. Entries that disagree on an identifying detail (different dates,
+# licence numbers...) are different entries and are both kept.
 
-    Mirrors `_strip_name_credentials` so exactly the tokens that get removed from
-    the name are the ones recovered into personal_info.credentials. Returns [] for
-    a genuine "Last, First" name (nothing credential-like to strip).
+def _text_key(value: object) -> str:
+    """Case-, punctuation- and whitespace-insensitive comparison key.
+
+    Keeps `+` and `#`, which carry meaning in skills ("C++" is not "C#"), and falls
+    back to the case-folded text when nothing alphanumeric is left, so a value is
+    never silently treated as empty.
+    """
+    if value is None:
+        return ""
+    s = re.sub(r"['’]", "", str(value).casefold())
+    return " ".join(re.sub(r"[^\w+#]+|_", " ", s).split()) or s.strip()
+
+
+# Values the schema substitutes for a missing name. Two entries sharing one of these
+# are not known to be the same entry, so they must never be merged.
+_PLACEHOLDER_KEYS = frozenset({
+    "unknown", "unknown institution", "unknown certification", "unknown license",
+    "unknown reference", "untitled project",
+})
+
+
+def _dedup_text(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for v in values:
+        key = _text_key(v)
+        if key and key not in seen:
+            seen.add(key)
+            result.append(v)
+    return result
+
+
+def _is_blank_value(value: object) -> bool:
+    """Blank for MERGING: unlike the validator's `_is_blank`, False and 0 count as
+    blank here, so a repeat that says `is_current=True` or carries a confidence can
+    fill them in. Both copies describe the same entry, so nothing real is lost."""
+    if isinstance(value, bool):
+        return value is False
+    if isinstance(value, int | float):
+        return value == 0
+    if isinstance(value, str):
+        return not value.strip()
+    return value is None or value == []
+
+
+def _item_key(item: object) -> str:
+    return item.model_dump_json() if isinstance(item, BaseModel) else _text_key(item)
+
+
+def _merge_into(kept: BaseModel, dup: BaseModel) -> None:
+    """Fill each blank field of `kept` from `dup`; union list fields in order."""
+    for name in type(kept).model_fields:
+        a, b = getattr(kept, name), getattr(dup, name)
+        if name == "specialties":
+            # Same catalog id under different wording ("ICU" / "Intensive Care Unit")
+            # is one specialty; the matcher's own dedup keeps the strongest match.
+            setattr(kept, name, specialty_matcher._dedupe_matches([*a, *b]))
+        elif isinstance(a, list) and isinstance(b, list):
+            if all(isinstance(x, str) for x in (*a, *b)):
+                setattr(kept, name, _dedup_text([*a, *b]))
+            else:
+                merged = list(a)
+                seen = {_item_key(x) for x in a}
+                for x in b:
+                    if (key := _item_key(x)) not in seen:
+                        seen.add(key)
+                        merged.append(x)
+                setattr(kept, name, merged)
+        elif _is_blank_value(a) and not _is_blank_value(b):
+            setattr(kept, name, b)
+
+
+def _merge_duplicates[T: BaseModel](
+    items: list[T],
+    identity: Callable[[T], tuple[str, ...]],
+    conflict_fields: tuple[str, ...],
+) -> list[T]:
+    """Collapse entries sharing an identity whose `conflict_fields` don't disagree
+    (a field blank on either side is not a disagreement). Order is preserved."""
+    kept: list[T] = []
+    for item in items:
+        ident = identity(item)
+        match = None
+        # The leading part (company, institution, name) must be known, and no part may
+        # be a schema placeholder ("Unknown", "Unknown Institution"...): those say
+        # nothing about which entry it is. Later parts (degree, state) may be empty.
+        if ident[0] and not _PLACEHOLDER_KEYS.intersection(ident):
+            for existing in kept:
+                if identity(existing) == ident and not any(
+                    (x := _text_key(getattr(existing, f)))
+                    and (y := _text_key(getattr(item, f)))
+                    and x != y
+                    for f in conflict_fields
+                ):
+                    match = existing
+                    break
+        if match is None:
+            kept.append(item)
+        else:
+            _merge_into(match, item)
+    return kept
+
+
+def _dedup_history(parsed: ParsedResumeAI) -> None:
+    for exp in parsed.experience:
+        exp.description = _dedup_text(exp.description)
+        exp.achievements = _dedup_text(exp.achievements)
+    parsed.experience = _merge_duplicates(
+        parsed.experience,
+        lambda e: (_text_key(e.company), _text_key(e.role)),
+        ("start_date", "end_date", "city", "state", "agency_name"),
+    )
+    parsed.education = _merge_duplicates(
+        parsed.education,
+        lambda e: (_text_key(e.institution), _text_key(e.degree)),
+        ("field_of_study", "start_year", "graduation_year"),
+    )
+    parsed.clinical_rotations = _merge_duplicates(
+        parsed.clinical_rotations,
+        lambda r: (_text_key(r.institution), _text_key(r.unit)),
+        ("role", "start_date", "end_date"),
+    )
+    parsed.projects = _merge_duplicates(
+        parsed.projects, lambda p: (_text_key(p.name),), ("url",),
+    )
+    parsed.references = _merge_duplicates(
+        parsed.references, lambda r: (_text_key(r.name),), ("email", "phone", "company"),
+    )
+    parsed.languages = _dedup_text(parsed.languages)
+    parsed.awards = _dedup_text(parsed.awards)
+    parsed.publications = _dedup_text(parsed.publications)
+    parsed.professional_associations = _dedup_text(parsed.professional_associations)
+
+
+def _dedup_credentials(parsed: ParsedResumeAI) -> None:
+    parsed.certifications = _merge_duplicates(
+        parsed.certifications,
+        lambda c: (_cred_key(c.name),),
+        ("issued_date", "expiry_date", "date", "credential_id"),
+    )
+    parsed.licenses = _merge_duplicates(
+        parsed.licenses,
+        lambda lic: (_cred_key(lic.license_type or lic.name), _text_key(lic.state)),
+        ("license_number", "issued_date", "expiry_date"),
+    )
+    parsed.skills = _dedup_text(parsed.skills)
+
+
+def _split_name_credentials(name: str) -> tuple[str, list[str]]:
+    """Split trailing credential/licence/degree suffixes off a person's name.
+
+    Returns ``(name, credentials)``: the name without its suffixes, and exactly the
+    tokens that were removed, in original case - so what leaves the name is what
+    lands in personal_info.credentials. Handles both comma-delimited ("Jane Smith,
+    RN, BSN") and space-appended ("Jane Smith RN BSN") forms. The part before the
+    first comma is kept only when everything after it is credential-like, so a
+    genuine "Last, First" name is preserved (and yields no credentials).
     """
     def _is_cred(token: str) -> bool:
         return token.strip(".").lower() in _NAME_CREDENTIALS
@@ -380,31 +543,7 @@ def _extract_name_credentials(name: str) -> list[str]:
         trailing.append(tokens.pop().strip(".,"))
     recovered.extend(reversed(trailing))
 
-    return recovered
-
-
-def _strip_name_credentials(name: str) -> str:
-    """Remove trailing credential/licence/degree suffixes from a person's name.
-
-    Handles both comma-delimited ("Jane Smith, RN, BSN") and space-appended
-    ("Jane Smith RN BSN") forms. The part before the first comma is kept only
-    when everything after it is credential-like, so genuine "Last, First"
-    names are preserved.
-    """
-    def _is_cred(token: str) -> bool:
-        return token.strip(".").lower() in _NAME_CREDENTIALS
-
-    head, sep, tail = name.partition(",")
-    if sep:
-        tail_tokens = [t for t in re.split(r"[,\s]+", tail.strip()) if t]
-        if tail_tokens and all(_is_cred(t) for t in tail_tokens):
-            name = head
-
-    tokens = name.split()
-    while len(tokens) > 1 and _is_cred(tokens[-1]):
-        tokens.pop()
-
-    return " ".join(tokens).strip(" ,") or name.strip()
+    return " ".join(tokens).strip(" ,") or name.strip(), recovered
 
 
 # -- Credential casing + cross-bucket hygiene ----------------------------------
@@ -529,14 +668,6 @@ def _normalize_skills(skills: list[str]) -> list[str]:
     return result
 
 
-def normalize_specialties_list(specialties: list[str]) -> list[str]:
-    """
-    Standalone helper - normalize a list of specialty strings independently.
-    Useful when specialties are stored separately from skills.
-    """
-    return _normalize_skills(specialties)
-
-
 def _norm_institution_key(institution: str | None) -> str:
     return (institution or "").strip().lower()
 
@@ -609,10 +740,9 @@ def _infer_country(exp: ExperienceItem) -> None:
     if state in _US_STATE_ABBREVS:
         exp.country = _US_COUNTRY
         return
-    if exp.location and _US_STATE_ZIP_RE.search(exp.location):
-        m = _US_STATE_ZIP_RE.search(exp.location)
-        if m and m.group(1).upper() in _US_STATE_ABBREVS:
-            exp.country = _US_COUNTRY
+    m = _US_STATE_ZIP_RE.search(exp.location) if exp.location else None
+    if m and m.group(1).upper() in _US_STATE_ABBREVS:
+        exp.country = _US_COUNTRY
 
 
 _BED_COUNT_RE = re.compile(r"\d[\d,]*")

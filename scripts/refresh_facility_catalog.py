@@ -4,14 +4,14 @@ Regenerate the bundled facility catalog snapshot from the GigHealth API.
 
     python -m scripts.refresh_facility_catalog          # uses env / settings
     python -m scripts.refresh_facility_catalog --dry-run
-    GIG_SPECIAILITIES_API_KEY=... python -m scripts.refresh_facility_catalog
+    GIG_SPECIALTIES_API_KEY=... python -m scripts.refresh_facility_catalog
 
 Fetches the platform's facility directory and writes the flat catalog rows the
 matcher consumes (id, name, health_system, health_system_id) - with the platform's
 EXACT names - to app/data/facility_catalog.json, the snapshot the parser loads at
 runtime. Run this whenever the platform's facilities change, then commit the
 regenerated JSON. Authenticates with the same platform key as the specialties
-refresh (GIG_SPECIAILITIES_API_KEY).
+refresh (GIG_SPECIALTIES_API_KEY).
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     api_key = settings.gig_specialties_api_key
     if not api_key:
         print(
-            "ERROR: no API key. Set GIG_SPECIAILITIES_API_KEY in .env or the "
+            "ERROR: no API key. Set GIG_SPECIALTIES_API_KEY in .env or the "
             "environment.",
             file=sys.stderr,
         )

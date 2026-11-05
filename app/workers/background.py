@@ -3,40 +3,31 @@ Async resume processing handler.
 
 Used by:
   * FastAPI BackgroundTasks (development / single-file async path)
-  * Worker Lambda handler (production - invoked per-file)
+  * Worker Lambda handler (production - one SQS message per file)
 
 Resilience:
-  * DynamoDB writes: 3 retries with 1s backoff on ClientError
-  * Webhook delivery: 15s timeout per attempt
+  * DynamoDB writes: up to 3 attempts, 1s apart, on ClientError or BotoCoreError
+  * Webhook delivery: 10s deadline per attempt, 4 attempts (see webhook_sender)
   * S3 delete: 1 retry before giving up (file leaks are non-critical)
   * batch_id propagation: atomic counter update triggers batch.completed webhook
 """
 
 import asyncio
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
+from app.core.errors import public_error
 from app.core.logging import get_logger
 from app.db import dynamodb as db
+from app.services.application import job_outcome
 from app.services.pipeline import PipelineInput, PipelineResult
 from app.services.pipeline import run as run_pipeline
 from app.storage import s3_client
-from app.workers.webhook_sender import DELIVERY_BUDGET_SECONDS, deliver_event
 
 log = get_logger(__name__)
 
 _DB_RETRIES    = 3
-_DB_RETRY_WAIT = 1.0   # seconds between DynamoDB retries
-
-# Outer safety net around webhook delivery - NOT the delivery budget itself. It has to
-# cover the sender's whole retry ladder (sleeps + one HTTP timeout per attempt), or it
-# cancels the final attempts and the sender's circuit breaker can never open. Derived
-# from the sender rather than hardcoded so tuning the ladder can't silently re-break it.
-# Delivery happens after the job row is already `completed`, so a poller never waits on
-# this; it only extends the worker invocation, which has 300s (and a 360s SQS visibility
-# timeout) to spend. `deliver_event` fans out to all hooks concurrently, so this bounds
-# the slowest hook, not their sum.
-_WEBHOOK_TIMEOUT = DELIVERY_BUDGET_SECONDS + 15
+_DB_RETRY_WAIT = 1.0   # seconds between DynamoDB attempts
 
 
 async def process_resume_async(
@@ -56,10 +47,11 @@ async def process_resume_async(
     Never raises - all errors are caught, logged, and reflected in DynamoDB.
     """
     log.info("job_start", job_id=job_id, batch_id=batch_id)
-    _db_call(db.update_job_processing, job_id)
+    await _db_call(db.update_job_processing, job_id)
 
     result: PipelineResult | None = None
     error_code = ""
+    rejected_tokens = 0
     status = "failed"
 
     try:
@@ -73,38 +65,47 @@ async def process_resume_async(
                 force_textract=force_textract,
             )
         )
-        status = "completed"
-
-        _db_call(
+        parsed = result.parsed.model_dump()
+        completed_event = {
+            "job_id": job_id,
+            "data": parsed,
+            "partial": result.partial,
+            "warnings": result.warnings,
+        }
+        # Write first, announce second. The poll endpoint reads this row: a
+        # parse.completed sent before the write lands tells the client "done" while
+        # every poll still says "processing" until the TTL.
+        stored = await _db_call(
             db.update_job_completed,
             job_id,
             {
-                "data": result.parsed.model_dump(),
+                "data": parsed,
                 "confidence": result.confidence.model_dump(),
                 "partial": result.partial,
                 "warnings": result.warnings,
             },
         )
-
-        await _safe_deliver(
-            company_id, "parse.completed",
-            {
-                "job_id": job_id,
-                "data": result.parsed.model_dump(),
-                "partial": result.partial,
-                "warnings": result.warnings,
-            },
-        )
+        if not stored:
+            raise RuntimeError("the parse result could not be stored")
+        status = "completed"
 
     except Exception as exc:
-        error_code = type(exc).__name__
-        log.error("job_failed", job_id=job_id, error=str(exc), error_code=error_code)
-        _db_call(db.update_job_failed, job_id, str(exc), error_code)
+        # The class name and raw text are for our logs only - they name buckets,
+        # ARNs and request ids. The poll response and the webhook get the public error.
+        failure = public_error(exc)
+        error_code = failure.error_code.value
+        rejected_tokens = getattr(exc, "tokens", 0)
+        log.exception("job_failed", job_id=job_id, error_type=type(exc).__name__,
+                      error_code=error_code)
+        await _db_call(db.update_job_failed, job_id, failure.detail, error_code)
 
-        await _safe_deliver(
+        await job_outcome.deliver_safely(
             company_id, "parse.failed",
-            {"job_id": job_id, "error": str(exc)},
+            {"job_id": job_id, "error": failure.detail, "error_code": error_code},
         )
+
+    else:
+        await job_outcome.deliver_safely(company_id, "parse.completed", completed_event)
 
     finally:
         # Everything below is best-effort cleanup/bookkeeping. It MUST NOT raise:
@@ -113,7 +114,7 @@ async def process_resume_async(
         # parse.completed webhook + job write (duplicate output). Swallow and log
         # instead. (The worker also skips a job already in a terminal state, so a
         # redelivery after completion is a no-op - see worker_lambda._process_one.)
-        _s3_delete(s3_key)
+        _s3_delete(s3_key, job_id)
 
         try:
             db.write_audit_log(
@@ -124,83 +125,57 @@ async def process_resume_async(
                 status=status,
                 duration_ms=result.duration_ms if result else 0,
                 ocr_used=result.ocr_used if result else False,
-                ai_tokens_used=result.ai_tokens_used if result else 0,
+                ai_tokens_used=result.ai_tokens_used if result else rejected_tokens,
                 error_code=error_code,
                 key_hash=key_hash,
                 key_prefix=key_prefix,
                 endpoint=endpoint,
             )
-        except Exception as exc:
-            log.error("audit_log_failed", job_id=job_id, error=str(exc))
+        except Exception:
+            log.exception("audit_log_failed", job_id=job_id)
 
         if batch_id:
             try:
-                # Claim the increment idempotently - an SQS redelivery (after a
-                # hard timeout/OOM) re-runs this whole block, and without the guard
-                # it would double-count the batch's completed/failed.
-                if not db.mark_batch_counted(job_id):
-                    log.info("batch_already_counted", job_id=job_id, batch_id=batch_id)
-                else:
-                    batch_done = db.increment_batch_counter(
-                        batch_id=batch_id,
-                        field="completed" if status == "completed" else "failed",
-                    )
-                    if batch_done:
-                        batch = db.get_batch(batch_id)
-                        if batch:
-                            await _safe_deliver(
-                                company_id,
-                                "batch.completed",
-                                {
-                                    "batch_id": batch_id,
-                                    "total":     int(batch.get("total", 0)),
-                                    "completed": int(batch.get("completed", 0)),
-                                    "failed":    int(batch.get("failed", 0)),
-                                },
-                            )
-            except Exception as exc:
-                log.error("batch_bookkeeping_failed", job_id=job_id,
-                          batch_id=batch_id, error=str(exc))
+                await job_outcome.record_batch_outcome(
+                    batch_id=batch_id, job_id=job_id, company_id=company_id,
+                    completed=status == "completed",
+                )
+            except Exception:
+                # The claim was taken but the counter never moved: this batch will
+                # not reach its total on its own.
+                log.exception("batch_bookkeeping_failed", job_id=job_id, batch_id=batch_id)
 
         log.info("job_done", job_id=job_id, status=status, batch_id=batch_id)
 
 
 # -- Internal helpers ----------------------------------------------------------
 
-def _db_call(fn, *args, **kwargs) -> None:
-    """Call a DynamoDB function with up to _DB_RETRIES retries on ClientError."""
-    import time
-    for attempt in range(_DB_RETRIES):
+async def _db_call(fn, *args) -> bool:
+    """Run a DynamoDB write, retrying transient AWS errors. True when it landed.
+
+    Retries both botocore families - ClientError (throttling, 5xx) and
+    BotoCoreError (connection, endpoint and read-timeout errors) - and backs off
+    with asyncio.sleep so the event loop keeps serving meanwhile.
+    """
+    for attempt in range(1, _DB_RETRIES + 1):
         try:
-            fn(*args, **kwargs)
-            return
-        except ClientError as exc:
-            if attempt == _DB_RETRIES - 1:
-                log.error("db_write_failed", fn=fn.__name__, error=str(exc))
-            else:
-                time.sleep(_DB_RETRY_WAIT)
+            fn(*args)
+            return True
+        except (ClientError, BotoCoreError):
+            if attempt == _DB_RETRIES:
+                log.exception("db_write_failed", fn=fn.__name__, attempts=attempt)
+                return False
+            await asyncio.sleep(_DB_RETRY_WAIT)
+    return False
 
 
-async def _safe_deliver(company_id: str, event: str, payload: dict) -> None:
-    """Deliver webhook with timeout; swallow errors - delivery is best-effort."""
-    try:
-        await asyncio.wait_for(
-            deliver_event(company_id, event, payload),
-            timeout=_WEBHOOK_TIMEOUT,
-        )
-    except TimeoutError:
-        log.warning("webhook_delivery_timeout", event_name=event, company_id=company_id)
-    except Exception as exc:
-        log.warning("webhook_delivery_error", event_name=event, error=str(exc))
-
-
-def _s3_delete(s3_key: str) -> None:
-    """Delete S3 temp file; retry once on failure."""
+def _s3_delete(s3_key: str, job_id: str) -> None:
+    """Delete S3 temp file; retry once on failure. Never logs the key (see s3_client)."""
     try:
         s3_client.delete_file(s3_key)
     except Exception as exc:
-        log.warning("s3_delete_retry", key=s3_key, error=str(exc))
+        log.warning("s3_delete_retry", job_id=job_id, error=str(exc))
         try:
             s3_client.delete_file(s3_key)
-        except Exception as exc2:
-            log.error("s3_delete_failed", key=s3_key, error=str(exc2))
+        except Exception:
+            log.exception("s3_delete_failed", job_id=job_id)

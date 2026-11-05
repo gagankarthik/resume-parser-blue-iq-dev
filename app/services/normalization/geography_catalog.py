@@ -26,15 +26,16 @@ Snapshot record shape (per country), extra keys ignored::
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.services.normalization.healthcare_taxonomy import _match_key
+from app.services.normalization._catalog_io import load_rows
+from app.services.normalization.healthcare_taxonomy import match_key
 
 log = get_logger(__name__)
+
+_ENVELOPE_KEYS = ("geographies", "countries", "records", "data", "items")
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ class CountryRecord:
 
 
 # Common ways a resume writes a country, mapped to the platform ISO code the
-# geographies snapshot carries. Keys are _match_key-normalized (lowercase; "&"->
+# geographies snapshot carries. Keys are match_key-normalized (lowercase; "&"->
 # "and"). Lets "USA" / "U.S.A." / "America" resolve to the "US" country record.
 _COUNTRY_CODE_ALIASES: dict[str, str] = {
     "usa": "US",
@@ -115,39 +116,16 @@ def reload(path: str | None = None) -> GeographyCatalog:
 
 
 def _load(path: str | None) -> GeographyCatalog:
-    if not path:
-        log.info("geography_catalog_unset")
+    # JSON only: the snapshot nests states under each country, which a CSV cannot hold.
+    rows = load_rows(path, "geography", _ENVELOPE_KEYS, allow_csv=False)
+    if rows is None:
         return GeographyCatalog()
-
-    p = Path(path)
-    if not p.is_file():
-        log.warning("geography_catalog_missing", path=str(p))
-        return GeographyCatalog()
-
-    try:
-        rows = _read_rows(p)
-    except Exception as exc:  # never let a bad catalog break parsing
-        log.warning("geography_catalog_load_failed", path=str(p), error=str(exc))
-        return GeographyCatalog()
-
     catalog = _build_indexes(rows)
     log.info(
-        "geography_catalog_loaded", path=str(p),
+        "geography_catalog_loaded", path=path,
         countries=len(catalog.countries), states=len(catalog.states),
     )
     return catalog
-
-
-def _read_rows(p: Path) -> list[dict]:
-    """Parse the geographies snapshot into a list of country dicts."""
-    text = p.read_text(encoding="utf-8-sig")
-    data = json.loads(text)
-    if isinstance(data, dict):
-        for key in ("geographies", "countries", "records", "data", "items"):
-            if isinstance(data.get(key), list):
-                return data[key]
-        return []
-    return data if isinstance(data, list) else []
 
 
 def _clean(v: object) -> str | None:
@@ -175,7 +153,7 @@ def _build_indexes(rows: list[dict]) -> GeographyCatalog:
         code = _clean(row.get("code"))
         country = CountryRecord(id=country_id, name=cname, code=code)
         countries.append(country)
-        country_by_name.setdefault(_match_key(cname), country)
+        country_by_name.setdefault(match_key(cname), country)
         if code:
             country_by_code.setdefault(code.upper(), country)
 
@@ -192,7 +170,7 @@ def _build_indexes(rows: list[dict]) -> GeographyCatalog:
                 statecode=statecode, country_id=country_id,
             )
             states.append(state)
-            name_key = _match_key(sname)
+            name_key = match_key(sname)
             state_by_name.setdefault(name_key, state)
             state_by_country_name.setdefault((country_id, name_key), state)
             if statecode:

@@ -11,6 +11,9 @@ import re
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.schemas.validators import (
+    CatalogId,
+    UnitFloat,
+    _clamp_unit,
     _coerce_list,
     _sanitize_date,
     _sanitize_email,
@@ -53,9 +56,9 @@ class SpecialtyMatch(BaseModel):
 
     name:         str        = Field(..., description="The unit/specialty named for this role (e.g. 'Med Surg/Tele', 'ICU'). This is the ONLY field you fill - leave everything else null/default; the system maps it to a specialty id and confidence.")
     raw:          str | None = Field(None, description="Original specialty text as written, preserved for review. Set by the system.")
-    specialty_id: str | None = Field(None, description="Matched specialty catalog id, or null when unmatched. Set by the system - never fill this yourself.")
+    specialty_id: CatalogId  = Field(None, description="Matched specialty catalog id, or null when unmatched. Set by the system - never fill this yourself.")
     group:        str | None = Field(None, description="Specialty group label. Set by the system.")
-    confidence:   float      = Field(0.0, ge=0.0, le=1.0, description="Match confidence 0.0-1.0. Set by the system - never fill this yourself.")
+    confidence:   UnitFloat  = Field(0.0, ge=0.0, le=1.0, description="Match confidence 0.0-1.0. Set by the system - never fill this yourself.")
     matched:      bool       = Field(False, description="True only when a specialty_id was assigned. Set by the system.")
     match_tier:   str | None = Field(None, description="Which match tier resolved the id ('name' | 'full_name' | 'keywords' | 'fuzzy' | 'ai'), or null when unmatched. Set by the system.")
 
@@ -76,30 +79,6 @@ class SpecialtyMatch(BaseModel):
     @classmethod
     def _sanitize_optional(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
-
-    @field_validator("specialty_id", mode="before")
-    @classmethod
-    def _coerce_id(cls, v: object) -> str | None:
-        # Accept ints or strings from the catalog without guessing the platform's
-        # id type - store everything as a string. Blank/None -> None.
-        if v is None:
-            return None
-        if isinstance(v, bool):  # guard: bool is an int subclass
-            return None
-        if isinstance(v, int | float):
-            return str(int(v)) if float(v).is_integer() else str(v)
-        return _sanitize_str(str(v)) if isinstance(v, str) else None
-
-    @field_validator("confidence", mode="before")
-    @classmethod
-    def _coerce_confidence(cls, v: object) -> float:
-        if isinstance(v, bool) or not isinstance(v, int | float | str):
-            return 0.0
-        try:
-            f = float(v)
-        except (TypeError, ValueError):
-            return 0.0
-        return min(max(f, 0.0), 1.0)
 
     @field_validator("matched", mode="before")
     @classmethod
@@ -238,20 +217,20 @@ class ExperienceItem(BaseModel):
     country:       str | None = Field(None, description="Facility country - ONLY if explicitly written on the resume; otherwise null. Do NOT infer 'United States'.")
     zip_code:      str | None = Field(None, description="Facility postal/ZIP code, only if stated - never guessed from the city")
     # -- Structured location ids (platform geographies) ------------------------
-    country_id:    str | None = Field(None, description="Matched platform country id for `country`. Set by the system from the geographies catalog - never fill this yourself; null when unmatched.")
-    country_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that country_id is correct (1.0 on an exact catalog match). Set by the system.")
-    state_id:      str | None = Field(None, description="Matched platform state id for `state` (scoped to country_id). Set by the system from the geographies catalog - never fill this yourself; null when unmatched.")
-    state_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that state_id is correct (1.0 on an exact catalog match). Set by the system.")
-    city_id:       str | None = Field(None, description="Matched platform city id for `city`. Set by the system via the live cities fuzzy-match (only when enabled); null otherwise. Never fill this yourself.")
-    city_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that city_id is correct (the cities API match score). Set by the system.")
+    country_id:    CatalogId  = Field(None, description="Matched platform country id for `country`. Set by the system from the geographies catalog - never fill this yourself; null when unmatched.")
+    country_confidence: UnitFloat = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that country_id is correct (1.0 on an exact catalog match). Set by the system.")
+    state_id:      CatalogId  = Field(None, description="Matched platform state id for `state` (scoped to country_id). Set by the system from the geographies catalog - never fill this yourself; null when unmatched.")
+    state_confidence: UnitFloat = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that state_id is correct (1.0 on an exact catalog match). Set by the system.")
+    city_id:       CatalogId  = Field(None, description="Matched platform city id for `city`. Set by the system via the live cities fuzzy-match (only when enabled); null otherwise. Never fill this yourself.")
+    city_confidence: UnitFloat = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that city_id is correct (the cities API match score). Set by the system.")
     employer_phone: str | None = Field(None, description="Employer/facility phone number exactly as written, only if stated next to this role (e.g. '304-287-2120'). Null if not stated.")
     # -- Clinical classification (Select Profession / Select Specialties) ------
     profession:    str | None = Field(None, description="Credential/profession for this role exactly as stated (e.g. 'RN', 'LPN', 'CRT'). Do NOT expand the abbreviation.")
-    profession_id: str | None = Field(None, description="Matched platform profession id for `profession` (e.g. RN->'1'). Set by the system from the catalog - never fill this yourself; null when unmatched.")
-    profession_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that profession_id is correct (1.0 on an exact catalog match, 0.0 when unmatched). Set by the system.")
+    profession_id: CatalogId  = Field(None, description="Matched platform profession id for `profession` (e.g. RN->'1'). Set by the system from the catalog - never fill this yourself; null when unmatched.")
+    profession_confidence: UnitFloat = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that profession_id is correct (1.0 on an exact catalog match, 0.0 when unmatched). Set by the system.")
     # -- Facility mapping (populated once the client's facility directory is wired) -
-    facility_id: str | None = Field(None, description="Platform facility id for the employer/facility. Reserved - populated only when the client's facilities dataset is available; null until then. Set by the system.")
-    facility_confidence: float = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that facility_id is correct. Set by the system; 0.0 until facility mapping is enabled.")
+    facility_id: CatalogId  = Field(None, description="Platform facility id for the employer/facility. Reserved - populated only when the client's facilities dataset is available; null until then. Set by the system.")
+    facility_confidence: UnitFloat = Field(0.0, ge=0.0, le=1.0, description="Confidence 0.0-1.0 that facility_id is correct. Set by the system; 0.0 until facility mapping is enabled.")
     specialties:   list[SpecialtyMatch] = Field(default_factory=list, description="Clinical specialties/units for this role, one object per specialty. Fill ONLY the `name` field of each (e.g. {\"name\": \"Med Surg/Tele\"}, {\"name\": \"ICU\"}); the system fills the id/confidence/group.")
     # -- Facility attributes (Additional Details - only if stated) -------------
     service_type:           str | None = Field(None, description="Service type, if stated")
@@ -299,33 +278,6 @@ class ExperienceItem(BaseModel):
     @classmethod
     def sanitize_optional_strings(cls, v: object) -> str | None:
         return _sanitize_str(str(v)) if isinstance(v, str) else None
-
-    @field_validator(
-        "profession_id", "facility_id", "country_id", "state_id", "city_id",
-        mode="before",
-    )
-    @classmethod
-    def coerce_catalog_id(cls, v: object) -> str | None:
-        # System-set catalog ids: accept an int/str (e.g. a DynamoDB reload), store
-        # as a trimmed string. Blank/None -> None.
-        if v is None or isinstance(v, bool):
-            return None
-        if isinstance(v, int | float):
-            return str(int(v)) if float(v).is_integer() else str(v)
-        return _sanitize_str(str(v)) if isinstance(v, str) else None
-
-    @field_validator(
-        "profession_confidence", "facility_confidence", "country_confidence",
-        "state_confidence", "city_confidence", mode="before",
-    )
-    @classmethod
-    def coerce_id_confidence(cls, v: object) -> float:
-        if isinstance(v, bool) or not isinstance(v, int | float | str):
-            return 0.0
-        try:
-            return min(max(float(v), 0.0), 1.0)
-        except (TypeError, ValueError):
-            return 0.0
 
     @field_validator("employer_phone", mode="before")
     @classmethod
@@ -547,6 +499,11 @@ class ProjectItem(BaseModel):
     def required_name(cls, v: object) -> str:
         return str(v).strip() if isinstance(v, str) and str(v).strip() else "Untitled Project"
 
+    @field_validator("url", mode="before")
+    @classmethod
+    def sanitize_url(cls, v: object) -> str | None:
+        return _sanitize_url(str(v)) if isinstance(v, str) else None
+
     @field_validator("technologies", mode="before")
     @classmethod
     def coerce_list(cls, v: object) -> list[str]:
@@ -633,13 +590,7 @@ class ExtractionNote(BaseModel):
         # Structured output does NOT enforce numeric minimum/maximum, so a model
         # that misreads the 0-1 scale (e.g. "confidence": 5) must be clamped here
         # rather than raise past the Field ge/le bounds. Uninterpretable -> neutral.
-        if isinstance(v, bool) or not isinstance(v, int | float | str):
-            return 0.5
-        try:
-            f = float(v)
-        except (TypeError, ValueError):
-            return 0.5
-        return min(max(f, 0.0), 1.0)
+        return _clamp_unit(v, fallback=0.5)
 
 
 class ClinicalRotation(BaseModel):

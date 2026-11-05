@@ -63,14 +63,18 @@ def _key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
 
 
-def recover(text: str, parsed: ParsedResumeAI) -> None:
+def recover(
+    text: str, parsed: ParsedResumeAI, sections: dict[str, str] | None = None
+) -> None:
     """Recover dropped licenses and professional associations from the résumé text.
 
     Mutates `parsed` in place, additively. Safe to call on every parse.
+    `sections` is `section_detector.detect(text)`, when the caller already has it.
     """
     if not text or not text.strip():
         return
-    sections = section_detector.detect(text)
+    if sections is None:
+        sections = section_detector.detect(text)
     # The mixed credentials block (certs/licenses/associations) lands under
     # "certifications" (see section_detector). Fall back to full_text only for
     # licenses, which carry their own strong number signal.

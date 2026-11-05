@@ -44,6 +44,7 @@ from app.db.instructions import (
 from app.db.jobs import (
     _dynamo_safe,
     _plain,
+    claim_retry,
     claim_upload_job,
     create_job,
     create_upload_job,
@@ -77,6 +78,7 @@ __all__ = [
     "create_job",
     "create_upload_job",
     "claim_upload_job",
+    "claim_retry",
     "mark_batch_counted",
     "update_job_processing",
     "update_job_completed",

@@ -13,6 +13,9 @@ callers fall back to FastAPI BackgroundTasks - see `use_queue_worker`.
 """
 
 import json
+from collections.abc import Mapping, Sequence
+from functools import lru_cache
+from typing import Any, NotRequired, TypedDict
 
 import boto3
 
@@ -24,11 +27,37 @@ log = get_logger(__name__)
 _SQS_BATCH_LIMIT = 10
 
 
+class AsyncJobPayload(TypedDict):
+    """The worker message: everything the worker needs to run and account for one parse.
+
+    Built only by `resume_service.build_async_payload`. The batch endpoint used to
+    assemble it by hand and silently dropped `endpoint`, so every production batch
+    audit record said endpoint="" - a required key here makes that a type error.
+    """
+
+    job_id: str
+    company_id: str
+    s3_key: str
+    filename: str
+    file_size_bytes: int
+    force_textract: bool
+    key_hash: str
+    key_prefix: str
+    endpoint: str
+    batch_id: NotRequired[str]
+
+
+@lru_cache(maxsize=4)
+def _sqs_client_for(region: str) -> Any:
+    """One cached client per region - boto3 clients are thread-safe and costly to build."""
+    return boto3.client("sqs", region_name=region)
+
+
 def _sqs_client(settings):
-    return boto3.client("sqs", region_name=settings.aws_region)
+    return _sqs_client_for(settings.aws_region)
 
 
-def enqueue_job(settings, payload: dict) -> bool:
+def enqueue_job(settings, payload: Mapping[str, Any]) -> bool:
     """Push one async parse job onto the worker queue.
 
     Returns True when the message was accepted. Returns False on failure (e.g. an
@@ -42,12 +71,12 @@ def enqueue_job(settings, payload: dict) -> bool:
             MessageBody=json.dumps(payload),
         )
         return True
-    except Exception as exc:
-        log.error("worker_enqueue_failed", job_id=payload.get("job_id"), error=str(exc))
+    except Exception:
+        log.exception("worker_enqueue_failed", job_id=payload.get("job_id"))
         return False
 
 
-def enqueue_jobs(settings, payloads: list[dict]) -> set[str]:
+def enqueue_jobs(settings, payloads: Sequence[Mapping[str, Any]]) -> set[str]:
     """Push many async parse jobs onto the worker queue via SendMessageBatch.
 
     Batches the sends in chunks of 10 (the SQS limit) so a large upload becomes a
@@ -72,16 +101,15 @@ def enqueue_jobs(settings, payloads: list[dict]) -> set[str]:
                 QueueUrl=settings.worker_queue_url,
                 Entries=entries,
             )
-        except Exception as exc:
-            log.error("worker_enqueue_batch_failed",
-                      count=len(chunk), error=str(exc))
-            failed.update(job.get("job_id") for job in chunk)
+        except Exception:
+            log.exception("worker_enqueue_batch_failed", count=len(chunk))
+            failed.update(str(job["job_id"]) for job in chunk)
             continue
 
         for item in resp.get("Failed", []):
             job = chunk[int(item["Id"])]
             log.error("worker_enqueue_entry_failed",
                       job_id=job.get("job_id"), code=item.get("Code"))
-            failed.add(job.get("job_id"))
+            failed.add(str(job["job_id"]))
 
     return failed

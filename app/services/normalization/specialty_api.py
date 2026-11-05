@@ -35,9 +35,6 @@ from collections.abc import Iterator
 
 from app.services.normalization import gig_api
 
-DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/specialities"
-
-
 # -- Curated keyword overlay ---------------------------------------------------
 # Extra search phrases that let the deterministic keyword tier differentiate
 # sub-types the platform records only as an acronym (the task's "burn -> BICU, ICU

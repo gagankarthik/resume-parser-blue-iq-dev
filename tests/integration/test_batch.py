@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 import app.api.dependencies as deps
 import app.api.v1.endpoints.batch as batch
+from app.core import file_validator
 from app.main import app
 
 client = TestClient(app)
@@ -42,7 +43,7 @@ def _files(n: int) -> list[tuple[str, tuple[str, bytes, str]]]:
 
 def _stub_batch_io(monkeypatch, *, upload_delay: float = 0.0) -> None:
     _authenticate(monkeypatch)
-    monkeypatch.setattr(batch, "validate_file", lambda fn, content: "docx")
+    monkeypatch.setattr(file_validator, "validate_file", lambda fn, content: "docx")
 
     def _upload(job_id, filename, content):
         if upload_delay:
@@ -139,7 +140,7 @@ def test_batch_rejects_unsupported_files_without_dropping_the_rest(monkeypatch):
             raise UnsupportedFileTypeError("Unsupported file extension '.txt'")
         return "docx"
 
-    monkeypatch.setattr(batch, "validate_file", _validate)
+    monkeypatch.setattr(file_validator, "validate_file", _validate)
 
     resp = client.post(
         "/api/v1/resume/batch",
@@ -163,7 +164,7 @@ def test_batch_with_no_valid_files_is_a_422(monkeypatch):
     from app.core.exceptions import UnsupportedFileTypeError
 
     monkeypatch.setattr(
-        batch, "validate_file",
+        file_validator, "validate_file",
         lambda fn, content: (_ for _ in ()).throw(UnsupportedFileTypeError("nope")),
     )
 

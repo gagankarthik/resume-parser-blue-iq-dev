@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 import app.api.dependencies as deps
 import app.api.v1.endpoints.resume as resume
 import app.services.application.resume_service as resume_service
+from app.core import file_validator
 from app.main import app
 
 client = TestClient(app)
@@ -129,7 +130,8 @@ def test_parse_uploaded_missing_file_returns_422(monkeypatch):
     )
 
     def _boom(key):
-        raise Exception("NoSuchKey")
+        from botocore.exceptions import ClientError
+        raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "missing"}}, "GetObject")
 
     monkeypatch.setattr(resume.s3_client, "download_file", _boom)
     resp = client.post(
@@ -150,7 +152,7 @@ def test_parse_uploaded_dispatches_scanned_file_to_worker(monkeypatch):
                      "s3_key": "temp/J1/scan.png", "filename": "scan.png"},
     )
     monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"\x89PNG\r\n\x1a\n")
-    monkeypatch.setattr(resume, "validate_file", lambda fn, content: "png")
+    monkeypatch.setattr(file_validator, "validate_file", lambda fn, content: "png")
     monkeypatch.setattr(resume.db, "claim_upload_job", lambda jid: True)
 
     dispatched: dict = {}
@@ -183,7 +185,7 @@ def test_parse_uploaded_digital_file_also_dispatches_async(monkeypatch):
                      "s3_key": "temp/J1/cv.pdf", "filename": "cv.pdf"},
     )
     monkeypatch.setattr(resume.s3_client, "download_file", lambda key: b"%PDF-1.4 digital")
-    monkeypatch.setattr(resume, "validate_file", lambda fn, content: "pdf")
+    monkeypatch.setattr(file_validator, "validate_file", lambda fn, content: "pdf")
     monkeypatch.setattr(resume.db, "claim_upload_job", lambda jid: True)
 
     deleted: list = []

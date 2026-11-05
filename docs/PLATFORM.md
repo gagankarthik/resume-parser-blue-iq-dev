@@ -62,6 +62,9 @@ curl https://api.parsinglab.blue-iq.ai/api/v1/resume/job/01K... -H "X-API-Key: $
 `status` is one of `processing`, `completed`, `partial` or `failed`. `partial`
 means the parse degraded (for example the AI stage timed out and only contact
 anchors were recovered) - the payload is still usable, but flag it for review.
+`failed` carries a human-readable `error` and a machine-readable `error_code`;
+`NOT_A_RESUME` is the single code for an empty document or one that is not a
+resume (a 0-byte upload gets it directly on the submit, as HTTP 422).
 
 Webhooks are the alternative to polling. **Secrets are per registration**, every
 active hook receives every event, and a `401` from your endpoint is never

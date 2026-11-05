@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient
 import app.api.dependencies as deps
 import app.api.v1.endpoints.resume as resume
 import app.services.application.resume_service as resume_service
+from app.core import file_validator
 from app.main import app
 from app.services import pipeline
 
@@ -56,8 +57,11 @@ def _stub_io(monkeypatch) -> dict:
     payload to prove the file really was handed to the worker.
     """
     _authenticate(monkeypatch)
-    monkeypatch.setattr(resume, "validate_file", lambda fn, content: "docx")
+    monkeypatch.setattr(file_validator, "validate_file", lambda fn, content: "docx")
     monkeypatch.setattr(resume.db, "create_job", lambda *a, **kw: None)
+    # A failed dispatch fails the row and removes the file; keep that off real AWS.
+    monkeypatch.setattr(resume.db, "update_job_failed", lambda *a, **kw: None)
+    monkeypatch.setattr(resume.s3_client, "delete_file", lambda key: None)
     monkeypatch.setattr(
         resume.s3_client, "upload_temp_file",
         lambda job_id, filename, content: f"temp/{job_id}/{filename}",

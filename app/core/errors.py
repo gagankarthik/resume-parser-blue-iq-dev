@@ -19,9 +19,13 @@ Response envelope (serialised by app/main.py):
     }
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
+from string import Template
 
 from fastapi import HTTPException
+
+from app.core.config import get_settings
 
 
 class ErrorCode(StrEnum):
@@ -35,7 +39,9 @@ class ErrorCode(StrEnum):
     # -- File Validation -------------------------------------------------------
     FILE_TOO_LARGE         = "FILE_TOO_LARGE"
     UNSUPPORTED_FILE_TYPE  = "UNSUPPORTED_FILE_TYPE"
-    CORRUPTED_FILE         = "CORRUPTED_FILE"
+    # One code for BOTH an empty document and a document that is not a resume
+    # (job description, cover letter, invoice...). Clients branch on one value.
+    NOT_A_RESUME           = "NOT_A_RESUME"
     EMPTY_BATCH            = "EMPTY_BATCH"
     BATCH_TOO_LARGE        = "BATCH_TOO_LARGE"
 
@@ -43,7 +49,6 @@ class ErrorCode(StrEnum):
     EXTRACTION_FAILED      = "EXTRACTION_FAILED"
     OCR_FAILED             = "OCR_FAILED"
     PARSE_FAILED           = "PARSE_FAILED"
-    EXTRACTION_TIMEOUT     = "EXTRACTION_TIMEOUT"
     PARSE_TIMEOUT          = "PARSE_TIMEOUT"
     WORKER_DISPATCH_FAILED = "WORKER_DISPATCH_FAILED"
 
@@ -71,7 +76,8 @@ class ErrorCode(StrEnum):
 
 
 # -- User-facing hints - shown directly to end users by the frontend -----------
-# Keep these plain-language, jargon-free, and actionable.
+# Keep these plain-language, jargon-free, and actionable. `$name` placeholders are
+# filled from settings by get_hint(), so a hint never quotes a stale limit.
 
 _HINTS: dict[str, str] = {
     ErrorCode.MISSING_API_KEY: (
@@ -91,22 +97,22 @@ _HINTS: dict[str, str] = {
         "This account has been deactivated. Contact your administrator to reactivate it."
     ),
     ErrorCode.FILE_TOO_LARGE: (
-        "The uploaded file is too large. Maximum size is 10 MB. "
+        "The uploaded file is too large. Maximum size is $max_file_size_mb MB. "
         "Try compressing the PDF or splitting the document into smaller files."
     ),
     ErrorCode.UNSUPPORTED_FILE_TYPE: (
         "This file type is not supported. Please upload a PDF, DOCX, PNG, JPG, or TIFF file."
     ),
-    ErrorCode.CORRUPTED_FILE: (
-        "The file appears to be corrupted or is not a valid document. "
-        "Try re-exporting the resume from the original application and upload again."
+    ErrorCode.NOT_A_RESUME: (
+        "This file is empty or is not a resume. Upload the candidate's resume (CV); "
+        "job descriptions, cover letters, and other documents are not accepted."
     ),
     ErrorCode.EMPTY_BATCH: (
         "No valid files were found in the batch. Check the 'skipped_files' field in the "
         "response for details on why each file was rejected."
     ),
     ErrorCode.BATCH_TOO_LARGE: (
-        "The batch contains too many files. Maximum is 200 files per request. "
+        "The batch contains too many files. Maximum is $max_batch_size files per request. "
         "Split the files into multiple batch requests."
     ),
     ErrorCode.WORKER_DISPATCH_FAILED: (
@@ -125,10 +131,6 @@ _HINTS: dict[str, str] = {
         "The AI parser could not process this resume. The document may be unusual in format. "
         "Try the retry endpoint (POST /resume/{job_id}/retry) with the same file."
     ),
-    ErrorCode.EXTRACTION_TIMEOUT: (
-        "Text extraction took too long and was cancelled. "
-        "Large or complex documents may need to be split into smaller files."
-    ),
     ErrorCode.PARSE_TIMEOUT: (
         "AI parsing took too long. Try again - if the problem persists, "
         "the resume may be unusually long. Consider trimming to the most recent experience."
@@ -146,7 +148,8 @@ _HINTS: dict[str, str] = {
     ),
     ErrorCode.UPLOAD_NOT_FOUND: (
         "No uploaded file was found for this job. Upload the file to the presigned URL "
-        "first, then call /resume/parse-uploaded. Upload URLs expire after 15 minutes."
+        "first, then call /resume/parse-uploaded. Upload URLs expire after "
+        "$upload_expiry_minutes minutes."
     ),
     ErrorCode.UPLOAD_ALREADY_PARSED: (
         "This upload has already been parsed. Request a new upload URL to parse another file."
@@ -180,7 +183,15 @@ _HINTS: dict[str, str] = {
 
 
 def get_hint(error_code: str) -> str:
-    return _HINTS.get(error_code, "Please check the API documentation or contact support.")
+    hint = _HINTS.get(error_code)
+    if hint is None:
+        return "Please check the API documentation or contact support."
+    settings = get_settings()
+    return Template(hint).safe_substitute(
+        max_file_size_mb=settings.max_file_size_mb,
+        max_batch_size=settings.max_batch_size,
+        upload_expiry_minutes=max(1, settings.presigned_upload_expiry_seconds // 60),
+    )
 
 
 def api_error(
@@ -204,3 +215,43 @@ def api_error(
         },
         headers=headers,
     )
+
+
+# -- What a client may be told about a failure ---------------------------------
+
+@dataclass(frozen=True)
+class PublicError:
+    status_code: int
+    error_code: ErrorCode
+    detail: str
+
+
+def public_error(exc: BaseException) -> PublicError:
+    """Map an exception to the status, code and message a client may see.
+
+    The one mapping behind the HTTP error envelope, a failed job's poll response
+    and its `parse.failed` webhook, so the three can never disagree. Only domain
+    errors whose message is written for the client keep their text. Everything
+    else (botocore, OpenAI, a bug) gets a generic message: its text names buckets,
+    ARNs and request ids, and its class name is not a contract. Log the exception
+    itself for diagnosis.
+    """
+    # Imported here, not at module level: exceptions.py imports ErrorCode from us.
+    from app.core.exceptions import (
+        ExtractionError,
+        FileValidationError,
+        NotAResumeError,
+        OCRError,
+    )
+
+    if isinstance(exc, NotAResumeError):
+        return PublicError(422, ErrorCode.NOT_A_RESUME, str(exc))
+    if isinstance(exc, OCRError):  # before ExtractionError: OCRError subclasses it
+        return PublicError(422, ErrorCode.OCR_FAILED, str(exc))
+    if isinstance(exc, ExtractionError):
+        return PublicError(422, ErrorCode.EXTRACTION_FAILED, str(exc))
+    if isinstance(exc, FileValidationError):
+        return PublicError(415, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
+    if isinstance(exc, TimeoutError):
+        return PublicError(504, ErrorCode.PARSE_TIMEOUT, "Parsing took too long and was cancelled.")
+    return PublicError(500, ErrorCode.PARSE_FAILED, "Resume processing failed.")

@@ -344,3 +344,24 @@ async def test_validator_noop_when_counts_match(monkeypatch):
     out, warnings = await agent.run(work, roles, "text", TokenMeter())
     assert not called
     assert warnings == []
+
+
+async def test_validator_prompt_tolerates_braces_in_the_shared_rules(monkeypatch):
+    """The re-extraction prompt embeds the shared CORE_RULES. Built with str.format,
+    a literal brace added to those rules (e.g. a JSON example) crashed every
+    re-extraction with a KeyError; the prompt must treat the rules as plain text."""
+    from app.services.parsing.agents import validator
+
+    monkeypatch.setattr(validator, "CORE_RULES", '- Keep {"json": "examples"} verbatim.')
+    seen: list[str] = []
+
+    async def fake(self, system, user, response_format, meter, *, max_tokens=None):
+        seen.append(system)
+        return ExperienceItem(company="Mercy Hospital", role="RN", description=["a", "b", "c"])
+
+    monkeypatch.setattr(BaseAgent, "_structured_call", fake)
+    role = RoleBoundary(company="Mercy Hospital", title="RN", bullet_count=3)
+    await ValidatorAgent()._reextract("text", role, TokenMeter())
+
+    assert '- Keep {"json": "examples"} verbatim.' in seen[0]
+    assert "EXACTLY 3 responsibility bullet(s)" in seen[0]

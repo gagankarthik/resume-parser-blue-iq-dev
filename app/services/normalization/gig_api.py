@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
 
 import httpx
 
@@ -40,17 +39,22 @@ _MAX_RETRIES = 2
 _BACKOFF_BASE = 0.5
 
 
-@dataclass(frozen=True)
 class GigApiError(Exception):
     """A partner API call that did not return usable data.
 
     ``kind`` is the actionable classification - this is what tells an operator whether
     the fix is a new key, a new permission, a higher quota, or nothing at all.
+
+    A plain (mutable) exception on purpose: contextlib assigns ``__traceback__`` as an
+    exception leaves a ``with`` block, which a frozen dataclass refuses - the error
+    surfaced as FrozenInstanceError instead of itself.
     """
 
-    kind:    str          # auth | forbidden | rate_limited | server | transport | malformed
-    status:  int | None
-    message: str
+    def __init__(self, kind: str, status: int | None, message: str) -> None:
+        super().__init__(kind, status, message)
+        self.kind = kind          # auth | forbidden | rate_limited | server | transport | malformed
+        self.status = status
+        self.message = message
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return f"{self.kind} ({self.status}): {self.message}"

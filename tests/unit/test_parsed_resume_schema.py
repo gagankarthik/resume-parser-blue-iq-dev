@@ -373,3 +373,36 @@ def test_professional_associations_default_and_null_coerced():
     assert ParsedResumeAI.model_validate(
         {"professional_associations": None}
     ).professional_associations == []
+
+
+def test_project_url_sanitized_like_every_other_url():
+    """ProjectItem.url used to skip the URL sanitizer, so model junk for an absent link
+    ("N/A") came back as a URL and a bare host was never given a scheme."""
+    from app.models.schemas import ProjectItem
+
+    assert ProjectItem(name="p", url="N/A").url is None
+    assert ProjectItem(name="p", url="  ").url is None
+    assert ProjectItem(name="p", url="github.com/jane/tool").url == "https://github.com/jane/tool"
+    assert ProjectItem(name="p", url="https://x.org/a").url == "https://x.org/a"
+
+
+def test_catalog_ids_and_unit_floats_sanitize_never_raise():
+    """System-set ids coerce int/float/str to a trimmed string; 0-1 floats clamp, and a
+    bool is never read as 1/0 (it is an int subclass)."""
+    from app.models.schemas import ExperienceItem, ExtractionNote, SpecialtyMatch
+
+    sm = SpecialtyMatch.model_validate({"name": "ICU", "specialty_id": 12.0, "confidence": True})
+    assert (sm.specialty_id, sm.confidence) == ("12", 0.0)
+    assert SpecialtyMatch(name="ICU", specialty_id=True, confidence="7").model_dump()["specialty_id"] is None
+    assert SpecialtyMatch(name="ICU", specialty_id=" 56 ", confidence="0.4").confidence == 0.4
+
+    exp = ExperienceItem.model_validate({
+        "company": "c", "role": "r", "facility_id": 3022, "state_id": 1.5, "country_id": "  ",
+        "facility_confidence": 5, "state_confidence": False, "city_confidence": "junk",
+    })
+    assert (exp.facility_id, exp.state_id, exp.country_id) == ("3022", "1.5", None)
+    assert (exp.facility_confidence, exp.state_confidence, exp.city_confidence) == (1.0, 0.0, 0.0)
+
+    note = ExtractionNote.model_validate({"field": "f", "reason": "r", "confidence": True})
+    assert note.confidence == 0.5
+    assert ExtractionNote.model_validate({"field": "f", "reason": "r", "confidence": -3}).confidence == 0.0

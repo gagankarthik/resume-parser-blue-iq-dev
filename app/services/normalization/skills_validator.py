@@ -56,12 +56,12 @@ CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
     "phlebotomy", "venipuncture", "infusion", "cannulation", "port-a-cath",
     # Populations / clinical areas
     "neonatal", "pediatric", "geriatric", "obstetric", "maternal", "perinatal",
-    "nicu", "picu", "icu", "ccu", "sicu", "micu", "pacu", "telemetry",
+    "nicu", "picu", "icu", "ccu", "sicu", "micu", "pacu",
     # Procedures / therapies
     "wound care", "ostomy", "dialysis", "chemotherapy", "transfusion",
     "medication administration", "triage", "suturing", "casting", "titrating",
     "titration", "drips", "sedation", "resuscitation", "glucose monitoring",
-    "specimen", "phlebotomy", "wound", "dressing",
+    "specimen", "wound", "dressing",
     # Charting / systems
     "epic", "cerner", "meditech", "emr", "ehr", "emar", "charting", "pyxis", "picis",
     # Assessments / tubes / procedures / aesthetics - specific multi-word or
@@ -75,7 +75,7 @@ CLINICAL_SKILL_TERMS: frozenset[str] = frozenset({
     # taxonomy and the terms above are nurse-centric, so a rad-tech resume's real
     # skills ("X-Ray", "Medical Imaging") were landing 0% recognized. Whole-word
     # modality names and clear acronyms only - no bare ambiguous tokens.
-    "x-ray", "xray", "radiography", "radiologic", "radiography", "fluoroscopy",
+    "x-ray", "xray", "radiography", "radiologic", "fluoroscopy",
     "fluoro", "mammography", "mammogram", "mammo", "sonography", "sonographer",
     "ultrasound", "ct", "mri", "mra", "computed tomography", "magnetic resonance",
     "nuclear medicine", "pet scan", "bone density", "dexa", "densitometry",

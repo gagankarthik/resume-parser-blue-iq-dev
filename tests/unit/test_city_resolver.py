@@ -6,10 +6,19 @@ disabled or when a role lacks the geography ids.
 
 from dataclasses import dataclass
 
+import pytest
 import structlog.testing
 
 from app.models.schemas import ExperienceItem, ParsedResumeAI, PersonalInfo
-from app.services.normalization import city_api, city_resolver, gig_api
+from app.services.normalization import city_api, city_resolver, geography_catalog, gig_api
+
+
+@pytest.fixture
+def bundled_geography():
+    """Home-state inference reads the geographies catalog. Load the bundled snapshot
+    explicitly: the catalog tests reset the module cache to an empty catalog, so
+    relying on whatever an earlier test left behind made these order-dependent."""
+    geography_catalog.reload(None)
 
 
 @dataclass
@@ -206,7 +215,7 @@ async def test_cache_spares_quota_across_resumes(monkeypatch):
 # -- State inference for a role that names a city but no state ------------------
 
 
-async def test_infers_home_state_for_city_only_role(monkeypatch):
+async def test_infers_home_state_for_city_only_role(monkeypatch, bundled_geography):
     """A role naming a city with no state (the state lived only in the candidate's
     header) is scoped to the home state and resolves, backfilling state/country from
     the authoritative match instead of staying city_id: null."""
@@ -226,7 +235,7 @@ async def test_infers_home_state_for_city_only_role(monkeypatch):
     assert exp.country_id == "1"
 
 
-def test_home_geo_parses_comma_before_zip():
+def test_home_geo_parses_comma_before_zip(bundled_geography):
     """The home line "City, ST, ZIP" (comma before the ZIP) must resolve, not just
     the "City, ST ZIP" (space) form - a real resume address ("Middleport, NY, 14105")
     was silently unparsed, so its city-only roles never inferred a state."""

@@ -32,8 +32,9 @@ from app.services.normalization.facility_catalog import (
     FacilityCatalog,
     FacilityRecord,
     get_catalog,
+    name_tokens,
 )
-from app.services.normalization.healthcare_taxonomy import _match_key
+from app.services.normalization.healthcare_taxonomy import match_key, ratio_upper_bound
 
 # Per-tier confidence. Tunable in one place.
 CONF_NAME        = 1.0
@@ -60,11 +61,6 @@ _GENERIC_TOKENS = frozenset({
 })
 
 
-def _tokens(name: str) -> frozenset[str]:
-    """Lower-cased alphanumeric tokens of a facility name ("Children's" -> "childrens")."""
-    return frozenset(re.sub(r"[^a-z0-9\s]", "", name.lower()).split())
-
-
 def _containment_lookup(
     catalog: FacilityCatalog, text: str
 ) -> FacilityRecord | None:
@@ -88,14 +84,16 @@ def _containment_lookup(
     """
     if catalog.is_empty:
         return None
-    probe = _tokens(text)
+    probe = name_tokens(text)
     if not probe or not (probe - _GENERIC_TOKENS):
         return None
 
+    # Only a record carrying EVERY probe token can contain the probe, so scanning the
+    # rarest token's records finds exactly the hits a full scan would.
     hits: list[FacilityRecord] = []
-    for rec in catalog.records:
-        if probe <= _tokens(rec.name):
-            hits.append(rec)
+    for i in min((catalog.by_token.get(t, []) for t in probe), key=len):
+        if probe <= catalog.tokens[i]:
+            hits.append(catalog.records[i])
             if len(hits) > 1:
                 return None      # ambiguous — two facilities fit; refuse to choose
     return hits[0] if hits else None
@@ -127,7 +125,7 @@ def _candidate_keys(text: str) -> list[str]:
     def add(value: str | None) -> None:
         if not value:
             return
-        key = _match_key(value)
+        key = match_key(value)
         if key and key not in keys:
             keys.append(key)
 
@@ -144,19 +142,22 @@ def _fuzzy_lookup(
 ) -> tuple[FacilityRecord, float] | None:
     """Resolve a near-miss spelling by whole-string similarity against every record.
 
-    Uses difflib's cheap ratio pre-filters so the scan stays fast. Returns the
-    closest record above ``threshold`` (best ratio wins); an identical (ratio 1.0)
+    Uses the precomputed record keys and difflib's cheap ratio pre-filters so the
+    scan stays fast: a pair whose lengths alone cap the ratio below ``threshold`` is
+    skipped before a matcher is built. Returns the closest record above
+    ``threshold`` (best ratio wins, first record on a tie); an identical (ratio 1.0)
     match is treated as exact and scored 1.0.
     """
     if catalog.is_empty:
         return None
 
     best: tuple[float, FacilityRecord] | None = None
-    for rec in catalog.records:
-        tkey = _match_key(rec.name)
+    for rec, tkey in zip(catalog.records, catalog.name_keys, strict=True):
         for cand in keys:
+            if ratio_upper_bound(cand, tkey) < threshold:
+                continue
             sm = difflib.SequenceMatcher(None, cand, tkey)
-            if sm.real_quick_ratio() < threshold or sm.quick_ratio() < threshold:
+            if sm.quick_ratio() < threshold:
                 continue
             ratio = sm.ratio()
             if ratio >= threshold and (best is None or ratio > best[0]):

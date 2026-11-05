@@ -13,7 +13,7 @@ Each SQS message body is the async-job payload:
   {
     "job_id":          "01J3K5...",
     "company_id":      "acme-corp",
-    "s3_key":          "temp/01J3K5.../resume.pdf",
+    "s3_key":          "temp/01J3K5.../source.pdf",
     "filename":        "resume.pdf",
     "file_size_bytes": 204800,
     "batch_id":        "01J3K5..."   (optional)
@@ -98,9 +98,8 @@ async def _handle_sqs_batch(event: dict[str, Any]) -> dict[str, list[dict[str, s
             payload = json.loads(record.get("body") or "{}")
             _require_fields(payload)
             await _process_one(payload)
-        except Exception as exc:
-            log.error("worker_record_failed",
-                      message_id=message_id, error=str(exc))
+        except Exception:
+            log.exception("worker_record_failed", message_id=message_id)
             failures.append({"itemIdentifier": message_id})
 
     return {"batchItemFailures": failures}
@@ -112,8 +111,8 @@ async def _handle_direct(event: dict[str, Any]) -> dict[str, Any]:
     log.info("worker_direct_start", job_id=event["job_id"], batch_id=event.get("batch_id"))
     try:
         await _process_one(event)
-    except Exception as exc:
-        log.error("worker_direct_error", job_id=event["job_id"], error=str(exc))
+    except Exception:
+        log.exception("worker_direct_error", job_id=event["job_id"])
         raise  # re-raise so Lambda marks the invocation as failed
     return {"status": "ok", "job_id": event["job_id"]}
 

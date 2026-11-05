@@ -152,3 +152,29 @@ def test_a_plain_duty_mention_of_a_license_word_is_not_recovered():
     parsed = ParsedResumeAI(experience=[ExperienceItem(company="Acme", role="RN")])
     credential_recovery.recover(text, parsed)
     assert parsed.licenses == []
+
+
+def test_precomputed_sections_give_identical_output_without_redetecting(monkeypatch):
+    """The pipeline detects sections once; passing them in must not change the result
+    and must not run the detector again."""
+    from app.services.parsing import section_detector
+
+    text = (
+        "Jane Smith\n\nEXPERIENCE\nStaff RN, Mercy Hospital\n\n"
+        "LICENSES AND CERTIFICATIONS\n"
+        "Registered Nurse License #RN9411204\n"
+        "Member, Sepsis Clinical Services Committee\n"
+        "BLS\n"
+    )
+    expected = ParsedResumeAI()
+    credential_recovery.recover(text, expected)
+    sections = section_detector.detect(text)
+
+    def _no_detect(_text):
+        raise AssertionError("sections were supplied; detect must not run again")
+
+    monkeypatch.setattr(section_detector, "detect", _no_detect)
+    got = ParsedResumeAI()
+    credential_recovery.recover(text, got, sections)
+    assert got == expected
+    assert got.licenses and got.professional_associations

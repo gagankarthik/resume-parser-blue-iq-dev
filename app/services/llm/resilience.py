@@ -138,6 +138,11 @@ class CircuitBreaker:
         if self._consecutive >= self.fail_threshold:
             self._opened_at = _now()  # (re)open and restart the cooldown
 
+    def release_probe(self) -> None:
+        """End a half-open probe that resolved without a verdict (e.g. it was
+        cancelled). The breaker's state is unchanged; the next caller may probe."""
+        self._probing = False
+
 
 class TokenBucket:
     """Async token bucket limiting requests to ~`rpm` per minute.

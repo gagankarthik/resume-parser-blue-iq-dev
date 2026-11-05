@@ -33,7 +33,7 @@ _SECTION_KEYWORDS: dict[str, list[str]] = {
         "positions held", "clinical experience", "nursing experience",
         "work assignments", "travel assignments", "agency assignments",
         "hospital experience", "clinical background", "assignments",
-        "work assignments", "professional background",
+        "professional background",
     ],
     "education": [
         "education", "academic background", "academic history",
@@ -46,7 +46,7 @@ _SECTION_KEYWORDS: dict[str, list[str]] = {
         "clinical skills", "specialties", "specialty areas",
         "clinical specialties", "areas of expertise", "nursing skills",
         "clinical competencies", "unit experience", "floors",
-        "clinical background", "proficiency", "capabilities",
+        "proficiency", "capabilities",
     ],
     "certifications": [
         "certifications", "certificates", "licenses", "credentials",

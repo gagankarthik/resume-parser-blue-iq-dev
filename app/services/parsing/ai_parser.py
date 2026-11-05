@@ -13,7 +13,6 @@ Token safety:
 """
 
 import json
-from typing import cast
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -82,6 +81,8 @@ Extract structured information from the resume text below.
 
 EXTRACTION RULES:
 - Extract ONLY what is explicitly stated. NEVER infer, guess, expand, or hallucinate. If a value is not written on the résumé, use null.
+- Spelling: when the résumé misspells an ordinary word or a standard clinical term, write it correctly ("Registerd Nurse" → "Registered Nurse", "Telemtry" → "Telemetry", "Pediatic" → "Pediatric"). Fix clear typos only; never reword, paraphrase, or change meaning. NEVER alter the spelling of people's names, employer/facility/school names, place names, email addresses, URLs, or licence/credential numbers.
+- Do not repeat yourself: never output the same role, degree, certification, licence, skill, or bullet twice, even when the résumé lists it in more than one place.
 
 ATTRIBUTION — do NOT smear SUMMARY facts across jobs (critical for healthcare résumés):
 - FACILITY ATTRIBUTES stated ONLY in the professional summary/objective (e.g. "experience in a 64-bed ICU", "3:1 ratio", "Level I trauma center", "Magnet facility") describe the candidate in general. Attach such a fact to a SPECIFIC experience[] entry ONLY when the résumé states it inside THAT role's own block/heading/bullets.
@@ -184,7 +185,7 @@ async def parse(
         label="single_shot",
     )
 
-    parsed = cast(ParsedResumeAI, result.parsed)
+    parsed = result.parsed
     tokens = result.usage.total_tokens if result.usage else 0
     log.info("ai_parse_success", tokens=tokens, provider=result.provider)
     return parsed, tokens

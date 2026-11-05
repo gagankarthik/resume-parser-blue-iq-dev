@@ -21,9 +21,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from app.models.schemas.validators import _clamp_unit
 from app.services.normalization import gig_api
-
-DEFAULT_API_URL = "https://api.gighealth.com/api/v1/external/cities"
 
 
 @dataclass(frozen=True)
@@ -75,7 +74,7 @@ def _row(row: object) -> CityMatch | None:
         state=_clean(row.get("state")),
         statecode=_clean(row.get("statecode")),
         country_id=_id(row.get("countryId")),
-        score=_score(row.get("score")),
+        score=_clamp_unit(row.get("score")),
     )
 
 
@@ -111,12 +110,3 @@ def _id(raw: object) -> str | None:
 
 def _clean(v: object) -> str | None:
     return v.strip() if isinstance(v, str) and v.strip() else None
-
-
-def _score(raw: object) -> float:
-    if isinstance(raw, bool) or not isinstance(raw, int | float | str):
-        return 0.0
-    try:
-        return min(max(float(raw), 0.0), 1.0)
-    except (TypeError, ValueError):
-        return 0.0

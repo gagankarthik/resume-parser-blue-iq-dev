@@ -39,7 +39,7 @@ from app.services.normalization import (
     geography_matcher,
     gig_api,
 )
-from app.services.normalization.healthcare_taxonomy import _match_key
+from app.services.normalization.healthcare_taxonomy import match_key
 
 log = get_logger(__name__)
 
@@ -148,9 +148,9 @@ async def resolve_cities(parsed: ParsedResumeAI) -> int:
         if not city:
             continue
         if exp.country_id and exp.state_id:
-            key = (exp.country_id, exp.state_id, _match_key(city))
+            key = (exp.country_id, exp.state_id, match_key(city))
         elif inferred is not None:
-            key = (inferred[0], inferred[1], _match_key(city))
+            key = (inferred[0], inferred[1], match_key(city))
             backfill_keys.add(key)
         else:
             continue

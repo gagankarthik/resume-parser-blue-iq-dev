@@ -3,7 +3,6 @@ Tests for healthcare taxonomy normalization.
 Covers specialty abbreviation expansion, profession credentials, and role title expansion.
 """
 
-from app.services.normalization.healthcare_taxonomy import expand_profession
 from app.services.normalization.normalizer import _expand_role_credentials, _normalize_skills
 
 # -- Specialty abbreviation expansion ------------------------------------------
@@ -169,33 +168,6 @@ def test_lcsw_expands():
 def test_msw_expands():
     result = _normalize_skills(["MSW"])
     assert result == ["Masters of Social Work"]
-
-
-# -- Profession credential expansion ------------------------------------------
-
-def test_rn_expands():
-    assert expand_profession("RN") == "Registered Nurse"
-
-def test_lpn_expands():
-    assert expand_profession("LPN") == "Licensed Practical Nurse"
-
-def test_cna_expands():
-    assert expand_profession("CNA") == "Certified Nursing Assistant"
-
-def test_ot_expands():
-    assert expand_profession("OT") == "Occupational Therapist"
-
-def test_pt_expands():
-    assert expand_profession("PT") == "Physical Therapist"
-
-def test_slp_expands():
-    assert expand_profession("SLP") == "Speech-Language Pathologist"
-
-def test_pta_expands():
-    assert expand_profession("PTA") == "Physical Therapist Assistant"
-
-def test_cota_expands():
-    assert expand_profession("COTA") == "Certified Occupational Therapy Assistant"
 
 
 # -- Role title expansion ------------------------------------------------------

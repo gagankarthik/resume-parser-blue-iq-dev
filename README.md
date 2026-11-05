@@ -19,7 +19,7 @@ maps free-text specialties to a controlled vocabulary the platform can match on.
 | **Healthcare domain** | 350+ specialties, credential & state-licence capture, per-facility travel history |
 | **Platform IDs** | Specialty, facility, profession, country, state, and city resolved to GigHealth IDs |
 | **Confidence** | Per-section 0-1 scores to route weak records to human review |
-| **Honesty** | Never an empty record and never a silent partial - a degraded parse says so |
+| **Honesty** | Never an empty record and never a silent partial - a degraded parse says so; an empty file or a non-resume fails with `NOT_A_RESUME` |
 | **Security** | API-key & session auth, magic-byte validation, SSRF-guarded webhooks, no resume storage |
 
 ---
@@ -127,6 +127,12 @@ per-section confidence:
 
 A degraded parse returns `partial: true` with human-readable `warnings[]` - **never an empty
 record, never a silent partial.** An unresolved platform ID comes back `null`, never a guess.
+Repeated entries are merged (nothing a copy held is lost) and clear typos are corrected - never in
+names, places, or numbers.
+
+An upload that is empty or is not a resume (a job description, cover letter, invoice...) fails with
+**one** error code, `NOT_A_RESUME`: HTTP 422 on the submit for a 0-byte file, otherwise a `failed`
+job whose poll response and `parse.failed` webhook both carry `"error_code": "NOT_A_RESUME"`.
 
 ---
 

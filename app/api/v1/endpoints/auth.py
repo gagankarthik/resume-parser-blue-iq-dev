@@ -9,7 +9,7 @@ Accounts are stored in the companies table (one account == one company).
 The session token is a signed, stateless bearer token (see security.py).
 """
 
-import re
+import asyncio
 import secrets
 
 from fastapi import APIRouter, Depends, Request
@@ -22,6 +22,7 @@ from app.core.errors import ErrorCode, api_error
 from app.core.logging import get_logger
 from app.core.security import create_account_token, hash_password, verify_password
 from app.db import dynamodb as db
+from app.services.application.companies import new_company_id
 
 router = APIRouter(prefix="/auth", tags=["Account"])
 log = get_logger(__name__)
@@ -33,14 +34,21 @@ _DECOY_PW_HASH = hash_password(secrets.token_hex(16))
 
 
 def _client_ip(request: Request) -> str:
-    """Best-effort client IP for per-IP auth throttling.
+    """The address that opened the connection, for per-IP auth throttling.
 
-    Behind the Lambda Function URL / API Gateway the peer is the proxy, so prefer
-    the first hop in X-Forwarded-For; fall back to the socket peer.
+    Deliberately NOT X-Forwarded-For. Each proxy appends to that header, so every
+    hop left of the proxies we trust is whatever the client sent - and the API's
+    Lambda Function URL is public (authorization NONE), so a request can arrive
+    with no proxy in front at all. Keying on the first hop let a client rotate it
+    and never be throttled.
+
+    Topology assumption: client -> CloudFront -> Lambda Function URL -> Mangum.
+    Mangum sets request.client from requestContext.http.sourceIp, the immediate
+    TCP peer, which the client cannot forge. Behind CloudFront that peer is the
+    edge node, so the limit is per edge address: it can over-throttle clients that
+    share an edge, never under-throttle one that lies. A per-viewer limit belongs
+    in front of the origin (a CloudFront / WAF rate-based rule).
     """
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -53,11 +61,6 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-
-
-def _slug(name: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return (s or "company")[:40]
 
 
 def _public(company: dict) -> dict:
@@ -77,13 +80,15 @@ async def signup(payload: SignupRequest, request: Request) -> dict:
     if db.get_company_by_email(str(payload.email)):
         raise api_error(409, ErrorCode.INVALID_REQUEST, "An account with this email already exists")
 
-    company_id = f"{_slug(payload.name)}-{secrets.token_hex(3)}"
+    company_id = new_company_id(payload.name)
+    # ~200k PBKDF2 rounds: CPU-bound, so off the event loop.
+    password_hash = await asyncio.to_thread(hash_password, payload.password)
     db.create_company(
         company_id=company_id,
         name=payload.name,
         email=str(payload.email),
         plan="free",
-        password_hash=hash_password(payload.password),
+        password_hash=password_hash,
     )
     log.info("account_created", company_id=company_id)
     token = create_account_token(company_id, get_settings().auth_secret)
@@ -98,8 +103,9 @@ async def login(payload: LoginRequest, request: Request) -> dict:
     pw_hash = company.get("password_hash") if company else None
     # Always run a full verify (against a decoy hash when the account/hash is
     # missing) so an unknown email takes the same ~200k-round PBKDF2 time as a
-    # known one - closes the timing oracle on account existence.
-    ok = verify_password(payload.password, pw_hash or _DECOY_PW_HASH)
+    # known one - closes the timing oracle on account existence. CPU-bound, so
+    # off the event loop.
+    ok = await asyncio.to_thread(verify_password, payload.password, pw_hash or _DECOY_PW_HASH)
     if not company or not pw_hash or not ok:
         raise api_error(401, ErrorCode.INVALID_API_KEY, "Invalid email or password")
     if company.get("status") != "active":

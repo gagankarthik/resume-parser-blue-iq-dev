@@ -10,9 +10,11 @@ GET /api/v1/health
 import asyncio
 import time
 from collections.abc import Callable
-from typing import Any
+from functools import lru_cache
+from typing import Any, Literal
 
 import boto3
+from botocore.config import Config
 from fastapi import APIRouter
 
 from app.core.config import get_settings
@@ -24,6 +26,21 @@ log = get_logger(__name__)
 
 _PROBE_TIMEOUT_SECONDS = 3.0
 
+# A probe must give up on its own inside _PROBE_TIMEOUT_SECONDS. asyncio.wait_for
+# stops *waiting* at the timeout but cannot stop the boto3 call on its thread, which
+# with botocore's defaults (60s connect, 60s read, retries) would keep going long
+# after the response - one stranded thread per health check against a dead endpoint.
+_PROBE_CONFIG = Config(connect_timeout=1, read_timeout=2, retries={"total_max_attempts": 1})
+
+
+@lru_cache(maxsize=4)
+def _client(service: Literal["dynamodb", "s3"], region: str, endpoint_url: str) -> Any:
+    """Probe clients, built once per (service, region, endpoint) - not per check."""
+    kwargs: dict[str, Any] = {"region_name": region, "config": _PROBE_CONFIG}
+    if endpoint_url:
+        kwargs["endpoint_url"] = endpoint_url
+    return boto3.client(service, **kwargs)
+
 
 async def _probe(dependency: str, fn: Callable[[], Any]) -> str:
     """Run a blocking boto3 probe off the event loop; never raise.
@@ -33,10 +50,7 @@ async def _probe(dependency: str, fn: Callable[[], Any]) -> str:
     rather than a silent "unreachable".
     """
     try:
-        loop = asyncio.get_event_loop()
-        await asyncio.wait_for(
-            loop.run_in_executor(None, fn), timeout=_PROBE_TIMEOUT_SECONDS
-        )
+        await asyncio.wait_for(asyncio.to_thread(fn), timeout=_PROBE_TIMEOUT_SECONDS)
         return "ok"
     except Exception as exc:
         log.warning(
@@ -50,10 +64,7 @@ async def _probe(dependency: str, fn: Callable[[], Any]) -> str:
 
 async def _check_dynamodb(settings) -> str:
     def fn() -> None:
-        kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-        if settings.dynamodb_endpoint_url:
-            kwargs["endpoint_url"] = settings.dynamodb_endpoint_url
-        db = boto3.client("dynamodb", **kwargs)
+        db = _client("dynamodb", settings.aws_region, settings.dynamodb_endpoint_url)
         # DescribeTable (not ListTables) - covered by the least-privilege role
         # and validates the table the app actually depends on.
         db.describe_table(TableName=settings.dynamodb_table_api_keys)
@@ -63,10 +74,7 @@ async def _check_dynamodb(settings) -> str:
 
 async def _check_s3(settings) -> str:
     def fn() -> None:
-        kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-        if settings.s3_endpoint_url:
-            kwargs["endpoint_url"] = settings.s3_endpoint_url
-        s3 = boto3.client("s3", **kwargs)
+        s3 = _client("s3", settings.aws_region, settings.s3_endpoint_url)
         s3.head_bucket(Bucket=settings.s3_bucket_name)
 
     return await _probe("s3", fn)

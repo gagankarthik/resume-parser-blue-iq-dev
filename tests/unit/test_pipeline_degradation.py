@@ -18,10 +18,24 @@ from app.services import pipeline
 _LONG_TEXT = "Katherine Driscoll\njane@example.com\n(555) 234-5678\n" + ("Experience bullet line. " * 200)
 
 
+@pytest.fixture(autouse=True)
+def _pass_resume_gate(monkeypatch):
+    """These tests cover the parse ladder, not the resume gate (see
+    test_resume_gate.py) - let every document through without a model call."""
+    async def _ok(_text, *, job_id="", budget=None):
+        return 0
+
+    async def _no_rules():
+        return None
+
+    monkeypatch.setattr(pipeline.resume_gate, "check", _ok)
+    monkeypatch.setattr(pipeline.refinement_store, "refresh", _no_rules)  # no DynamoDB in unit tests
+
+
 def _stub_extraction(monkeypatch, text=_LONG_TEXT):
     monkeypatch.setattr(
         pipeline.classifier, "classify",
-        lambda filename, content: (pipeline.ExtractionStrategy.DOCX, False),
+        lambda filename, content: pipeline.ExtractionStrategy.DOCX,
     )
     monkeypatch.setattr(pipeline.docx_extractor, "extract", lambda content: text)
 
@@ -111,7 +125,7 @@ async def test_runs_ocr_inline_for_a_broken_text_layer(monkeypatch):
 
     monkeypatch.setattr(
         pipeline.classifier, "classify",
-        lambda filename, content: (pipeline.ExtractionStrategy.PDF, False),
+        lambda filename, content: pipeline.ExtractionStrategy.PDF,
     )
     monkeypatch.setattr(
         pipeline.pdf_extractor, "extract",
@@ -204,3 +218,28 @@ def test_firstname_after_surname_not_flagged():
     assert pipeline._surname_mismatch_warning(
         _parsed_with("Jane Smith", "smithjane@example.com")
     ) is None
+
+
+@pytest.mark.asyncio
+async def test_extraction_timeout_reports_the_cap_that_fired(monkeypatch):
+    """A digital PDF that falls back to OCR runs its OCR pass under the OCR cap, so a
+    timeout there must name that cap - not the digital-extraction one."""
+    import time
+
+    from app.core.exceptions import ExtractionError
+
+    monkeypatch.setattr(
+        pipeline.classifier, "classify",
+        lambda filename, content: pipeline.ExtractionStrategy.PDF,
+    )
+    monkeypatch.setattr(pipeline.pdf_extractor, "extract", lambda content: "(cid:12)" * 40)
+    monkeypatch.setattr(
+        pipeline.ocr_extractor, "extract",
+        lambda content, filename, force: time.sleep(0.5) or ("Jane Smith", True),
+    )
+    monkeypatch.setattr(pipeline, "TIMEOUT_OCR", 0.05)
+
+    with pytest.raises(ExtractionError, match=r"timed out after 0\.05s"):
+        await pipeline.run(
+            pipeline.PipelineInput(job_id="t1", filename="scan.pdf", content=b"x", company_id="c1")
+        )

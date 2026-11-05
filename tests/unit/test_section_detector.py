@@ -118,3 +118,11 @@ def test_mixed_credentials_block_is_bucketed_together():
     assert "Sepsis Clinical Services Committee" in block
     # ...and it did not spill into the preceding education section.
     assert "RN9411204" not in sections.get("education", "")
+
+
+def test_clinical_background_routes_to_experience_in_every_header_form():
+    # "clinical background" used to be listed under BOTH experience and skills: the
+    # single-keyword pattern picked experience (first wins) while the compound-header
+    # map picked skills (last wins), so the same heading routed differently.
+    assert _match_section_header("Clinical Background") == "experience"
+    assert _match_section_header("Clinical Background/Work History") == "experience"

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Awaitable
 
 from app.core.exceptions import AIParsingError
 from app.core.logging import get_logger
@@ -77,42 +76,14 @@ def _unwrap[T](result: object, default: T, agent: str, warnings: list[str]) -> T
     return result  # type: ignore[return-value]
 
 
-async def _run_sections_bounded(
-    specs: list[tuple[str, Awaitable[object]]], *, timeout: float
-) -> list[object]:
-    """Run section coroutines concurrently under a soft deadline.
-
-    Returns a list aligned 1:1 with `specs`: the agent's result, the exception it
-    raised, or a TimeoutError for any section still running when `timeout` elapses
-    (those are cancelled). Every element is safe to feed to `_unwrap`, so a slow or
-    failed section degrades to its default instead of cancelling the whole parse.
-    """
-    tasks = [asyncio.ensure_future(coro) for _, coro in specs]
-    done, pending = await asyncio.wait(tasks, timeout=timeout, return_when=asyncio.ALL_COMPLETED)
-    for task in pending:
-        task.cancel()
-    if pending:
-        # Let the cancellations settle so no "Task was destroyed" warnings escape.
-        await asyncio.gather(*pending, return_exceptions=True)
-
-    out: list[object] = []
-    for (name, _), task in zip(specs, tasks):
-        if task in done:
-            out.append(task.exception() or task.result())
-        else:
-            log.warning("agent_section_timeout", agent=name, timeout=timeout)
-            out.append(TimeoutError(f"{name} timed out after {timeout}s"))
-    return out
-
-
 async def _await_named_tasks(
     named_tasks: list[tuple[str, asyncio.Future[object]]], *, timeout: float
 ) -> dict[str, object]:
     """Wait for ALREADY-RUNNING section tasks under a soft deadline.
 
-    Same contract as `_run_sections_bounded` but for tasks the caller has already
-    launched (so some may run before this is even called - see the structure/section
-    overlap in `parse`). Returns {name: result | exception | TimeoutError}; any task
+    The caller has already launched the tasks (so some may run before this is even
+    called - see the structure/section overlap in `parse`). Returns
+    {name: result | exception | TimeoutError}; any task
     still running when `timeout` elapses is cancelled and recorded as a TimeoutError,
     so a slow section degrades to its default instead of cancelling the whole parse.
     """
@@ -170,10 +141,9 @@ async def parse(
     validator_agent = ValidatorAgent()
 
     # Budget to hold back for the stages AFTER structure (Stage 2 + validation).
-    # The fixed 40s suits the large async budget, but on the tighter SYNC budget it
-    # would starve the structure call (e.g. only ~6s of a 43s budget), so scale it
-    # down proportionally. Capped at 40 so any budget >= ~67s (the async path) keeps
-    # today's exact behaviour.
+    # The fixed 40s suits the worker's full budget, but a small `budget` would starve
+    # the structure call (e.g. only ~6s of a 43s budget), so scale it down
+    # proportionally. Capped at 40, so any budget >= ~67s keeps the fixed reserve.
     struct_reserve = min(40.0, budget * 0.6) if budget else 40.0
 
     # The four section agents that DON'T need the role map (personal, education,
@@ -214,22 +184,14 @@ async def parse(
         [("WorkExperienceAgent", work_future), *independent],
         timeout=_stage_timeout(_STAGE2_TIMEOUT, deadline, reserve=5),
     )
-    raw = [
-        by_name["PersonalInfoAgent"],
-        by_name["WorkExperienceAgent"],
-        by_name["EducationAgent"],
-        by_name["CredentialsAgent"],
-        by_name["SupplementalAgent"],
-    ]
-
-    pres: PersonalResult        = _unwrap(raw[0], PersonalResult(), "PersonalInfoAgent", warnings)
+    pres: PersonalResult        = _unwrap(by_name["PersonalInfoAgent"], PersonalResult(), "PersonalInfoAgent", warnings)
     personal: PersonalInfo      = pres.personal
     if pres.summary_off_topic and personal.summary:
         warnings.append(
             "The professional summary appears unrelated to the candidate's healthcare "
             "background - it may be boilerplate copied from an unrelated resume. Review before use."
         )
-    work: list[ExperienceItem]  = _unwrap(raw[1], [], "WorkExperienceAgent", warnings)
+    work_raw = by_name["WorkExperienceAgent"]
     # Safety net: the work stage raised or was cancelled (e.g. a per-role call
     # looped to the token ceiling, or a dense CV overran the stage deadline) before
     # run() could return its stubs, yet the structure map DID find real roles.
@@ -237,17 +199,19 @@ async def parse(
     # outcome - it reads as "no work history". Recover deterministically from the
     # structure map instead: every employer with its identity and dates (no duty
     # bullets), which is far better than dropping them and costs no extra LLM call.
-    if not work and roles and isinstance(raw[1], Exception):
+    work: list[ExperienceItem]
+    if roles and isinstance(work_raw, Exception):
         work = [WorkExperienceAgent._stub_from_role(r) for r in roles]
-        warnings[:] = [w for w in warnings if "WorkExperienceAgent failed" not in w]
         warnings.append(
             "Work history could not be fully extracted; recovered employers and dates "
             "from the resume structure without duty details. Please verify."
         )
-        log.warning("work_recovered_from_structure", roles=len(roles))
-    education: list[EducationItem] = _unwrap(raw[2], [], "EducationAgent", warnings)
-    creds: CredentialsResult    = _unwrap(raw[3], CredentialsResult(), "CredentialsAgent", warnings)
-    supp: SupplementalResult    = _unwrap(raw[4], SupplementalResult(), "SupplementalAgent", warnings)
+        log.warning("work_recovered_from_structure", roles=len(roles), error=str(work_raw))
+    else:
+        work = _unwrap(work_raw, [], "WorkExperienceAgent", warnings)
+    education: list[EducationItem] = _unwrap(by_name["EducationAgent"], [], "EducationAgent", warnings)
+    creds: CredentialsResult    = _unwrap(by_name["CredentialsAgent"], CredentialsResult(), "CredentialsAgent", warnings)
+    supp: SupplementalResult    = _unwrap(by_name["SupplementalAgent"], SupplementalResult(), "SupplementalAgent", warnings)
 
     # -- Stage 4: validation / re-extraction -----------------------------------
     # Skipped entirely when the deadline leaves no useful time - the validator is
@@ -288,61 +252,6 @@ async def parse(
              prompt_tokens=meter.prompt_total, completion_tokens=meter.completion_total,
              cached_tokens=meter.cached_total,
              experience=len(parsed.experience), warnings=len(warnings))
-    return parsed, meter.total, warnings
-
-
-async def parse_light(
-    text: str, anchors: RuleExtracted, budget: float
-) -> tuple[ParsedResumeAI, int, list[str]]:
-    """Section-only extraction: personal / education / credentials / supplemental
-    in parallel - NO structure, NO per-role work stage, NO validator.
-
-    The per-role work stage is the slow, cancellation-prone part of the full
-    orchestrator; on the tight SYNC budget it gets cancelled and drops the whole
-    work section. This lightweight pass deliberately omits it so the high-value
-    SEMANTIC sections (headline, secondary phone, education locations, skills,
-    certifications, licenses) come back reliably and fast. The caller backfills
-    `experience` from the deterministic parser. `experience` is left empty here.
-    """
-    meter = TokenMeter()
-    warnings: list[str] = []
-    if len(text) > _MAX_AGENT_CHARS:
-        text = text[:_MAX_AGENT_CHARS]
-
-    personal_agent = PersonalInfoAgent()
-    education_agent = EducationAgent()
-    cred_agent      = CredentialsAgent()
-    supp_agent      = SupplementalAgent()
-
-    raw = await _run_sections_bounded(
-        [
-            ("PersonalInfoAgent", personal_agent.run(text, anchors, meter)),
-            ("EducationAgent",    education_agent.run(text, meter)),
-            ("CredentialsAgent",  cred_agent.run(text, meter)),
-            ("SupplementalAgent", supp_agent.run(text, meter)),
-        ],
-        timeout=max(5.0, budget),
-    )
-    pres: PersonalResult        = _unwrap(raw[0], PersonalResult(), "PersonalInfoAgent", warnings)
-    education: list[EducationItem] = _unwrap(raw[1], [], "EducationAgent", warnings)
-    creds: CredentialsResult    = _unwrap(raw[2], CredentialsResult(), "CredentialsAgent", warnings)
-    supp: SupplementalResult    = _unwrap(raw[3], SupplementalResult(), "SupplementalAgent", warnings)
-
-    parsed = ParsedResumeAI(
-        personal_info=pres.personal,
-        education=education,
-        skills=creds.skills,
-        certifications=creds.certifications,
-        licenses=creds.licenses,
-        projects=supp.projects,
-        languages=supp.languages,
-        references=supp.references,
-        awards=supp.awards,
-        publications=supp.publications,
-        professional_associations=creds.professional_associations,
-    )
-    log.info("orchestrator_light_complete", tokens=meter.total, education=len(education),
-             skills=len(creds.skills), warnings=len(warnings))
     return parsed, meter.total, warnings
 
 
